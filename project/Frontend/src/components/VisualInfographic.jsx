@@ -129,6 +129,22 @@ const SEMANTIC_THEMES = {
 };
 
 /**
+ * Semantic Visual Metadata with Lucide Icons (Zero Raw Emojis)
+ */
+const VTYPE_META = {
+  process:      { icon: I.Settings,       label: "Process Diagram"   },
+  flowchart:    { icon: I.GitFork,        label: "Flowchart"          },
+  cycle:        { icon: I.RotateCw,       label: "Cycle Diagram"       },
+  timeline:     { icon: I.Calendar,       label: "Timeline"           },
+  concept_map:  { icon: I.MapPin,         label: "Concept Map"        },
+  cause_effect: { icon: I.Zap,            label: "Cause & Effect"     },
+  comparison:   { icon: I.Scale,          label: "Comparison"         },
+  hierarchy:    { icon: I.GitBranch,      label: "Hierarchy"           },
+  bar_chart:    { icon: I.BarChart3,      label: "Chart"              },
+  none:         { icon: I.MessageSquare,  label: "Text Explanation"   },
+};
+
+/**
  * Resolves appropriate Lucide icon and semantic theme based on node properties
  */
 export function resolveNodeVisuals(node = {}) {

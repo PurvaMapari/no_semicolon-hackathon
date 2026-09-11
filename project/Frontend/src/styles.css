@@ -975,14 +975,12 @@ textarea {
   font-family: inherit;
 }
 
-/* Base App Layout */
 .app-container {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
 }
 
-/* Mobile & Desktop View Wrappers */
 .phone {
   width: 100%;
   max-width: 100%;
@@ -992,7 +990,6 @@ textarea {
   padding-bottom: 90px;
 }
 
-/* Header / Topbar */
 .topbar {
   height: 76px;
   padding: 0 24px;
@@ -1097,12 +1094,10 @@ textarea {
   font-size: 14px;
 }
 
-/* Sidebar Navigation (Desktop) */
 .desktop-sidebar {
   display: none;
 }
 
-/* Mobile Bottom Nav */
 .bottom-nav {
   position: fixed;
   bottom: 0;
@@ -1158,7 +1153,6 @@ textarea {
   transform: translateY(-1px);
 }
 
-/* Page Containers */
 .page {
   padding: 24px 20px 40px;
   max-width: 860px;
@@ -1166,7 +1160,6 @@ textarea {
   animation: fadeInUp 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Header & Eyebrow */
 .eyebrow {
   display: flex;
   justify-content: space-between;
@@ -1196,7 +1189,6 @@ textarea {
   margin-bottom: 18px;
 }
 
-/* Cards & Glassmorphism */
 .card {
   background: var(--bg-card);
   backdrop-filter: var(--glass-blur);
@@ -1211,7 +1203,6 @@ textarea {
   border-color: rgba(99, 102, 241, 0.25);
 }
 
-/* Hero Info Card */
 .hero-card {
   background: linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%);
   border: 1px solid rgba(199, 210, 254, 0.6);
@@ -1235,7 +1226,203 @@ textarea {
   margin: 0;
 }
 
-/* Segmented Control Switcher */
+/* Quick Demo Box (Golden Path) */
+.quick-demo-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
+  border: 1.5px solid #c7d2fe;
+  padding: 16px 20px;
+  border-radius: 18px;
+  margin: 16px 0;
+  box-shadow: var(--shadow-sm);
+}
+
+.golden-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  color: #ffffff;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* SCALE Telemetry Bar */
+.telemetry-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border-color);
+  padding: 10px 16px;
+  border-radius: 14px;
+  margin-bottom: 16px;
+  font-size: 12px;
+}
+
+.telemetry-gauge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.gauge-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.gauge-dot.normal {
+  background: var(--emerald);
+  box-shadow: 0 0 8px var(--emerald);
+}
+
+.gauge-dot.warning {
+  background: var(--amber);
+  box-shadow: 0 0 8px var(--amber);
+}
+
+.gauge-dot.critical {
+  background: #7c3aed;
+  box-shadow: 0 0 10px #7c3aed;
+  animation: pulseGlow 1.5s infinite;
+}
+
+/* REWIRE Banner & Badges */
+.rewire-banner {
+  background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%);
+  border: 2px solid #a855f7;
+  border-radius: 20px;
+  padding: 20px;
+  margin-bottom: 18px;
+  box-shadow: 0 10px 30px -10px rgba(168, 85, 247, 0.25);
+  animation: fadeInUp 0.35s ease;
+}
+
+.rewire-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.rewire-tag {
+  background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);
+  color: #ffffff;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.rewire-title {
+  font-family: var(--font-heading);
+  font-size: 17px;
+  font-weight: 700;
+  color: #581c87;
+  margin-top: 8px;
+}
+
+.rewire-explanation {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #6b21a8;
+  margin: 6px 0 12px;
+}
+
+.rewire-actions-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rewire-action-pill {
+  background: #ffffff;
+  border: 1px solid #d8b4fe;
+  color: #7e22ce;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.adapted-chunk-card {
+  border: 2px solid #c084fc !important;
+  background: linear-gradient(135deg, rgba(250, 245, 255, 0.6) 0%, rgba(255, 255, 255, 0.9) 100%) !important;
+  border-radius: 16px;
+}
+
+.adapted-badge {
+  background: #f3e8ff;
+  color: #7e22ce;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 9999px;
+  border: 1px solid #d8b4fe;
+}
+
+.visual-description-box {
+  background: #fefce8;
+  border: 1px solid #fef08a;
+  border-left: 4px solid #eab308;
+  padding: 12px;
+  border-radius: 12px;
+  margin-top: 10px;
+}
+
+.visual-description-label {
+  font-size: 11px;
+  font-weight: 800;
+  color: #854d0e;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.visual-description-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #713f12;
+  margin: 4px 0 0;
+}
+
+.outcome-card {
+  background: #ecfdf5;
+  border: 1.5px solid var(--emerald-border);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.outcome-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #065f46;
+}
+
+.outcome-delta-badge {
+  background: #10b981;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 9999px;
+}
+
 .segmented {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1265,7 +1452,6 @@ textarea {
   box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
 }
 
-/* File Upload Dropzone */
 .dropzone {
   min-height: 200px;
   margin-top: 16px;
@@ -1281,7 +1467,7 @@ textarea {
   cursor: pointer;
   text-align: center;
   padding: 24px;
-  transition: all 0.25s ease;
+  transition: all 0.2s ease;
 }
 
 .dropzone:hover {
@@ -1321,7 +1507,6 @@ textarea {
   margin-top: 4px;
 }
 
-/* Progress bar */
 .progressbar {
   height: 10px;
   border-radius: 9999px;
@@ -1349,11 +1534,7 @@ textarea {
   animation: shimmer 2s infinite;
 }
 
-/* Buttons */
-.primary-action,
-.secondary-action,
-.text-action,
-.icon-action {
+.primary-action, .secondary-action, .text-action, .icon-action {
   border: 0;
   border-radius: 12px;
   padding: 13px 20px;
@@ -1440,7 +1621,6 @@ textarea {
   border-color: rgba(99, 102, 241, 0.3);
 }
 
-/* Profile Selector Options */
 .profile-grid {
   display: grid;
   gap: 12px;
@@ -1508,7 +1688,6 @@ textarea {
   line-height: 1.5;
 }
 
-/* Pills & Badges */
 .pill {
   display: inline-flex;
   align-items: center;
@@ -1521,7 +1700,6 @@ textarea {
   color: var(--primary);
 }
 
-/* Lesson Sections View */
 .lesson-heading {
   display: flex;
   align-items: center;
@@ -1650,9 +1828,7 @@ textarea {
   margin: 8px 0 14px;
 }
 
-/* Accessibility Modes */
-.dyslexia-lesson p,
-.dyslexia-lesson .section-content p {
+.dyslexia-lesson p, .dyslexia-lesson .section-content p {
   font-family: var(--font-dyslexic);
   line-height: 1.9;
   letter-spacing: 0.04em;
@@ -1673,7 +1849,6 @@ textarea {
   font-weight: 500;
 }
 
-/* Practice & Quiz */
 .practice-card {
   padding: 24px;
 }
@@ -1748,7 +1923,6 @@ textarea {
   border-radius: 18px;
 }
 
-/* Stats Dashboard */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -1785,7 +1959,6 @@ textarea {
   font-weight: 600;
 }
 
-/* Ask Q&A Box */
 .ask-card {
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.9) 0%, rgba(238, 242, 255, 0.5) 100%);
 }
@@ -1799,9 +1972,7 @@ textarea {
   box-shadow: var(--shadow-sm);
 }
 
-/* Inputs & Form Controls */
-textarea,
-input {
+textarea, input {
   font-family: inherit;
   border: 1.5px solid var(--border-color);
   border-radius: 12px;
@@ -1818,7 +1989,6 @@ input:focus {
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
 }
 
-/* Animations */
 @keyframes fadeInUp {
   from {
     opacity: 0;
@@ -1855,7 +2025,6 @@ input:focus {
   }
 }
 
-/* Responsive Styles for Tablet & Desktop */
 @media (min-width: 900px) {
   .phone {
     max-width: 100%;
