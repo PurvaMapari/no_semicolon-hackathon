@@ -23,6 +23,7 @@ const PROFILE_LABELS = {
   cognitive_load: "Cognitive load support",
   low_vision: "Low vision and clarity",
 };
+
 const SessionContext = createContext(null);
 
 function useSession() {
@@ -214,49 +215,111 @@ function SessionProvider({ children }) {
 }
 
 function Header({ section }) {
+  const { session } = useSession();
   return (
     <header className="topbar">
-      <div className="brand">
+      <NavLink to="/progress" className="brand">
         <div className="logo">A</div>
         <div>
           <div className="brandname">AdaptLearn</div>
           <div className="subtitle">{section}</div>
         </div>
+      </NavLink>
+      <div className="header-right">
+        <div className="access-badge">
+          <span className="access-dot" />
+          <span>{PROFILE_LABELS[session.profile]}</span>
+        </div>
+        <div className="avatar">AL</div>
       </div>
-      <div className="access">
-        {PROFILE_LABELS[useSession().session.profile]}
-      </div>
-      <div className="avatar" />
     </header>
   );
 }
 
 function Layout({ children, section }) {
   const location = useLocation();
+  const { session } = useSession();
   const items = [
     ["/upload", "Upload", I.CloudUpload],
     ["/learn", "Learn", I.BookOpen],
     ["/practice", "Practice", I.BadgeHelp],
     ["/progress", "Progress", I.BarChart3],
   ];
+
   return (
-    <div className="app">
-      <div className="phone">
-        <Header section={section} />
-        {children}
-        <nav className="bottom">
-          {items.map(([to, label, Icon]) => (
-            <NavLink
-              key={to}
-              to={to}
-              className={`nav ${location.pathname === to ? "active" : ""}`}
+    <div className="app-container">
+      <div className="desktop-layout">
+        <aside className="desktop-sidebar">
+          <NavLink to="/progress" className="brand" style={{ marginBottom: 12 }}>
+            <div className="logo">A</div>
+            <div>
+              <div className="brandname">AdaptLearn</div>
+              <div className="subtitle">Adaptive Engine</div>
+            </div>
+          </NavLink>
+
+          <nav className="sidebar-nav">
+            {items.map(([to, label, Icon]) => (
+              <NavLink
+                key={to}
+                to={to}
+                className={`sidebar-link ${location.pathname === to ? "active" : ""}`}
+              >
+                <Icon size={18} />
+                <span>{label}</span>
+              </NavLink>
+            ))}
+          </nav>
+
+          <div
+            style={{
+              padding: 14,
+              background: "linear-gradient(135deg, rgba(238, 242, 255, 0.8), rgba(245, 243, 257, 0.8))",
+              borderRadius: 14,
+              border: "1px solid rgba(199, 210, 254, 0.6)",
+              marginTop: "auto",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 800,
+                color: "var(--primary)",
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+              }}
             >
-              <Icon />
-              <span>{label}</span>
-            </NavLink>
-          ))}
-        </nav>
+              Active Profile
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginTop: 4 }}>
+              {PROFILE_LABELS[session.profile]}
+            </div>
+            {session.fileName && (
+              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                📄 {session.fileName}
+              </div>
+            )}
+          </div>
+        </aside>
+
+        <div className="main-content">
+          <Header section={section} />
+          {children}
+        </div>
       </div>
+
+      <nav className="bottom-nav">
+        {items.map(([to, label, Icon]) => (
+          <NavLink
+            key={to}
+            to={to}
+            className={`nav-item ${location.pathname === to ? "active" : ""}`}
+          >
+            <Icon />
+            <span>{label}</span>
+          </NavLink>
+        ))}
+      </nav>
     </div>
   );
 }
@@ -266,15 +329,20 @@ function ErrorNotice() {
   return session.error ? (
     <div
       style={{
-        background: "#fff0f0",
-        color: "#a12929",
-        padding: 10,
-        borderRadius: 8,
-        marginTop: 12,
-        fontSize: 12,
+        background: "var(--amber-light)",
+        border: "1px solid #fde68a",
+        color: "#92400e",
+        padding: "12px 16px",
+        borderRadius: 12,
+        marginTop: 14,
+        fontSize: 13,
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
       }}
     >
-      {session.error}
+      <I.AlertCircle size={18} style={{ flexShrink: 0 }} />
+      <span>{session.error}</span>
     </div>
   ) : null;
 }
@@ -285,32 +353,27 @@ function Upload() {
   const [tab, setTab] = useState("upload");
   const [draft, setDraft] = useState(session.text);
   const ready = Boolean(session.text.trim());
+
   return (
     <Layout section="Upload">
       <main className="page">
         <div className="eyebrow">
           <b>Step 1 of 3</b>
-          <span>Setup and adapt engine</span>
+          <span>Document Extraction & Setup</span>
         </div>
-        <section
-          className="card"
-          style={{
-            marginTop: 15,
-            padding: 17,
-            background: "#f0f1ff",
-            border: 0,
-          }}
-        >
-          <b style={{ fontSize: 16 }}>Add learning material</b>
-          <p style={{ fontSize: 12, lineHeight: 1.6, marginBottom: 0 }}>
-            Upload a document or paste a lesson. The backend extracts and
-            prepares it for your learning profile.
+        <h1 className="page-title">Add learning material</h1>
+
+        <section className="hero-card">
+          <b>Smart Document Reader</b>
+          <p>
+            Upload your document or paste lesson text. AdaptLearn automatically extracts content, preserves context, and transforms it according to your accessibility preferences.
           </p>
         </section>
-        <div className="segmented" style={{ marginTop: 15 }}>
+
+        <div className="segmented">
           {[
-            ["upload", "Upload document"],
-            ["text", "Paste raw text"],
+            ["upload", "Upload File"],
+            ["text", "Paste Raw Text"],
           ].map(([value, label]) => (
             <button
               key={value}
@@ -321,10 +384,19 @@ function Upload() {
             </button>
           ))}
         </div>
-        <section className="card" style={{ marginTop: 14, padding: 14 }}>
-          <span className="pill" style={{ background: "#eefcf7" }}>
-            Backend extraction with OCR fallback
-          </span>
+
+        <section className="card" style={{ marginTop: 16, padding: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <span className="pill">
+              <I.Zap size={13} /> OCR Fallback & Intelligent Extractor
+            </span>
+            {ready && (
+              <span className="pill" style={{ background: "var(--emerald-light)", color: "#047857" }}>
+                <I.Check size={13} /> Content Loaded
+              </span>
+            )}
+          </div>
+
           {tab === "upload" ? (
             <label className="dropzone">
               <input
@@ -333,9 +405,9 @@ function Upload() {
                 accept=".pdf,.docx,.epub,.txt"
                 onChange={(event) => upload(event.target.files?.[0])}
               />
-              <I.UploadCloud size={32} />
-              <b>{session.fileName || "Choose a document"}</b>
-              <span>PDF, DOCX, EPUB, or TXT up to 45MB</span>
+              <I.UploadCloud size={40} />
+              <b>{session.fileName || "Choose a document to upload"}</b>
+              <span>Supports PDF, DOCX, EPUB, or TXT (up to 45MB)</span>
               <strong>Select from device</strong>
             </label>
           ) : (
@@ -347,26 +419,29 @@ function Upload() {
               style={{ width: "100%", minHeight: 180, marginTop: 14 }}
             />
           )}
+
           <div
             style={{
-              background: "#eef0ff",
-              borderRadius: 7,
-              padding: 10,
-              fontSize: 11,
-              marginTop: 12,
+              background: "#f8fafc",
+              border: "1px solid var(--border-color)",
+              borderRadius: 14,
+              padding: 14,
+              fontSize: 12,
+              marginTop: 16,
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <b>
+            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
+              <span style={{ color: busy === "extract" ? "var(--primary)" : "var(--ink)" }}>
                 {busy === "extract"
-                  ? "Extracting..."
+                  ? "Extracting document content..."
                   : ready
                     ? "Ready for adaptation"
                     : "Waiting for content"}
-              </b>
-              <span>{session.wordCount} words</span>
+              </span>
+              <span style={{ color: "var(--muted)" }}>{session.wordCount} words</span>
             </div>
-            <div className="progressbar" style={{ marginTop: 8 }}>
+
+            <div className="progressbar" style={{ marginTop: 10 }}>
               <div
                 className="progressfill"
                 style={{
@@ -374,15 +449,19 @@ function Upload() {
                 }}
               />
             </div>
+
             {session.text && (
               <div
                 style={{
-                  marginTop: 8,
-                  background: "#fff",
-                  padding: 8,
-                  borderRadius: 5,
-                  maxHeight: 84,
+                  marginTop: 12,
+                  background: "#ffffff",
+                  border: "1px solid var(--border-color)",
+                  padding: 12,
+                  borderRadius: 10,
+                  maxHeight: 100,
                   overflow: "auto",
+                  lineHeight: 1.5,
+                  color: "#475569",
                 }}
               >
                 {session.text.slice(0, 600)}
@@ -391,14 +470,16 @@ function Upload() {
             )}
           </div>
         </section>
+
         <ErrorNotice />
+
         <button
           className="primary-action"
           disabled={!ready || Boolean(busy)}
           onClick={() => navigate("/profile")}
-          style={{ marginTop: 15 }}
+          style={{ marginTop: 20 }}
         >
-          Continue to learner profile <I.ArrowRight size={16} />
+          Continue to learner profile <I.ArrowRight size={18} />
         </button>
       </main>
     </Layout>
@@ -412,51 +493,78 @@ function Profile() {
   const cards = [
     [
       "dyslexia",
-      "Shorter sentences, clearer wording, and less visual crowding.",
+      "Dyslexia support",
+      "Shorter sentences, clear dyslexia-friendly spacing, and reduced visual crowding.",
+      I.BookOpen,
     ],
-    ["cognitive_load", "Digestible chunks with one idea at a time."],
-    ["low_vision", "High-contrast display guidance and larger readable text."],
+    [
+      "cognitive_load",
+      "Cognitive load support",
+      "Digestible chunked sections presenting one main concept at a time.",
+      I.Layers,
+    ],
+    [
+      "low_vision",
+      "Low vision and clarity",
+      "High contrast theme guidance, larger typography, and distinct line height.",
+      I.Eye,
+    ],
   ];
+
   return (
     <Layout section="Profile">
       <main className="page">
         <div className="eyebrow">
           <b>Step 2 of 3</b>
-          <span>Choose your learning mode</span>
+          <span>Choose learning mode</span>
         </div>
         <h1 className="page-title">How should this lesson feel?</h1>
+
         <div className="profile-grid">
-          {cards.map(([profile, descriptionText]) => (
+          {cards.map(([profile, title, descriptionText, Icon]) => (
             <button
               key={profile}
               className={`profile-option ${session.profile === profile ? "active" : ""}`}
               onClick={() => chooseProfile(profile)}
             >
-              <span className="radio" />{" "}
-              <span>
-                <b>{PROFILE_LABELS[profile]}</b>
+              <span className="radio" />
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <Icon size={18} style={{ color: session.profile === profile ? "var(--primary)" : "var(--muted)" }} />
+                  <b>{title}</b>
+                </div>
                 <small>{descriptionText}</small>
-              </span>
+              </div>
             </button>
           ))}
         </div>
-        <section className="card" style={{ marginTop: 15, padding: 14 }}>
-          <b>Describe your needs</b>
+
+        <section className="card" style={{ marginTop: 20, padding: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <I.Sparkles size={16} style={{ color: "var(--primary)" }} />
+            <b style={{ fontSize: 15, color: "var(--ink)" }}>Describe your learning needs</b>
+          </div>
+          <p style={{ fontSize: 13, color: "var(--muted)", margin: "0 0 10px 0" }}>
+            Not sure which setting is best? Describe what reading format works best for you and AI will choose.
+          </p>
           <textarea
             value={description}
             onChange={(event) => setDescription(event.target.value)}
             placeholder="For example: long paragraphs are hard for me to follow"
-            style={{ width: "100%", minHeight: 70, marginTop: 9 }}
+            style={{ width: "100%", minHeight: 80 }}
           />
           <button
             className="secondary-action"
             disabled={!description.trim() || Boolean(busy)}
             onClick={() => detect(description)}
+            style={{ marginTop: 10, width: "100%" }}
           >
-            Detect profile
+            {busy === "profile" ? "Detecting profile..." : "Detect profile"}
           </button>
         </section>
+
         <ErrorNotice />
+
         <button
           className="primary-action"
           disabled={!session.text || Boolean(busy)}
@@ -464,226 +572,11 @@ function Profile() {
             await adapt();
             navigate("/learn");
           }}
-          style={{ marginTop: 15 }}
+          style={{ marginTop: 20 }}
         >
           {busy === "transform" ? "Adapting lesson..." : "Transform lesson"}
-          <I.Sparkles size={16} />
+          <I.Sparkles size={18} />
         </button>
-      </main>
-    </Layout>
-  );
-}
-
-function LearnLegacy() {
-  const { session, busy, adapt, ask, getVisual, completeChunk } = useSession();
-  const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState("");
-  const [playing, setPlaying] = useState(false);
-  const transformed = session.transformed;
-  const chunks =
-    transformed?.profile === "cognitive_load"
-      ? transformed.chunks
-      : [transformed?.text || session.text];
-  const sections = chunks.filter(Boolean).flatMap((chunk, chunkIndex) => {
-    const paragraphs = chunk
-      .split(/\n\s*\n|(?<=[.!?])\s+(?=[A-Z])/)
-      .map((part) => part.trim())
-      .filter(Boolean);
-    return paragraphs.map((paragraph, paragraphIndex) => ({
-      id: `${chunkIndex}-${paragraphIndex}`,
-      number: chunkIndex + 1,
-      paragraph,
-    }));
-  });
-  const lessonText = sections.map((section) => section.paragraph).join("\n\n");
-  const formatting = transformed?.formatting || {};
-  const lessonClass =
-    transformed?.profile === "dyslexia"
-      ? "lesson-card dyslexia-lesson"
-      : transformed?.profile === "low_vision"
-        ? "lesson-card low-vision-lesson"
-        : "lesson-card";
-  function readAloud(text) {
-    if ("speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 0.95;
-      window.speechSynthesis.speak(utterance);
-      setPlaying(true);
-      utterance.onend = () => setPlaying(false);
-    }
-  }
-  async function submitQuestion(event) {
-  event.preventDefault();
-
-  const userQuestion = question.trim();
-
-  if (!userQuestion) return;
-
-  setAskedQuestion(userQuestion);
-  setAnswer("");
-
-  try {
-    const result = await ask(userQuestion);
-
-    if (result?.answer) {
-      setAnswer(result.answer);
-    } else {
-      setAnswer("No answer was returned.");
-    }
-  } catch (error) {
-    console.error("Lesson question error:", error);
-    setAnswer("Failed to get an answer from the lesson assistant.");
-  }
-}
-  return (
-    <Layout section="Learn">
-      <main className="page">
-        <div className="eyebrow">
-          <b>{PROFILE_LABELS[session.profile]}</b>
-          <span>{session.wordCount} words</span>
-        </div>
-        <div className="lesson-heading">
-          <div>
-            <h1 className="page-title">Your adapted lesson</h1>
-            <p className="lesson-subtitle">
-              {sections.length} readable sections · {session.wordCount} source
-              words
-            </p>
-          </div>
-          <button
-            className="icon-action"
-            onClick={() => readAloud(lessonText)}
-            title="Read the full lesson aloud"
-          >
-            {playing ? "Stop" : "Read all"}
-          </button>
-        </div>
-        {!transformed ? (
-          <section className="card empty-state">
-            <p>This lesson has not been adapted yet.</p>
-            <button className="primary-action" onClick={adapt}>
-              Adapt now <I.Sparkles size={16} />
-            </button>
-          </section>
-        ) : (
-          <>
-            <nav className="section-map" aria-label="Lesson sections">
-              {sections.map((section, index) => (
-                <a key={section.id} href={`#lesson-section-${section.id}`}>
-                  <span>{String(index + 1).padStart(2, "0")}</span>
-                  <small>
-                    {section.paragraph.slice(0, 38)}
-                    {section.paragraph.length > 38 ? "..." : ""}
-                  </small>
-                </a>
-              ))}
-            </nav>
-            <div className={`lesson-sections ${lessonClass}`}>
-              <div className="lesson-sections-header">
-                <span className="pill">{sections.length} sections</span>
-                <span className="reading-note">Read at your pace</span>
-              </div>
-              {sections.map((section, index) => (
-                <article
-                  id={`lesson-section-${section.id}`}
-                  key={section.id}
-                  className="lesson-section"
-                >
-                  <div className="section-number">
-                    {String(index + 1).padStart(2, "0")}
-                  </div>
-                  <div className="section-content">
-                    <div className="section-label">
-                      {section.number > 1
-                        ? `Learning chunk ${section.number}`
-                        : "Core idea"}
-                    </div>
-                    <p
-                      style={{
-                        fontSize: formatting.font_size_multiplier
-                          ? `${formatting.font_size_multiplier}em`
-                          : undefined,
-                        lineHeight: formatting.line_height,
-                        letterSpacing: formatting.letter_spacing,
-                      }}
-                    >
-                      {section.paragraph}
-                    </p>
-                    <button
-                      className="text-action"
-                      onClick={() => readAloud(section.paragraph)}
-                    >
-                      Read this section <I.Volume2 size={13} />
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
-            <div className="action-row">
-              <button
-                className="secondary-action"
-                disabled={Boolean(busy)}
-                onClick={getVisual}
-              >
-                {busy === "visual" ? "Building visual..." : "Generate visual"}
-              </button>
-              <button className="primary-action" onClick={completeChunk}>
-                Mark lesson complete <I.Check size={16} />
-              </button>
-            </div>
-            {session.visual?.image_base64 && (
-              <section
-                className="card visual-result"
-                style={{ marginTop: 14, padding: 14 }}
-              >
-                <span className="section-label">Visual support</span>
-                <h3>{session.visual.spec.title}</h3>
-                <p>{session.visual.spec.description}</p>
-                <img
-                  src={`data:image/png;base64,${session.visual.image_base64}`}
-                  alt={session.visual.spec.title}
-                />
-                <small>{session.visual.spec.why_helpful}</small>
-              </section>
-            )}
-            <section
-              className="card ask-card"
-              style={{ marginTop: 14, padding: 14 }}
-            >
-              <b>Ask about this lesson</b>
-              <form
-                onSubmit={submitQuestion}
-                style={{ display: "flex", gap: 8, marginTop: 9 }}
-              >
-                <input
-                  value={question}
-                  onChange={(event) => setQuestion(event.target.value)}
-                  placeholder="Type a question"
-                  style={{ flex: 1 }}
-                />
-                <button
-                  className="primary-action"
-                  disabled={!question.trim() || Boolean(busy)}
-                >
-                  {busy === "voice" ? "..." : "Ask"}
-                </button>
-              </form>
-              {answer && (
-                <p
-                  style={{
-                    background: "#f0f1ff",
-                    padding: 10,
-                    borderRadius: 8,
-                    marginBottom: 0,
-                  }}
-                >
-                  {answer}
-                </p>
-              )}
-            </section>
-          </>
-        )}
       </main>
     </Layout>
   );
@@ -716,6 +609,7 @@ function Learn() {
   const currentSection = sections[activeSection];
   const formatting = transformed?.formatting || {};
   const isComplete = session.completedSections.includes(activeSection);
+
   const readAloud = (text) => {
     if ("speechSynthesis" in window) {
       window.speechSynthesis.cancel();
@@ -726,6 +620,7 @@ function Learn() {
       utterance.onend = () => setPlaying(false);
     }
   };
+
   async function submitQuestion(event) {
     event.preventDefault();
     const prompt = question.trim();
@@ -735,17 +630,20 @@ function Learn() {
     const result = await ask(prompt, currentSection.paragraph);
     if (result) setAnswer(result.answer);
   }
+
   function markSectionComplete() {
     completeSection(activeSection);
     if (activeSection < sections.length - 1)
       setActiveSection((index) => index + 1);
   }
+
   const lessonClass =
     transformed?.profile === "dyslexia"
       ? "dyslexia-lesson"
       : transformed?.profile === "low_vision"
         ? "low-vision-lesson"
         : "";
+
   return (
     <Layout section="Learn">
       <main className="page">
@@ -755,9 +653,10 @@ function Learn() {
             {session.completedSections.length}/{sections.length} completed
           </span>
         </div>
+        
         <div className="lesson-heading">
           <div>
-            <h1 className="page-title">Your adapted lesson</h1>
+            <h1 className="page-title" style={{ margin: "4px 0" }}>Your adapted lesson</h1>
             <p className="lesson-subtitle">
               One section at a time · {session.wordCount} source words
             </p>
@@ -770,13 +669,18 @@ function Learn() {
               )
             }
           >
-            {playing ? "Stop" : "Read all"}
+            <I.Volume2 size={16} />
+            {playing ? "Stop reading" : "Read all"}
           </button>
         </div>
+
         {!transformed ? (
-          <section className="card empty-state">
-            <p>This lesson has not been adapted yet.</p>
-            <button className="primary-action" onClick={adapt}>
+          <section className="card empty-state" style={{ marginTop: 20 }}>
+            <I.BookOpen size={36} style={{ color: "var(--muted)", margin: "0 auto 12px" }} />
+            <p style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)", marginBottom: 14 }}>
+              This lesson has not been adapted yet.
+            </p>
+            <button className="primary-action" onClick={adapt} style={{ maxWidth: 220, margin: "0 auto" }}>
               Adapt now <I.Sparkles size={16} />
             </button>
           </section>
@@ -787,7 +691,7 @@ function Learn() {
                 <b>
                   Section {activeSection + 1} of {sections.length}
                 </b>
-                <span>{isComplete ? "Completed" : "In progress"}</span>
+                <span>{isComplete ? "✓ Completed" : "In progress"}</span>
               </div>
               <div className="progressbar">
                 <div
@@ -798,6 +702,7 @@ function Learn() {
                 />
               </div>
             </div>
+
             <section
               className={`lesson-sections active-section ${lessonClass}`}
             >
@@ -807,8 +712,9 @@ function Learn() {
                     ? `Learning chunk ${currentSection.chunk}`
                     : "Core idea"}
                 </span>
-                <span className="reading-note">Read at your pace</span>
+                <span className="reading-note">Read at your own pace</span>
               </div>
+
               {currentSection && (
                 <article className="lesson-section">
                   <div className="section-number">
@@ -833,19 +739,20 @@ function Learn() {
                       className="text-action"
                       onClick={() => readAloud(currentSection.paragraph)}
                     >
-                      Read this section <I.Volume2 size={13} />
+                      <I.Volume2 size={15} /> Read this section
                     </button>
                   </div>
                 </article>
               )}
             </section>
+
             <div className="section-actions">
               <button
                 className="secondary-action"
                 disabled={activeSection === 0}
                 onClick={() => setActiveSection((index) => index - 1)}
               >
-                <I.ArrowLeft size={15} /> Previous
+                <I.ArrowLeft size={16} /> Previous
               </button>
               <button className="primary-action" onClick={markSectionComplete}>
                 {isComplete
@@ -853,9 +760,10 @@ function Learn() {
                     ? "All sections complete"
                     : "Next section"
                   : "Mark section complete"}
-                <I.Check size={16} />
+                <I.Check size={18} />
               </button>
             </div>
+
             <div className="section-jump">
               {sections.map((section, index) => (
                 <button
@@ -864,176 +772,93 @@ function Learn() {
                   onClick={() => setActiveSection(index)}
                 >
                   {session.completedSections.includes(index) ? (
-                    <I.Check size={12} />
+                    <I.Check size={14} />
                   ) : (
                     index + 1
                   )}
                 </button>
               ))}
             </div>
+
             <button
               className="secondary-action"
               disabled={Boolean(busy)}
               onClick={getVisual}
-              style={{ width: "100%" }}
+              style={{ width: "100%", marginTop: 14 }}
             >
+              <I.Sparkles size={16} />
               {busy === "visual"
-                ? "Building visual..."
+                ? "Building visual support..."
                 : "Generate visual support"}
             </button>
+
             {session.visual?.image_base64 && (
               <section
                 className="card visual-result"
-                style={{ marginTop: 14, padding: 14 }}
+                style={{ marginTop: 16, padding: 18 }}
               >
-                <span className="section-label">Visual support</span>
-                <h3>{session.visual.spec.title}</h3>
-                <p>{session.visual.spec.description}</p>
+                <span className="section-label">Visual Support</span>
+                <h3 style={{ fontSize: 18, marginTop: 4, fontFamily: "var(--font-heading)" }}>{session.visual.spec.title}</h3>
+                <p style={{ fontSize: 13, color: "var(--muted)", margin: "4px 0 12px" }}>{session.visual.spec.description}</p>
                 <img
                   src={`data:image/png;base64,${session.visual.image_base64}`}
                   alt={session.visual.spec.title}
+                  style={{ borderRadius: 14, border: "1px solid var(--border-color)" }}
                 />
-                <small>{session.visual.spec.why_helpful}</small>
+                <small style={{ display: "block", marginTop: 8, color: "var(--primary)", fontWeight: 600 }}>{session.visual.spec.why_helpful}</small>
               </section>
             )}
+
             <section
               className="card ask-card"
-              style={{ marginTop: 14, padding: 14 }}
+              style={{ marginTop: 16, padding: 18 }}
             >
-              <b>Ask about this lesson</b>
+              <b style={{ fontSize: 15, color: "var(--ink)", display: "flex", alignItems: "center", gap: 8 }}>
+                <I.HelpCircle size={18} style={{ color: "var(--primary)" }} /> Ask about this lesson
+              </b>
               <p className="ask-context">
-                Your question is sent to the assistant with the extracted lesson
-                as context.
+                Your question is sent to the AI assistant with the extracted lesson as context.
               </p>
               <form
                 onSubmit={submitQuestion}
-                style={{ display: "flex", gap: 8, marginTop: 9 }}
+                style={{ display: "flex", gap: 8, marginTop: 10 }}
               >
                 <input
                   value={question}
                   onChange={(event) => setQuestion(event.target.value)}
-                  placeholder="Ask a question about the lesson"
+                  placeholder="Ask a question about the lesson..."
                   style={{ flex: 1 }}
                 />
                 <button
                   className="primary-action"
                   disabled={!question.trim() || Boolean(busy)}
+                  style={{ width: "auto", padding: "10px 18px" }}
                 >
                   {busy === "voice" ? "Thinking..." : "Ask"}
                 </button>
               </form>
+
               {askedQuestion && (
                 <div className="answer-box">
                   <span className="section-label">Your question</span>
                   <p className="asked-question">{askedQuestion}</p>
-                  <span className="section-label">Answer</span>
+                  <span className="section-label" style={{ display: "block", marginTop: 10 }}>Answer</span>
                   {answer ? (
-                    <p>{answer}</p>
+                    <p style={{ fontSize: 14, lineHeight: 1.6, color: "#1e293b" }}>{answer}</p>
                   ) : session.error && busy !== "voice" ? (
-                    <p className="answer-error">{session.error}</p>
+                    <p className="answer-error" style={{ color: "#b91c1c", fontSize: 13 }}>{session.error}</p>
                   ) : busy === "voice" ? (
-                    <p>Generating an answer from your lesson...</p>
+                    <p style={{ color: "var(--primary)", fontSize: 13 }}>Generating an answer from your lesson...</p>
                   ) : (
-                    <p>No answer was returned. Please try again.</p>
+                    <p style={{ color: "var(--muted)", fontSize: 13 }}>No answer was returned. Please try again.</p>
                   )}
                 </div>
               )}
             </section>
+
             <ErrorNotice />
           </>
         )}
-      </main>
-    </Layout>
-  );
-}
-
-function PracticeLegacy() {
-  const { session, busy, getQuiz, completeSection } = useSession();
-  const chunks =
-    session.transformed?.profile === "cognitive_load"
-      ? session.transformed.chunks
-      : [session.transformed?.text || session.text];
-  const [quiz, setQuiz] = useState(null);
-  const [selected, setSelected] = useState("");
-  const [submitted, setSubmitted] = useState(false);
-  const chunk = chunks[0] || "";
-  async function loadQuiz() {
-    const result = await getQuiz(chunk);
-    if (result) {
-      setQuiz(result);
-      setSelected("");
-      setSubmitted(false);
-    }
-  }
-  return (
-    <Layout section="Practice">
-      <main className="page">
-        <div className="eyebrow">
-          <b>Practice</b>
-          <span>{session.completedSections.length} sections completed</span>
-        </div>
-        <h1 className="page-title">Check your understanding</h1>
-        {!chunk ? (
-          <section className="card empty-state">
-            Adapt a lesson first to generate practice questions.
-          </section>
-        ) : !quiz ? (
-          <section className="card empty-state">
-            <p>Generate a question from your current lesson.</p>
-            <button
-              className="primary-action"
-              disabled={Boolean(busy)}
-              onClick={loadQuiz}
-            >
-              {busy === "quiz" ? "Generating..." : "Generate question"}
-              <I.HelpCircle size={16} />
-            </button>
-          </section>
-        ) : (
-          <section className="card practice-card">
-            <span className="pill">{session.profile}</span>
-            <h2>{quiz.question}</h2>
-            <div className="option-list">
-              {quiz.options.map((option) => (
-                <button
-                  key={option}
-                  className={selected === option ? "selected" : ""}
-                  onClick={() => !submitted && setSelected(option)}
-                >
-                  {option}
-                </button>
-              ))}
-            </div>
-            <button
-              className="primary-action"
-              disabled={!selected || submitted}
-              onClick={() => {
-                setSubmitted(true);
-                if (selected === quiz.answer) completeSection(0);
-              }}
-            >
-              {submitted
-                ? selected === quiz.answer
-                  ? "Correct"
-                  : "Review answer"
-                : "Submit answer"}
-            </button>
-            {submitted && (
-              <div className="feedback">
-                <b>
-                  {selected === quiz.answer
-                    ? "Correct."
-                    : `Answer: ${quiz.answer}`}
-                </b>
-                <p>{quiz.explanation}</p>
-              </div>
-            )}
-            <button className="text-action" onClick={loadQuiz}>
-              Generate another question
-            </button>
-          </section>
-        )}
-        <ErrorNotice />
       </main>
     </Layout>
   );
@@ -1050,7 +875,6 @@ function Practice() {
   const [testAnswers, setTestAnswers] = useState([]);
   const [testReport, setTestReport] = useState(null);
   const sectionText = chunks[sectionIndex] || "";
-  const sectionMastered = session.practiceReport.masteredSections.includes(sectionIndex);
   const allSectionsMastered = chunks.length > 0 && chunks.every((_, index) => session.practiceReport.masteredSections.includes(index));
 
   async function loadSectionQuestion() {
@@ -1079,7 +903,177 @@ function Practice() {
     else setTestReport({ answered: nextAnswers, correct: nextAnswers.filter((answer) => answer.correct).length, failed: nextAnswers.filter((answer) => !answer.correct) });
   }
 
-  return <Layout section="Practice"><main className="page"><div className="eyebrow"><b>Mastery practice</b><span>{session.practiceReport.masteredSections.length}/{chunks.length} mastered</span></div><h1 className="page-title">Learn, check, improve</h1>{!sectionText ? <section className="card empty-state">Adapt a lesson first to generate section questions.</section> : <><section className="card practice-report" style={{ padding: 14 }}><b>Section report</b><div className="stats-grid" style={{ marginTop: 10 }}><div className="stat"><b>{session.practiceReport.answered.length}</b><span>Answered</span></div><div className="stat"><b>{session.practiceReport.failed.length}</b><span>Need review</span></div><div className="stat"><b>{session.practiceReport.masteredSections.length}</b><span>Mastered</span></div><div className="stat"><b>{chunks.length}</b><span>Total sections</span></div></div></section><section className="card practice-card" style={{ marginTop: 14 }}><span className="pill">Section {sectionIndex + 1} of {chunks.length}</span><p className="practice-context">Questions are generated from this lesson section.</p>{!quiz ? <><p>Complete the section check before moving to the next topic.</p><button className="primary-action" disabled={Boolean(busy)} onClick={loadSectionQuestion}>{busy === "quiz" ? "Generating..." : "Start section questions"}<I.HelpCircle size={16} /></button></> : <><h2>{quiz.question}</h2><div className="option-list">{quiz.options.map((option) => <button key={option} className={selected === option ? "selected" : ""} onClick={() => !report && setSelected(option)}>{option}</button>)}</div>{!report ? <button className="primary-action" disabled={!selected || Boolean(busy)} onClick={submitSectionAnswer}>{busy === "evaluate" ? "Checking..." : "Submit answer"}</button> : <div className={`feedback ${report.is_correct ? "correct-feedback" : "failed-feedback"}`}><b>{report.is_correct ? "Correct. Section mastered." : "Not quite. Review this section."}</b><p>{report.explanation}</p>{!report.is_correct && <button className="secondary-action" onClick={loadSectionQuestion}>Retry this topic</button>}{report.is_correct && sectionIndex < chunks.length - 1 && <button className="primary-action" onClick={() => { setSectionIndex((index) => index + 1); setQuiz(null); setReport(null); }}>Continue to next section</button>}</div>}</>}</section>{allSectionsMastered && !session.wholeTest && <section className="card mastery-unlocked" style={{ marginTop: 14, padding: 16 }}><b>All sections mastered</b><p>You can now take a test covering the entire extracted lesson.</p><button className="primary-action" disabled={Boolean(busy)} onClick={startWholeTest}>{busy === "test" ? "Building test..." : "Take whole-lesson test"}<I.ClipboardCheck size={16} /></button></section>}{session.wholeTest && !testReport && <section className="card practice-card" style={{ marginTop: 14 }}><span className="pill">Whole-lesson test · {testIndex + 1} of {session.wholeTest.length}</span><h2>{session.wholeTest[testIndex].question}</h2><div className="option-list">{session.wholeTest[testIndex].options.map((option) => <button key={option} className={selected === option ? "selected" : ""} onClick={() => setSelected(option)}>{option}</button>)}</div><button className="primary-action" disabled={!selected || Boolean(busy)} onClick={submitTestAnswer}>Submit test answer</button></section>}{testReport && <section className="card feedback" style={{ marginTop: 14 }}><b>Whole-lesson test complete</b><p>{testReport.correct} of {testReport.answered.length} correct.</p>{testReport.failed.length ? <><b>Topics to review</b><p>{testReport.failed.map((item) => item.question).join(" ")}</p></> : <p>Excellent. You answered every test question correctly.</p>}</section>}</>}</main></Layout>;
+  return (
+    <Layout section="Practice">
+      <main className="page">
+        <div className="eyebrow">
+          <b>Mastery Practice</b>
+          <span>{session.practiceReport.masteredSections.length}/{chunks.length} mastered</span>
+        </div>
+        <h1 className="page-title">Check your understanding</h1>
+
+        {!sectionText ? (
+          <section className="card empty-state" style={{ marginTop: 20 }}>
+            <I.BadgeHelp size={36} style={{ color: "var(--muted)", margin: "0 auto 12px" }} />
+            <p style={{ fontSize: 15, color: "var(--ink)", fontWeight: 600 }}>Adapt a lesson first to generate section questions.</p>
+          </section>
+        ) : (
+          <>
+            <section className="card practice-report" style={{ padding: 18 }}>
+              <b style={{ fontSize: 15, color: "var(--ink)", fontFamily: "var(--font-heading)" }}>Section Report</b>
+              <div className="stats-grid" style={{ marginTop: 12 }}>
+                <div className="stat">
+                  <b>{session.practiceReport.answered.length}</b>
+                  <span>Answered</span>
+                </div>
+                <div className="stat">
+                  <b>{session.practiceReport.failed.length}</b>
+                  <span>Need Review</span>
+                </div>
+                <div className="stat">
+                  <b>{session.practiceReport.masteredSections.length}</b>
+                  <span>Mastered</span>
+                </div>
+                <div className="stat">
+                  <b>{chunks.length}</b>
+                  <span>Total Sections</span>
+                </div>
+              </div>
+            </section>
+
+            <section className="card practice-card" style={{ marginTop: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span className="pill">Section {sectionIndex + 1} of {chunks.length}</span>
+                {session.practiceReport.masteredSections.includes(sectionIndex) && (
+                  <span className="pill" style={{ background: "var(--emerald-light)", color: "#047857" }}>✓ Mastered</span>
+                )}
+              </div>
+              <p className="practice-context" style={{ marginTop: 8 }}>Questions are generated from this lesson section.</p>
+
+              {!quiz ? (
+                <div style={{ marginTop: 16, textAlign: "center" }}>
+                  <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 14 }}>Complete the section check before moving to the next topic.</p>
+                  <button className="primary-action" disabled={Boolean(busy)} onClick={loadSectionQuestion}>
+                    {busy === "quiz" ? "Generating question..." : "Start section question"}
+                    <I.HelpCircle size={18} />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <h2>{quiz.question}</h2>
+                  <div className="option-list">
+                    {quiz.options.map((option, idx) => {
+                      const letter = String.fromCharCode(65 + idx);
+                      return (
+                        <button
+                          key={option}
+                          className={selected === option ? "selected" : ""}
+                          onClick={() => !report && setSelected(option)}
+                        >
+                          <span style={{
+                            width: 24,
+                            height: 24,
+                            borderRadius: 6,
+                            background: selected === option ? "var(--primary)" : "#e2e8f0",
+                            color: selected === option ? "#fff" : "var(--muted)",
+                            display: "grid",
+                            placeItems: "center",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            flexShrink: 0
+                          }}>{letter}</span>
+                          <span>{option}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {!report ? (
+                    <button className="primary-action" disabled={!selected || Boolean(busy)} onClick={submitSectionAnswer}>
+                      {busy === "evaluate" ? "Evaluating answer..." : "Submit answer"}
+                    </button>
+                  ) : (
+                    <div className={`feedback ${report.is_correct ? "correct-feedback" : "failed-feedback"}`}>
+                      <b style={{ fontSize: 15, display: "block", marginBottom: 4 }}>
+                        {report.is_correct ? "✓ Correct! Section mastered." : "✕ Not quite. Review this topic."}
+                      </b>
+                      <p>{report.explanation}</p>
+                      <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
+                        {!report.is_correct && (
+                          <button className="secondary-action" onClick={loadSectionQuestion}>
+                            Retry this topic
+                          </button>
+                        )}
+                        {report.is_correct && sectionIndex < chunks.length - 1 && (
+                          <button className="primary-action" onClick={() => { setSectionIndex((index) => index + 1); setQuiz(null); setReport(null); }}>
+                            Continue to next section <I.ArrowRight size={16} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </section>
+
+            {allSectionsMastered && !session.wholeTest && (
+              <section className="card mastery-unlocked" style={{ marginTop: 16 }}>
+                <b style={{ fontSize: 16, color: "#065f46", display: "flex", alignItems: "center", gap: 8 }}>
+                  <I.Award size={20} /> All Sections Mastered!
+                </b>
+                <p style={{ margin: "6px 0 14px" }}>You can now take a comprehensive test covering the entire extracted lesson.</p>
+                <button className="primary-action" disabled={Boolean(busy)} onClick={startWholeTest} style={{ background: "linear-gradient(135deg, #059669 0%, #10b981 100%)" }}>
+                  {busy === "test" ? "Building test..." : "Take whole-lesson test"}
+                  <I.ClipboardCheck size={18} />
+                </button>
+              </section>
+            )}
+
+            {session.wholeTest && !testReport && (
+              <section className="card practice-card" style={{ marginTop: 16 }}>
+                <span className="pill">Whole-lesson test · {testIndex + 1} of {session.wholeTest.length}</span>
+                <h2>{session.wholeTest[testIndex].question}</h2>
+                <div className="option-list">
+                  {session.wholeTest[testIndex].options.map((option, idx) => {
+                    const letter = String.fromCharCode(65 + idx);
+                    return (
+                      <button key={option} className={selected === option ? "selected" : ""} onClick={() => setSelected(option)}>
+                        <span style={{
+                          width: 24, height: 24, borderRadius: 6,
+                          background: selected === option ? "var(--primary)" : "#e2e8f0",
+                          color: selected === option ? "#fff" : "var(--muted)",
+                          display: "grid", placeItems: "center", fontSize: 12, fontWeight: 700, flexShrink: 0
+                        }}>{letter}</span>
+                        <span>{option}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <button className="primary-action" disabled={!selected || Boolean(busy)} onClick={submitTestAnswer}>
+                  Submit test answer
+                </button>
+              </section>
+            )}
+
+            {testReport && (
+              <section className="card feedback correct-feedback" style={{ marginTop: 16, padding: 20 }}>
+                <b style={{ fontSize: 16, display: "block", marginBottom: 6 }}>🎉 Whole-lesson test complete</b>
+                <p style={{ fontSize: 14 }}>You scored {testReport.correct} of {testReport.answered.length} correct.</p>
+                {testReport.failed.length ? (
+                  <div style={{ marginTop: 10 }}>
+                    <b>Topics to review:</b>
+                    <p style={{ marginTop: 4 }}>{testReport.failed.map((item) => item.question).join(" ")}</p>
+                  </div>
+                ) : (
+                  <p style={{ marginTop: 6, fontWeight: 600 }}>Excellent work! You answered every test question correctly.</p>
+                )}
+              </section>
+            )}
+          </>
+        )}
+      </main>
+    </Layout>
+  );
 }
 
 function Progress() {
@@ -1091,45 +1085,48 @@ function Progress() {
       : transformed
         ? 1
         : 0;
+
   return (
     <Layout section="Progress">
       <main className="page">
         <div className="eyebrow">
-          <b>Session progress</b>
+          <b>Session Progress</b>
           <span>{session.fileName || "No lesson loaded"}</span>
         </div>
         <h1 className="page-title">Your learning session</h1>
+
         <div className="stats-grid">
-          <div className="card stat">
+          <div className="stat">
             <b>{session.wordCount}</b>
-            <span>Source words</span>
+            <span>Source Words</span>
           </div>
-          <div className="card stat">
+          <div className="stat">
             <b>{chunks}</b>
-            <span>Learning chunks</span>
+            <span>Learning Chunks</span>
           </div>
-          <div className="card stat">
+          <div className="stat">
             <b>{session.quizzes.length}</b>
-            <span>Questions made</span>
+            <span>Questions Made</span>
           </div>
-          <div className="card stat">
+          <div className="stat">
             <b>{session.completedSections.length}</b>
-            <span>Sections completed</span>
+            <span>Sections Completed</span>
           </div>
         </div>
-        <section className="card" style={{ marginTop: 15, padding: 16 }}>
-          <span className="pill" style={{ background: "#e7e9fb" }}>
+
+        <section className="card" style={{ marginTop: 18, padding: 22 }}>
+          <span className="pill" style={{ marginBottom: 10 }}>
             {PROFILE_LABELS[session.profile]}
           </span>
-          <h2 style={{ marginBottom: 6 }}>
+          <h2 style={{ fontFamily: "var(--font-heading)", fontSize: 22, margin: "6px 0" }}>
             {transformed
               ? `${session.completedSections.length} of ${chunks} sections completed`
-              : "Ready to begin"}
+              : "Ready to begin your study session"}
           </h2>
-          <p style={{ marginTop: 0, color: "#4e5265" }}>
+          <p style={{ color: "var(--muted)", fontSize: 14, lineHeight: 1.6, margin: 0 }}>
             {transformed
-              ? "Your completed sections are recorded for this learning session."
-              : "Upload a document and choose a profile to start."}
+              ? "Your completed sections and practice scores are recorded for this learning session."
+              : "Upload a document or paste lesson notes to start your personalized adaptive learning session."}
           </p>
         </section>
       </main>
