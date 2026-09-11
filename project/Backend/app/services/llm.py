@@ -23,18 +23,36 @@ QUIZ_FALLBACK = {
 }
 
 
+# Chat-capable models in preference order (guard/whisper/TTS models are excluded).
+# Update this list if your Groq account gains access to newer models.
+_PREFERRED_MODELS = (
+    "llama-3.3-70b-versatile",
+    "llama-3.1-70b-versatile",
+    "llama-3.1-8b-instant",
+    "llama3-70b-8192",
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+    "qwen/qwen3.6-27b",
+    "groq/compound",
+)
+
+# Model IDs that are NOT suitable for chat completions (guard / speech / embedding)
+_NON_CHAT_KEYWORDS = ("prompt-guard", "whisper", "orpheus", "allam", "safeguard")
+
+
 def _select_model(client: Any, configured: Optional[str]) -> Optional[str]:
     if configured:
         return configured
     available = {model.id for model in client.models.list().data}
-    preferred = (
-        "llama-3.3-70b-versatile",
-        "llama-3.1-8b-instant",
-        "openai/gpt-oss-20b",
-        "openai/gpt-oss-120b",
-    )
-    return next((model for model in preferred if model in available),
-                next((model for model in available if "llama" in model or "gpt" in model), None))
+    # Try preferred list first
+    for model in _PREFERRED_MODELS:
+        if model in available:
+            return model
+    # Fallback: any chat-capable model (exclude known non-chat models)
+    for model in available:
+        if not any(kw in model for kw in _NON_CHAT_KEYWORDS):
+            return model
+    return None
 
 
 def _client_and_model(api_key: Optional[str], configured_model: Optional[str]):
@@ -52,15 +70,18 @@ _VISUAL_CLIENT, _VISUAL_MODEL = _client_and_model(VISUAL_GROQ_API_KEY, GROQ_MODE
 def call_llm(prompt: str) -> str:
     """Generate text with Groq or return the notebook's local development fallback."""
     if _MAIN_CLIENT and _MAIN_MODEL:
+        needs_json = "QUIZ_JSON" in prompt or "CHUNK_JSON" in prompt or "VISUAL_JSON" in prompt
+        is_openai_model = _MAIN_MODEL.startswith("openai/")
         options: Dict[str, Any] = {
             "model": _MAIN_MODEL,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.2,
             "max_completion_tokens": 4096,
         }
-        if "QUIZ_JSON" in prompt or "CHUNK_JSON" in prompt or "VISUAL_JSON" in prompt:
+        # response_format and reasoning_effort are mutually exclusive on openai/ models
+        if needs_json and not is_openai_model:
             options["response_format"] = {"type": "json_object"}
-        if _MAIN_MODEL.startswith("openai/"):
+        if is_openai_model:
             options["reasoning_effort"] = "low"
         return _MAIN_CLIENT.chat.completions.create(**options).choices[0].message.content or ""
 
@@ -98,14 +119,17 @@ def call_visual_llm(prompt: str) -> str:
     """Use the dedicated visual client when configured, otherwise use the main client."""
     if not (_VISUAL_CLIENT and _VISUAL_MODEL):
         return call_llm(prompt)
+    is_openai_model = _VISUAL_MODEL.startswith("openai/")
     options: Dict[str, Any] = {
         "model": _VISUAL_MODEL,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.1,
         "max_completion_tokens": 2048,
-        "response_format": {"type": "json_object"},
     }
-    if _VISUAL_MODEL.startswith("openai/"):
+    # response_format and reasoning_effort are mutually exclusive on openai/ models
+    if not is_openai_model:
+        options["response_format"] = {"type": "json_object"}
+    else:
         options["reasoning_effort"] = "low"
     return _VISUAL_CLIENT.chat.completions.create(**options).choices[0].message.content or ""
 
