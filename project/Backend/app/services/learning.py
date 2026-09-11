@@ -1,5 +1,6 @@
 import json
-from typing import Any, Dict, List
+import re
+from typing import Any, Dict, List, Optional
 
 from app.config import GROQ_API_KEY, VOICE_GROQ_API_KEY
 from app.services.llm import call_llm, call_voice_llm, parse_json_response
@@ -45,6 +46,32 @@ LEARNER QUESTION:
 {question}"""
 
 QUIZ_PROMPT = """Create one practice question based only on the chunk below. Adjust phrasing complexity to the learner profile: {profile}. Return valid JSON only with exactly these keys: question, options, answer, explanation. The options value must contain exactly four strings. The answer must exactly match one option. Do not use information outside the chunk. Include the marker QUIZ_JSON.
+
+CHUNK:
+{chunk}"""
+
+# ── REWIRE Prompts ────────────────────────────────────────────────────────────
+
+REWIRE_PROMPT = """You are an adaptive learning assistant. The learner is struggling with the text below. Rewrite it at simplification level {level} (1=original, 2=simpler vocabulary and shorter sentences, 3=very simple with concrete examples).
+
+Rules:
+- Preserve ALL facts, numbers, names, and cause-effect relationships.
+- Do NOT add new facts or information.
+- Use shorter sentences and simpler vocabulary at higher levels.
+- At level 3, add a brief concrete analogy or example if helpful.
+- Return only the rewritten text, nothing else.
+
+ORIGINAL TEXT:
+{text}"""
+
+REWIRE_VISUAL_PROMPT = """Describe a simple visual that would help a struggling learner understand this concept. Write 2-3 sentences describing what to picture. Be concrete and specific. Do not use technical language.
+
+TEXT:
+{text}"""
+
+ADAPTIVE_QUIZ_PROMPT = """Create one practice question based only on the chunk below. This question is for a learner who {context}. Make the question {difficulty} than a standard question — {difficulty_guidance}.
+
+Return valid JSON only with exactly these keys: question, options, answer, explanation. The options value must contain exactly four strings. The answer must exactly match one option. Do not use information outside the chunk. Include the marker QUIZ_JSON.
 
 CHUNK:
 {chunk}"""
@@ -223,3 +250,116 @@ def run_pipeline(text: str, profiles: List[str], quiz_limit: int = 3) -> Dict[st
             "quizzes": quiz_results,
         }
     return summary
+
+
+# ── REWIRE — Content Adaptation ───────────────────────────────────────────────
+
+
+def rewire_content(
+    chunk_text: str,
+    profile: str,
+    variant_level: int = 2,
+    actions: Optional[List[str]] = None,
+    struggle_explanation: str = "",
+) -> Dict[str, Any]:
+    """Re-explain content at a simpler level after SCALE triggers REWIRE.
+
+    This function IS allowed to call the LLM because REWIRE is infrequent
+    (max 5 per session) and only fires when the learner is struggling.
+    """
+    actions = actions or ["increase_simplification"]
+
+    # Generate simplified text
+    adapted_text = call_llm(
+        REWIRE_PROMPT.format(text=chunk_text, level=variant_level)
+    ).strip()
+
+    if not adapted_text:
+        # Fallback: at minimum, split into shorter sentences
+        sentences = chunk_text.replace(". ", ".\n").split("\n")
+        adapted_text = "\n".join(s.strip() for s in sentences if s.strip())
+
+    # Optionally generate visual description
+    visual_description = None
+    if "add_visual_description" in actions:
+        try:
+            visual_description = call_llm(
+                REWIRE_VISUAL_PROMPT.format(text=chunk_text)
+            ).strip()
+        except Exception:
+            visual_description = None
+
+    explanation = struggle_explanation or (
+        "Prism changed the explanation to help you understand this concept better."
+    )
+
+    return {
+        "adapted_text": adapted_text,
+        "visual_description": visual_description,
+        "variant_level": variant_level,
+        "explanation": explanation,
+        "actions_applied": actions,
+    }
+
+
+# ── Adaptive Quiz ─────────────────────────────────────────────────────────────
+
+
+def generate_adaptive_quiz(
+    chunk_text: str,
+    profile: str,
+    difficulty: str = "easier",
+    struggle_score: float = 0.0,
+    previous_question: Optional[str] = None,
+    previous_answer_correct: Optional[bool] = None,
+) -> Dict[str, Any]:
+    """Generate a quiz question adapted to the learner's struggle state.
+
+    Difficulty adjusts the question complexity:
+    - 'easier': simpler phrasing, more concrete, tests basic recall
+    - 'same': standard difficulty
+    - 'harder': requires synthesis or application
+    """
+    context_parts = []
+    if previous_answer_correct is False:
+        context_parts.append("previously answered incorrectly")
+    if struggle_score >= 0.6:
+        context_parts.append("is struggling with this concept")
+    context = " and ".join(context_parts) if context_parts else "is learning this concept"
+
+    difficulty_guidance = {
+        "easier": "use simpler vocabulary, test basic recall of one key fact, and make the correct answer clearly distinguishable",
+        "same": "use standard vocabulary and test comprehension",
+        "harder": "require the learner to apply or synthesize information from the text",
+    }.get(difficulty, "use standard vocabulary and test comprehension")
+
+    required_keys = {"question", "options", "answer", "explanation"}
+    quiz: Dict[str, Any] = {}
+
+    for _ in range(2):
+        try:
+            prompt = ADAPTIVE_QUIZ_PROMPT.format(
+                chunk=chunk_text,
+                context=context,
+                difficulty=difficulty,
+                difficulty_guidance=difficulty_guidance,
+            )
+            quiz = parse_json_response(call_llm(prompt))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if not isinstance(quiz, dict) or not required_keys.issubset(quiz):
+            continue
+        options = quiz.get("options")
+        if not isinstance(options, list):
+            continue
+        if len(options) > 4 and quiz.get("answer") in options:
+            others = [o for o in options if o != quiz["answer"]]
+            quiz["options"] = [quiz["answer"], *others[:3]]
+        if len(quiz.get("options", [])) == 4 and quiz.get("answer") in quiz["options"]:
+            result = {key: quiz[key] for key in required_keys}
+            result["difficulty"] = difficulty
+            result["adapted"] = difficulty != "same"
+            return result
+
+    # Fallback — return a basic question
+    raise ValueError("Adaptive quiz generation failed after retries.")

@@ -1,83 +1,261 @@
-# PRISM API Contract
+# PRISM — API Contract
 
-**Version:** 1.0 (24-hour MVP)
-
-**Status:** Final — this is the contract between Frontend (Member 3) and Backend (Members 1, 2, 4). Changes must be explicit and versioned.
-
-**Architecture Stages Using These Endpoints:** Stage 4b (Initial Adaptation), Stage 8b (Adapt Further)
+**Version:** 2.0 (SCALE/REWIRE Architecture)
+**Status:** Authoritative contract between Frontend (M3) and Backend (M1, M2, M4).
+**Rule:** Agents MUST read this file before changing any request/response structure.
 
 ---
 
-## Endpoint Ownership Matrix
+## Endpoint Summary
 
-| Endpoint | Owned By | Stages Used | Purpose |
-|----------|----------|-------------|---------|
-| `POST /api/adapt` | Member 1 (Content/AI) | 4b, 8b | Simplify content, generate explanations |
-| `POST /api/analyze-signals` | Member 2 (Adaptive Engine) | 7 | Analyze learner behavior, decide adaptation |
-| `POST /api/questions` | Member 4 (Assessment/Data) | 6 | Generate or fetch comprehension questions |
-| `POST /api/progress` | Member 4 (Assessment/Data) | 9, 12 | Store and retrieve session progress |
+| # | Method | Path | Purpose | Owner | Latency | Dependencies |
+|---|--------|------|---------|-------|---------|-------------|
+| 1 | POST | `/api/upload` | Upload document, extract text, structure content, cache | M1 | 5–15s | PDF.js, Tesseract.js, LLM, SQLite |
+| 2 | GET | `/api/content/:documentId` | Retrieve structured content graph + variants | M1 | <100ms | SQLite |
+| 3 | POST | `/api/profile` | Create or update learner profile | M4 | <50ms | SQLite |
+| 4 | GET | `/api/profile/:profileId` | Retrieve learner profile | M4 | <50ms | SQLite |
+| 5 | POST | `/api/scale/evaluate` | Submit signals, get adaptation decision | M2 | <50ms | Deterministic (no LLM) |
+| 6 | GET | `/api/content/:documentId/variant` | Retrieve specific cached content variant | M1 | <100ms | SQLite |
+| 7 | POST | `/api/voice/intent` | Process voice intent, return action | M4 | <100ms | Deterministic |
+| 8 | POST | `/api/session/progress` | Save or retrieve session progress | M4 | <50ms | SQLite |
+| 9 | GET | `/api/health` | Health check | All | <10ms | — |
 
 ---
 
-## 1. POST /api/adapt
+## 1. POST /api/upload
 
-**Owned By:** Member 1 (AI & Content Transform)
+**Owner:** M1 (AI + Content Intelligence)
 
-**Stages:** 4b (Initial Adaptation), 8b (Adapt Further)
+**Purpose:** Accept a document (PDF file or raw text), extract text, structure into content graph via LLM, pre-generate all variants/questions, cache everything.
 
-**Purpose:** Simplify content chunks, generate concept explanations, and generate adaptation explanations based on learner profile and signals.
+**Expected Latency:** 5–15 seconds (LLM processing + caching)
 
-**Expected Latency:** 1–3 seconds per request (LLM inference + fallback logic)
+**Dependencies:** PDF.js, Tesseract.js (OCR fallback), OpenAI GPT-4o-mini, SQLite
+
+### Request
+
+**Content-Type:** `multipart/form-data` (for PDF) or `application/json` (for text)
+
+#### PDF Upload
+```
+POST /api/upload
+Content-Type: multipart/form-data
+
+file: <PDF binary>
+```
+
+#### Text Paste
+```json
+POST /api/upload
+Content-Type: application/json
+
+{
+  "text": "The Industrial Revolution was a period of human history...",
+  "title": "The Industrial Revolution"
+}
+```
+
+### Response (Success)
+
+```json
+{
+  "success": true,
+  "documentId": "doc_a1b2c3d4",
+  "title": "The Industrial Revolution",
+  "extraction": {
+    "method": "pdfjs",
+    "characterCount": 3450,
+    "ocrFallback": false
+  },
+  "structure": {
+    "sectionCount": 3,
+    "conceptCount": 8,
+    "variantsPerConcept": 3,
+    "questionsPerConcept": 3
+  },
+  "timestamp": "2026-09-11T14:00:00.000Z"
+}
+```
+
+### Response (Partial Failure — LLM failed, deterministic fallback used)
+
+```json
+{
+  "success": true,
+  "documentId": "doc_a1b2c3d4",
+  "title": "Untitled Document",
+  "extraction": {
+    "method": "pdfjs",
+    "characterCount": 3450,
+    "ocrFallback": false
+  },
+  "structure": {
+    "sectionCount": 1,
+    "conceptCount": 1,
+    "variantsPerConcept": 1,
+    "questionsPerConcept": 1
+  },
+  "warnings": ["LLM structuring failed — using raw text as single concept with no variants"],
+  "fallbackApplied": true,
+  "timestamp": "2026-09-11T14:00:00.000Z"
+}
+```
+
+### Errors
+
+| Code | Condition | Response |
+|------|-----------|----------|
+| 400 | No file or text provided | `{ "success": false, "error": "No document provided. Upload a PDF or paste text." }` |
+| 400 | PDF too large (>10MB) | `{ "success": false, "error": "File exceeds 10MB limit." }` |
+| 400 | Text too long (>25000 chars) | `{ "success": false, "error": "Text exceeds 25,000 character limit." }` |
+| 422 | PDF extraction failed entirely | `{ "success": false, "error": "Could not extract text from PDF. Try pasting text instead." }` |
+| 500 | Server error | `{ "success": false, "error": "Internal server error." }` |
+
+---
+
+## 2. GET /api/content/:documentId
+
+**Owner:** M1 (AI + Content Intelligence)
+
+**Purpose:** Retrieve the full structured content graph for a document, including all cached variants and questions.
+
+**Expected Latency:** <100ms (SQLite read)
+
+**Dependencies:** SQLite
+
+### Request
+
+```
+GET /api/content/doc_a1b2c3d4
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "documentId": "doc_a1b2c3d4",
+  "title": "The Industrial Revolution",
+  "sections": [
+    {
+      "sectionId": "sec_001",
+      "title": "Historical Context",
+      "sequenceNumber": 1,
+      "concepts": [
+        {
+          "conceptId": "con_001",
+          "originalText": "The Industrial Revolution was a period of human history marked by the transition from hand production methods to machines...",
+          "sequenceNumber": 1,
+          "variants": [
+            {
+              "level": 1,
+              "simplifiedText": "The Industrial Revolution was a time when people stopped making things by hand and started using machines.",
+              "visualDescription": "Picture a timeline: on the left, people making things by hand in small workshops. On the right, large factories with steam-powered machines. An arrow shows the change from hand-made to machine-made.",
+              "strategy": "vocabulary_replacement + sentence_shortening"
+            },
+            {
+              "level": 2,
+              "simplifiedText": "Long ago, people made everything by hand. Then machines were invented. This big change is called the Industrial Revolution.",
+              "visualDescription": "Two pictures side by side: 1) A person sewing clothes by hand. 2) A big machine in a factory making many clothes at once.",
+              "strategy": "aggressive_simplification + chunking"
+            },
+            {
+              "level": 3,
+              "simplifiedText": "People used to make things by hand. Then machines came. This change was very important.",
+              "visualDescription": "Hand → Machine. This was a big change.",
+              "strategy": "maximum_simplification"
+            }
+          ],
+          "questions": [
+            {
+              "questionId": "q_con001_a",
+              "text": "What was the Industrial Revolution?",
+              "type": "multiple_choice",
+              "options": [
+                { "id": "opt_1", "text": "A time when machines replaced hand-made work" },
+                { "id": "opt_2", "text": "A war between countries" },
+                { "id": "opt_3", "text": "The invention of computers" },
+                { "id": "opt_4", "text": "A movement to stop factories" }
+              ],
+              "correctOptionId": "opt_1",
+              "explanation": "The Industrial Revolution was when people started using machines instead of making things by hand."
+            },
+            {
+              "questionId": "q_con001_b",
+              "text": "The Industrial Revolution changed how people made things.",
+              "type": "true_false",
+              "options": [
+                { "id": "opt_true", "text": "True" },
+                { "id": "opt_false", "text": "False" }
+              ],
+              "correctOptionId": "opt_true",
+              "explanation": "Yes — people went from hand production to machine production."
+            },
+            {
+              "questionId": "q_con001_c",
+              "text": "Before the Industrial Revolution, how were most things made?",
+              "type": "multiple_choice",
+              "options": [
+                { "id": "opt_1", "text": "By machines" },
+                { "id": "opt_2", "text": "By hand" },
+                { "id": "opt_3", "text": "By robots" },
+                { "id": "opt_4", "text": "They were not made" }
+              ],
+              "correctOptionId": "opt_2",
+              "explanation": "Before the Industrial Revolution, most things were made by hand."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "timestamp": "2026-09-11T14:00:00.000Z"
+}
+```
+
+### Errors
+
+| Code | Condition | Response |
+|------|-----------|----------|
+| 404 | Document not found | `{ "success": false, "error": "Document not found." }` |
+
+---
+
+## 3. POST /api/profile
+
+**Owner:** M4 (Assessment + Voice + Integration)
+
+**Purpose:** Create or update a learner profile.
+
+**Expected Latency:** <50ms
+
+**Dependencies:** SQLite
 
 ### Request
 
 ```json
 {
-  "chunks": [
-    {
-      "id": "chunk_001",
-      "originalText": "The Industrial Revolution was a period of human history marked by the transition of human and animal labor...",
-      "sectionHeader": "Historical Context"
-    },
-    {
-      "id": "chunk_002",
-      "originalText": "Mechanization of agriculture and textile production resulted in unprecedented economic growth...",
-      "sectionHeader": "Economic Impact"
-    }
-  ],
-  "profile": {
-    "profileType": "dyslexia",
+  "profileId": "profile_abc123",
+  "profileType": "dyslexia",
+  "typography": {
     "fontFamily": "'OpenDyslexic', 'Arial', sans-serif",
     "fontSize": 18,
     "lineHeight": 1.6,
     "letterSpacing": 0.12,
-    "colorScheme": "cream-on-dark",
+    "wordSpacing": 0.1,
+    "textAlign": "left"
+  },
+  "colorScheme": "cream-on-dark",
+  "adaptationSettings": {
     "simplificationLevel": 1,
     "chunkSize": 3,
     "readAloudRate": 0.9,
     "readAloudPitch": 1.0
   },
-  "adaptationType": "initial",
-  "signals": null
-}
-```
-
-**Request Fields:**
-
-- `chunks` (array, required): Content chunks to adapt. Each chunk must have `id`, `originalText`, and optional `sectionHeader`.
-- `profile` (object, required): Learner profile from Stage 3 (see Data Model for full schema).
-- `adaptationType` (string, required): Either `"initial"` (Stage 4b) or `"further"` (Stage 8b).
-- `signals` (object, optional): Included only when `adaptationType` is `"further"`. See schema below.
-
-**Signals (when adaptationType = "further"):**
-
-```json
-{
-  "signals": {
-    "questionAccuracy": 0.4,
-    "avgTimePerChunk": 35000,
-    "reReadEventsPerChunk": 4,
-    "reason": "Low accuracy + excessive time"
+  "voiceSettings": {
+    "voiceEnabled": true,
+    "preferredVoice": null,
+    "autoRead": false
   }
 }
 ```
@@ -87,511 +265,428 @@
 ```json
 {
   "success": true,
-  "adaptedChunks": [
-    {
-      "id": "chunk_001",
-      "simplifiedText": "The Industrial Revolution was a major time period. During this time, humans moved away from farming and animal power. Instead, they used machines and factories.",
-      "originalText": "The Industrial Revolution was a period of human history marked by the transition of human and animal labor...",
-      "conceptExplanations": [
-        {
-          "term": "mechanization",
-          "explanation": "Using machines to do work instead of people or animals."
-        }
-      ],
-      "confidenceScore": 0.92
-    },
-    {
-      "id": "chunk_002",
-      "simplifiedText": "Machines made farming and making clothes much faster. This meant more goods. More goods meant more money and jobs.",
-      "originalText": "Mechanization of agriculture and textile production resulted in unprecedented economic growth...",
-      "conceptExplanations": [
-        {
-          "term": "mechanization",
-          "explanation": "Using machines to do work instead of people or animals."
-        },
-        {
-          "term": "economic growth",
-          "explanation": "When a country makes and sells more things, earning more money."
-        }
-      ],
-      "confidenceScore": 0.88
-    }
-  ],
-  "adaptationMetadata": {
-    "appliedSimplificationLevel": 1,
-    "strategyUsed": "vocabulary_replacement + sentence_shortening",
-    "explanationsGenerated": true,
-    "adaptationExplanation": null
-  },
-  "fallbackApplied": false,
-  "timestamp": "2025-09-11T14:23:45.123Z"
+  "profileId": "profile_abc123",
+  "created": false,
+  "updated": true,
+  "timestamp": "2026-09-11T14:00:00.000Z"
 }
 ```
 
-**Response Fields:**
+---
 
-- `success` (boolean): True if adaptation succeeded, false if fallback applied.
-- `adaptedChunks` (array): Array of adapted chunks with simplified text and concept explanations.
-  - `id`: Matches input chunk id.
-  - `simplifiedText`: AI-simplified version of original text.
-  - `originalText`: Echo of input for reference.
-  - `conceptExplanations`: Array of {term, explanation} pairs for difficult vocabulary.
-  - `confidenceScore`: 0–1 confidence score for the adaptation quality.
-- `adaptationMetadata` (object):
-  - `appliedSimplificationLevel`: Actual simplification level applied.
-  - `strategyUsed`: Description of adaptation strategy.
-  - `explanationsGenerated`: Boolean indicating if concept explanations were generated.
-  - `adaptationExplanation`: (only when `adaptationType="further"`) Explanation for why content was re-adapted (e.g., "Made sentences shorter because you answered 2 questions slowly"). Null if `adaptationType="initial"`.
-- `fallbackApplied` (boolean): True if LLM failed and deterministic fallback was applied.
-- `timestamp`: ISO 8601 timestamp of request processing.
+## 4. GET /api/profile/:profileId
 
-### Error Handling
+**Owner:** M4
 
-**HTTP 500 — LLM Error (Timeout, Rate Limit, API Error)**
+**Purpose:** Retrieve a learner profile.
+
+**Expected Latency:** <50ms
+
+### Response
 
 ```json
 {
-  "success": false,
-  "error": "LLM request timed out after 5 seconds",
-  "fallbackApplied": true,
-  "adaptedChunks": [
+  "success": true,
+  "profile": {
+    "profileId": "profile_abc123",
+    "profileType": "dyslexia",
+    "createdAt": "2026-09-11T14:00:00.000Z",
+    "lastModifiedAt": "2026-09-11T14:15:00.000Z",
+    "typography": {
+      "fontFamily": "'OpenDyslexic', 'Arial', sans-serif",
+      "fontSize": 18,
+      "lineHeight": 1.6,
+      "letterSpacing": 0.12,
+      "wordSpacing": 0.1,
+      "textAlign": "left"
+    },
+    "colorScheme": "cream-on-dark",
+    "adaptationSettings": {
+      "simplificationLevel": 1,
+      "chunkSize": 3,
+      "readAloudRate": 0.9,
+      "readAloudPitch": 1.0
+    },
+    "voiceSettings": {
+      "voiceEnabled": true,
+      "preferredVoice": null,
+      "autoRead": false
+    }
+  }
+}
+```
+
+### Errors
+
+| Code | Condition | Response |
+|------|-----------|----------|
+| 404 | Profile not found | `{ "success": false, "error": "Profile not found." }` |
+
+---
+
+## 5. POST /api/scale/evaluate
+
+**Owner:** M2 (SCALE + Adaptive Intelligence)
+
+**Purpose:** Submit accumulated learner signals, receive adaptation decision from SCALE engine. This is the core adaptive intelligence endpoint.
+
+**Expected Latency:** <50ms (deterministic — NO LLM call)
+
+**Dependencies:** None (pure computation)
+
+### Request
+
+```json
+{
+  "sessionId": "session_12345",
+  "documentId": "doc_a1b2c3d4",
+  "currentConceptId": "con_002",
+  "currentVariantLevel": 1,
+  "signals": {
+    "dwellTime": 35000,
+    "rereadCount": 3,
+    "scrollBack": 1,
+    "helpRequests": 2,
+    "questionAccuracy": 0.33,
+    "answerLatency": 8000,
+    "retryCount": 1,
+    "voiceHelpRequests": 1
+  },
+  "recentHistory": [
     {
-      "id": "chunk_001",
-      "simplifiedText": "FALLBACK: Unable to simplify. Original text returned.",
-      "originalText": "The Industrial Revolution was a period...",
-      "conceptExplanations": [],
-      "confidenceScore": 0.0
+      "conceptId": "con_001",
+      "variantLevel": 1,
+      "accuracy": 0.67,
+      "adapted": false
+    }
+  ],
+  "adaptationCount": 0,
+  "lastAdaptationChunksAgo": null
+}
+```
+
+### Response (Adaptation Triggered)
+
+```json
+{
+  "shouldAdapt": true,
+  "struggleScore": 0.78,
+  "threshold": 0.6,
+  "reason": "Elevated struggle detected: high reread count (3), low question accuracy (33%), voice help request",
+  "thresholdsMet": [
+    "rereadCount (3) > threshold (2)",
+    "questionAccuracy (0.33) < threshold (0.5)",
+    "voiceHelpRequests (1) > threshold (0)"
+  ],
+  "adaptationStrategy": {
+    "action": "increase_simplification",
+    "newVariantLevel": 2,
+    "additionalActions": [
+      "reduce_chunk_size",
+      "add_visual_description"
+    ]
+  },
+  "explanation": "We noticed you re-read this section 3 times and asked for help. We're switching to shorter, simpler text with a visual description.",
+  "cooldownActive": false,
+  "timestamp": "2026-09-11T14:05:00.000Z"
+}
+```
+
+### Response (No Adaptation Needed)
+
+```json
+{
+  "shouldAdapt": false,
+  "struggleScore": 0.25,
+  "threshold": 0.6,
+  "reason": "Learner signals within normal range",
+  "thresholdsMet": [],
+  "adaptationStrategy": null,
+  "explanation": null,
+  "cooldownActive": false,
+  "timestamp": "2026-09-11T14:05:00.000Z"
+}
+```
+
+### Response (Cooldown Active)
+
+```json
+{
+  "shouldAdapt": false,
+  "struggleScore": 0.72,
+  "threshold": 0.6,
+  "reason": "Struggle detected but cooldown is active (last adaptation was 1 chunk ago, minimum is 2)",
+  "thresholdsMet": ["rereadCount (4) > threshold (2)"],
+  "adaptationStrategy": null,
+  "explanation": null,
+  "cooldownActive": true,
+  "cooldownRemainingChunks": 1,
+  "timestamp": "2026-09-11T14:05:00.000Z"
+}
+```
+
+---
+
+## 6. GET /api/content/:documentId/variant
+
+**Owner:** M1 (AI + Content Intelligence)
+
+**Purpose:** Retrieve a specific cached content variant for a concept. Used by REWIRE to fetch alternate representations.
+
+**Expected Latency:** <100ms (SQLite read)
+
+### Request
+
+```
+GET /api/content/doc_a1b2c3d4/variant?conceptId=con_002&level=2
+```
+
+**Query Parameters:**
+- `conceptId` (string, required): Which concept to retrieve
+- `level` (number, required): Simplification level (1, 2, or 3)
+
+### Response
+
+```json
+{
+  "success": true,
+  "conceptId": "con_002",
+  "level": 2,
+  "variant": {
+    "simplifiedText": "Machines made farming much faster. More food was made. More food meant people could work in factories instead.",
+    "visualDescription": "A farm with one person using a machine harvesting a huge field. Next to it, a factory with many workers.",
+    "strategy": "aggressive_simplification + chunking"
+  },
+  "questions": [
+    {
+      "questionId": "q_con002_adapted_a",
+      "text": "What did machines do to farming?",
+      "type": "multiple_choice",
+      "options": [
+        { "id": "opt_1", "text": "Made it faster" },
+        { "id": "opt_2", "text": "Made it slower" },
+        { "id": "opt_3", "text": "Stopped farming" },
+        { "id": "opt_4", "text": "Nothing changed" }
+      ],
+      "correctOptionId": "opt_1",
+      "explanation": "Machines made farming much faster so more food could be produced."
     }
   ]
 }
 ```
 
-When an error occurs:
-- Return HTTP 200 (not 500) with `success: false`
-- Include `fallbackApplied: true`
-- Return original text in `simplifiedText` as fallback
-- Frontend continues with unsimplified content
+### Errors
+
+| Code | Condition | Response |
+|------|-----------|----------|
+| 404 | Document/concept not found | `{ "success": false, "error": "Concept not found." }` |
+| 404 | Variant level not available | `{ "success": false, "error": "No variant at level 3. Max available: 2." }` |
 
 ---
 
-## 2. POST /api/analyze-signals
+## 7. POST /api/voice/intent
 
-**Owned By:** Member 2 (Adaptive Engine)
+**Owner:** M4 (Assessment + Voice + Integration)
 
-**Stages:** 7 (Analyze Learner Signals)
+**Purpose:** Process a recognized voice command and return the appropriate action for the frontend to execute.
 
-**Purpose:** Evaluate learner behavior signals and return a decision: should the system re-adapt the next chunk?
+**Expected Latency:** <100ms (deterministic routing, no LLM)
 
-**Expected Latency:** <100ms (deterministic logic only, no LLM)
-
-**Frontend runs this entirely locally. This endpoint is provided for team clarity and future backend migration.**
+**Dependencies:** None (rule-based intent matching)
 
 ### Request
 
 ```json
 {
   "sessionId": "session_12345",
-  "signals": {
-    "questionAccuracy": 0.4,
-    "avgTimePerChunk": 35000,
-    "reReadEventsPerChunk": 4,
-    "navigationBacktracks": 2
-  },
-  "currentProfile": {
-    "simplificationLevel": 1,
-    "chunkSize": 3
-  },
-  "chunksProcessed": 3
+  "transcript": "explain this simply",
+  "currentConceptId": "con_002",
+  "currentContext": "reading"
 }
 ```
-
-**Request Fields:**
-
-- `sessionId` (string): Session identifier.
-- `signals` (object): Aggregated behavior signals from recent chunks:
-  - `questionAccuracy`: Decimal 0–1 (questions correct / questions answered).
-  - `avgTimePerChunk`: Milliseconds spent on average per chunk.
-  - `reReadEventsPerChunk`: Average number of re-read events per chunk.
-  - `navigationBacktracks`: Number of times learner clicked "previous" in recent chunks.
-- `currentProfile` (object): Current learner profile state.
-- `chunksProcessed` (number): Total chunks read so far in session.
 
 ### Response
 
 ```json
 {
-  "shouldReAdapt": true,
-  "reason": "Low question accuracy (40%) + excessive time per chunk (35s > 30s threshold)",
-  "thresholdsMet": [
-    "questionAccuracy < 0.5",
-    "avgTimePerChunk > 30000"
-  ],
-  "suggestedAdaptation": {
-    "newSimplificationLevel": 2,
-    "newChunkSize": 2,
-    "actions": [
-      "reduce_paragraph_length",
-      "increase_line_height",
-      "simplify_vocabulary"
-    ]
+  "success": true,
+  "intent": "explain_simply",
+  "action": {
+    "type": "switch_variant",
+    "targetLevel": 3,
+    "conceptId": "con_002"
   },
-  "confidence": 0.95
+  "spokenResponse": "Switching to a simpler explanation.",
+  "generatesSignal": true,
+  "signalType": "help_request",
+  "timestamp": "2026-09-11T14:05:00.000Z"
 }
 ```
 
-**Response Fields:**
+**Supported Intents:**
 
-- `shouldReAdapt` (boolean): True if one or more thresholds met.
-- `reason` (string): Human-readable explanation of decision (for debugging and explanations).
-- `thresholdsMet` (array): List of thresholds that triggered adaptation (e.g., "accuracy < 50%").
-- `suggestedAdaptation` (object): What Member 1 should do if re-adapting:
-  - `newSimplificationLevel`: Recommended increase in simplification (1–3).
-  - `newChunkSize`: Recommended reduction in chunk size (paragraphs per chunk).
-  - `actions`: Deterministic actions to apply client-side (reduce_paragraph_length, increase_line_height, etc.).
-- `confidence` (number): 0–1 confidence in the decision.
+| Voice Command | Intent | Action Type | Signal Generated |
+|--------------|--------|-------------|-----------------|
+| "Read this" | `read_aloud` | `start_tts` | No |
+| "Explain this" | `explain` | `show_explanation` | Yes (`help_request`) |
+| "Explain it simply" | `explain_simply` | `switch_variant` (level +1) | Yes (`help_request`) |
+| "Give me an example" | `example` | `show_example` | Yes (`help_request`) |
+| "Repeat that" | `repeat` | `restart_tts` | Yes (`help_request`) |
+| "Answer [option]" | `answer` | `submit_answer` | No |
+| "Next" | `navigate_next` | `next_chunk` | No |
+| "Go back" | `navigate_back` | `prev_chunk` | No |
 
-### Decision Thresholds (Deterministic Logic)
+### Errors
 
-```
-shouldReAdapt = true if ANY of:
-  1. questionAccuracy < 0.5 (less than 50% correct)
-  2. avgTimePerChunk > 30000 (more than 30 seconds per chunk on average)
-  3. reReadEventsPerChunk > 3 (more than 3 re-reads per chunk on average)
-  4. navigationBacktracks > 2 (more than 2 "previous" clicks in recent chunks)
-
-If shouldReAdapt = true:
-  - Increase simplificationLevel by 1 (cap at 3)
-  - Decrease chunkSize by 1 (min 1 paragraph per chunk)
-  - Flag all actions for client-side + server-side application
-```
+| Code | Condition | Response |
+|------|-----------|----------|
+| 400 | Empty transcript | `{ "success": false, "error": "No transcript provided." }` |
+| 422 | Unrecognized intent | `{ "success": false, "intent": "unknown", "spokenResponse": "I didn't understand that. Try saying 'read this', 'explain this', or 'next'." }` |
 
 ---
 
-## 3. POST /api/questions
+## 8. POST /api/session/progress
 
-**Owned By:** Member 4 (Assessment & Data)
+**Owner:** M4 (Assessment + Voice + Integration)
 
-**Stages:** 6 (Learner Interacts & Answers)
+**Purpose:** Save session progress data or retrieve session state.
 
-**Purpose:** Generate or retrieve 3 comprehension questions for a content chunk.
+**Expected Latency:** <50ms
 
-**Expected Latency:** 1–2 seconds (LLM generation on first call per chunk; cached thereafter in localStorage)
+**Dependencies:** SQLite
 
-### Request
-
-```json
-{
-  "chunkId": "chunk_001",
-  "originalText": "The Industrial Revolution was a period of human history marked by the transition of human and animal labor...",
-  "sectionHeader": "Historical Context",
-  "simplificationLevel": 1,
-  "generateNew": false
-}
-```
-
-**Request Fields:**
-
-- `chunkId` (string, required): Unique ID for the chunk.
-- `originalText` (string, required): Original (not simplified) text to base questions on.
-- `sectionHeader` (string, optional): Section title for context.
-- `simplificationLevel` (number, optional): Learner's current simplification level (1–3). Used to adjust question difficulty.
-- `generateNew` (boolean, optional): If true, always generate new questions. If false, return cached if available. Default: false.
-
-### Response
+### Request — Save
 
 ```json
 {
-  "chunkId": "chunk_001",
-  "questions": [
-    {
-      "questionId": "q_001_a",
-      "text": "What was the Industrial Revolution?",
-      "type": "multiple_choice",
-      "options": [
-        {
-          "id": "opt_1",
-          "text": "A period of time when machines replaced people and animal work"
-        },
-        {
-          "id": "opt_2",
-          "text": "A war between Europe and Asia"
-        },
-        {
-          "id": "opt_3",
-          "text": "The invention of the computer"
-        },
-        {
-          "id": "opt_4",
-          "text": "A movement to stop using factories"
-        }
-      ],
-      "correctOptionId": "opt_1",
-      "explanation": "The Industrial Revolution was a big change from farm work to factory and machine work."
-    },
-    {
-      "questionId": "q_001_b",
-      "text": "Did the Industrial Revolution happen quickly or slowly?",
-      "type": "true_false",
-      "options": [
-        {
-          "id": "opt_true",
-          "text": "True — it happened over many years"
-        },
-        {
-          "id": "opt_false",
-          "text": "False — it happened very fast"
-        }
-      ],
-      "correctOptionId": "opt_true",
-      "explanation": "The Industrial Revolution took a long time to spread across different countries and industries."
-    },
-    {
-      "questionId": "q_001_c",
-      "text": "What kind of work became more common during the Industrial Revolution?",
-      "type": "multiple_choice",
-      "options": [
-        {
-          "id": "opt_1",
-          "text": "Farm work"
-        },
-        {
-          "id": "opt_2",
-          "text": "Factory and machine work"
-        },
-        {
-          "id": "opt_3",
-          "text": "Hand crafts"
-        },
-        {
-          "id": "opt_4",
-          "text": "Hunting and fishing"
-        }
-      ],
-      "correctOptionId": "opt_2",
-      "explanation": "Factories and machines became the main way people worked during this time."
-    }
-  ],
-  "generated": true,
-  "timestamp": "2025-09-11T14:23:45.123Z"
-}
-```
-
-**Response Fields:**
-
-- `chunkId` (string): Echo of input chunk ID.
-- `questions` (array): 3 comprehension questions for the chunk.
-  - `questionId` (string): Unique ID for the question (format: `q_{chunkId}_{a|b|c}`).
-  - `text` (string): The question text.
-  - `type` (string): Either `"multiple_choice"` or `"true_false"`.
-  - `options` (array): Answer options with `id` and `text`.
-  - `correctOptionId` (string): ID of the correct option.
-  - `explanation` (string): Brief explanation of why the correct answer is right (shown to learner if they get it wrong).
-- `generated` (boolean): True if questions were newly generated, false if retrieved from cache.
-- `timestamp` (ISO 8601): When questions were generated/retrieved.
-
-### Error Handling
-
-If LLM generation fails, return HTTP 200 with fallback generic questions:
-
-```json
-{
-  "chunkId": "chunk_001",
-  "questions": [
-    {
-      "questionId": "q_001_a",
-      "text": "What is the main topic of this section?",
-      "type": "multiple_choice",
-      "options": [
-        {
-          "id": "opt_1",
-          "text": "I understood it"
-        },
-        {
-          "id": "opt_2",
-          "text": "I'm not sure"
-        }
-      ],
-      "correctOptionId": "opt_1",
-      "explanation": "Fallback question. No LLM available."
-    }
-  ],
-  "generated": false,
-  "fallbackApplied": true
-}
-```
-
----
-
-## 4. POST /api/progress
-
-**Owned By:** Member 4 (Assessment & Data)
-
-**Stages:** 9 (Measure Progress), 12 (Store Progress Data)
-
-**Purpose:** Store session progress data (chunks read, questions answered, adaptations triggered) and retrieve progress summary for resume/analytics.
-
-**Expected Latency:** <50ms (localStorage operation equivalent)
-
-### Request — Save Progress
-
-```json
-{
-  "method": "save",
+  "action": "save",
   "sessionId": "session_12345",
-  "chunkData": {
-    "chunkId": "chunk_001",
-    "timeOnTask": 28000,
-    "reReadEvents": 2,
+  "documentId": "doc_a1b2c3d4",
+  "profileId": "profile_abc123",
+  "conceptProgress": {
+    "conceptId": "con_002",
+    "variantLevel": 1,
+    "dwellTime": 28000,
+    "rereadCount": 2,
     "questionsAnswered": 3,
     "questionsCorrect": 2,
-    "answerIds": ["q_001_a:opt_1", "q_001_b:opt_true", "q_001_c:opt_3"],
     "adaptationApplied": false,
-    "timestamp": "2025-09-11T14:23:45.123Z"
+    "adaptationReason": null,
+    "completedAt": "2026-09-11T14:02:00.000Z"
   }
 }
 ```
 
-**Request Fields (Save):**
-
-- `method` (string): `"save"` to store chunk data.
-- `sessionId` (string): Session identifier.
-- `chunkData` (object): Data from a single chunk interaction.
-  - `chunkId` (string): Chunk ID.
-  - `timeOnTask` (number): Milliseconds spent on chunk.
-  - `reReadEvents` (number): Number of re-read events (select+reselect).
-  - `questionsAnswered` (number): How many questions were answered.
-  - `questionsCorrect` (number): How many answers were correct.
-  - `answerIds` (array): Array of answered question IDs (format: `q_id:option_id`).
-  - `adaptationApplied` (boolean): Whether re-adaptation occurred after this chunk.
-  - `timestamp` (ISO 8601): When chunk was completed.
-
-### Response — Save Progress
+### Response — Save
 
 ```json
 {
   "success": true,
   "sessionId": "session_12345",
-  "progressSummary": {
-    "chunksCompleted": 4,
-    "totalTimeSpent": 120000,
+  "summary": {
+    "conceptsCompleted": 4,
+    "conceptsTotal": 8,
+    "totalTime": 120000,
     "questionsAnswered": 12,
-    "questionsCorrect": 10,
-    "accuracy": 0.833,
+    "questionsCorrect": 9,
+    "accuracy": 0.75,
     "adaptationsTriggered": 1,
-    "avgTimePerChunk": 30000
+    "completionPercentage": 50
   }
 }
 ```
 
-**Response Fields (Save):**
-
-- `success` (boolean): True if data was saved.
-- `sessionId` (string): Echo of session ID.
-- `progressSummary` (object): Aggregated session metrics.
-  - `chunksCompleted` (number): Total chunks read.
-  - `totalTimeSpent` (number): Total milliseconds in session.
-  - `questionsAnswered` (number): Total questions answered.
-  - `questionsCorrect` (number): Total correct answers.
-  - `accuracy` (number): Decimal 0–1 (questionsCorrect / questionsAnswered).
-  - `adaptationsTriggered` (number): Number of times re-adaptation occurred.
-  - `avgTimePerChunk` (number): Average milliseconds per chunk.
-
-### Request — Retrieve Progress
+### Request — Retrieve
 
 ```json
 {
-  "method": "retrieve",
+  "action": "retrieve",
   "sessionId": "session_12345"
 }
 ```
 
-### Response — Retrieve Progress
+### Response — Retrieve
 
 ```json
 {
   "success": true,
   "sessionId": "session_12345",
-  "session": {
-    "sessionId": "session_12345",
-    "createdAt": "2025-09-11T14:00:00.000Z",
-    "updatedAt": "2025-09-11T14:30:00.000Z",
-    "chunks": [
-      {
-        "chunkId": "chunk_001",
-        "timeOnTask": 28000,
-        "reReadEvents": 2,
-        "questionsCorrect": 2,
-        "questionsAnswered": 3,
-        "adaptationApplied": false
-      },
-      {
-        "chunkId": "chunk_002",
-        "timeOnTask": 32000,
-        "reReadEvents": 3,
-        "questionsCorrect": 1,
-        "questionsAnswered": 3,
-        "adaptationApplied": true
-      }
-    ],
-    "progressSummary": {
-      "chunksCompleted": 2,
-      "totalTimeSpent": 60000,
-      "questionsAnswered": 6,
-      "questionsCorrect": 3,
-      "accuracy": 0.5,
-      "adaptationsTriggered": 1
+  "documentId": "doc_a1b2c3d4",
+  "profileId": "profile_abc123",
+  "startedAt": "2026-09-11T14:00:00.000Z",
+  "lastActivity": "2026-09-11T14:30:00.000Z",
+  "currentConceptIndex": 3,
+  "concepts": [
+    {
+      "conceptId": "con_001",
+      "completed": true,
+      "variantLevel": 1,
+      "dwellTime": 28000,
+      "accuracy": 0.67,
+      "adapted": false
+    },
+    {
+      "conceptId": "con_002",
+      "completed": true,
+      "variantLevel": 2,
+      "dwellTime": 35000,
+      "accuracy": 0.33,
+      "adapted": true,
+      "postAdaptationAccuracy": 0.67
     }
+  ],
+  "summary": {
+    "conceptsCompleted": 2,
+    "conceptsTotal": 8,
+    "totalTime": 63000,
+    "questionsAnswered": 6,
+    "questionsCorrect": 3,
+    "accuracy": 0.5,
+    "adaptationsTriggered": 1,
+    "completionPercentage": 25
   }
 }
 ```
 
-**Response Fields (Retrieve):**
+---
 
-- `success` (boolean): True if session was found.
-- `sessionId` (string): Echo of session ID.
-- `session` (object): Full session object with chunk-level details and summary.
+## 9. GET /api/health
 
-### Error Handling
+**Owner:** All
 
-If session not found:
+**Purpose:** Health check for deployment verification.
+
+**Expected Latency:** <10ms
+
+### Response
 
 ```json
 {
-  "success": false,
-  "sessionId": "session_12345",
-  "error": "Session not found"
+  "status": "ok",
+  "version": "1.0.0",
+  "database": "connected",
+  "timestamp": "2026-09-11T14:00:00.000Z"
 }
 ```
 
 ---
 
-## API Summary for Team
+## Error Handling Philosophy
 
-| Endpoint | Member | Stage(s) | Purpose | Latency |
-|----------|--------|----------|---------|---------|
-| `POST /api/adapt` | 1 | 4b, 8b | Simplify + generate explanations | 1–3s |
-| `POST /api/analyze-signals` | 2 | 7 | Decide re-adaptation | <100ms |
-| `POST /api/questions` | 4 | 6 | Generate questions | 1–2s |
-| `POST /api/progress` | 4 | 9, 12 | Store/retrieve progress | <50ms |
+1. **HTTP 200 for recoverable failures** — Return 200 with `success: false` and fallback data when the system can degrade gracefully
+2. **HTTP 4xx for client errors** — Invalid input, missing resources
+3. **HTTP 5xx for server errors** — Unexpected failures only
+4. **Always include fallback data** — Never leave the frontend without something to render
+5. **Log and continue** — Failures don't block the learner experience
 
----
-
-## Error Codes & Fallback Strategy
-
-All endpoints follow this error pattern:
-
-1. **HTTP 200 always** — Even on partial failures, return 200 with `success: false`.
-2. **Include fallback data** — Never leave frontend without something to render.
-3. **Log and continue** — Failures don't block the learner experience.
-
-**General Error Response Template:**
+**Standard Error Shape:**
 
 ```json
 {
   "success": false,
   "error": "Descriptive error message",
   "fallbackApplied": true,
-  "fallbackData": { ... }
+  "fallbackData": { }
 }
 ```
 
@@ -599,6 +694,7 @@ All endpoints follow this error pattern:
 
 ## Version History
 
-| Version | Date | Changes | Member |
-|---------|------|---------|--------|
-| 1.0 | 2025-09-11 | Initial MVP contract | All |
+| Version | Date | Changes | Owner |
+|---------|------|---------|-------|
+| 1.0 | 2026-09-11 | Initial MVP contract (pre-SCALE) | All |
+| 2.0 | 2026-09-11 | Rewritten for SCALE/REWIRE architecture, added upload/content/voice endpoints | All |
