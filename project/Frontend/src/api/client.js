@@ -1,12 +1,19 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 async function request(path, options = {}) {
-  const response = await fetch(`${API_BASE_URL}${path}`, options);
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(result.detail || "The backend request failed.");
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, options);
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.detail || "The backend request failed.");
+    }
+    return result;
+  } catch (error) {
+    if (error.message === "Failed to fetch" || error.name === "TypeError") {
+      throw new Error(`Unable to connect to the backend server at ${API_BASE_URL}. Please verify FastAPI is running on port 8000.`);
+    }
+    throw error;
   }
-  return result;
 }
 
 export function extractDocument(file) {
