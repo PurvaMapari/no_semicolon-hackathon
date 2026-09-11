@@ -1,375 +1,405 @@
-# PRISM Architecture Document
+# PRISM — Architecture Document
 
 ## Overview
 
-PRISM implements a **persistent, behavior-driven adaptation loop**—not a one-shot personalization pipeline. The system adapts once based on initial profile selection, but continues to analyze learner behavior and decide whether to re-adapt content throughout the reading session. This feedback loop is the core technical differentiator.
+PRISM implements a **closed behavioral adaptation loop** — not a one-shot personalization pipeline. The core innovation is the **SCALE** engine (Signal → Calibrate → Adapt → Let learner engage → Evaluate) paired with **REWIRE**, the visible content restructuring feature.
 
-## Full Pipeline Flow
-
-```
-┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                    PRISM ADAPTIVE PIPELINE                                   │
-└─────────────────────────────────────────────────────────────────────────────────────────────┘
-
-1. INPUT → 2. EXTRACT & STRUCTURE → 3. SET UP LEARNER PROFILE → 4. GENERATE INITIAL ADAPTATION
-                                                        ↓
-                                                5. VIEW PERSONALIZED CONTENT
-                                                        ↓
-                                            6. LEARNER INTERACTS & ANSWERS
-                                                        ↓
-                                        7. ANALYZE LEARNER SIGNALS
-                                                        ↓
-                                              ┌─────────┴─────────┐
-                                              │                   │
-                                              ▼                   ▼
-                                      ANALYZE SIGNALS?        ANALYZE SIGNALS?
-                                      (Threshold met?)        (Threshold met?)
-                                              │                   │
-                                         YES │                   │ NO
-                                              ▼                   ▼
-                                    8. ADAPT FURTHER        9. MEASURE PROGRESS
-                                              │
-                                              ▼
-                                   10. EXPLAIN ADAPTATION
-                                              │
-                                              ▼
-                                    ┌─────────┴─────────┐
-                                    │                   │
-                                    ▼                   ▼
-                           11. UPDATE                12. STORE
-                         ADAPTATION              PROGRESS DATA
-                                    │                   │
-                                    └─────────┬─────────┘
-                                              ▼
-                                    LOOP BACK TO STEP 5
-                                   (View Personalized Content)
-```
-
-## Stage-by-Stage Breakdown
-
-### Stage 1: Input
-
-**What it does:** Accepts content from user via text paste or PDF upload
-
-**Client-side vs Server-side:** 100% client-side
-
-**Why:** Minimal latency. Text pasting is instant. PDF upload simply sends the file to the client for processing.
-
-**Technical details:**
-- Text paste: Direct DOM input
-- PDF upload: Uses PDF.js (Mozilla's PDF parser) to extract text on client side
-- No backend required for initial content ingestion
+The **structured content representation** (content graph) is the source of truth — not the learner profile. The learner profile provides initial preferences. Observed learner behavior and outcomes refine the adaptation.
 
 ---
 
-### Stage 2: Extract & Structure
+## Authoritative Architecture Flow
 
-**What it does:** Parses raw text into structured chunks suitable for adaptation
-
-**Client-side vs Server-side:** 100% client-side
-
-**Why:** Deterministic text processing can run instantly on the client. No network round-trips needed.
-
-**Technical details:**
-- Sentence splitting using Intl.Segmenter or regular expressions
-- Paragraph detection and preservation
-- Header identification (if present in source)
-- Chunk size configuration (e.g., 1-3 paragraphs per chunk)
-- Output: Array of structured content chunks with metadata (id, original text, section header)
-
----
-
-### Stage 3: Set Up Learner Profile
-
-**What it does:** Loads or creates learner profile, merges with profile selection
-
-**Client-side vs Server-side:** 100% client-side
-
-**Why:** Profile data is lightweight (configuration JSON) and needs instant availability. localStorage provides persistence across sessions without backend.
-
-**Technical details:**
-- Load from localStorage: `prism_profile_{hash(userId or deviceID)}`
-- If no profile exists, create default from selected profile type (dyslexia, low-vision, etc.)
-- Merge user preferences (e.g., "I want larger font than default for dyslexia profile")
-- Output: Learner profile object containing:
-  ```json
-  {
-    "profileType": "dyslexia",
-    "fontFamily": "'OpenDyslexic', 'Arial', sans-serif",
-    "fontSize": 18,
-    "lineHeight": 1.6,
-    "letterSpacing": 0.12,
-    "textAlign": "left",
-    "colorScheme": "cream-on-dark",
-    "simplificationLevel": 1,
-    "chunkSize": 3,
-    "readAloudRate": 0.9,
-    "readAloudPitch": 1.0
-  }
-  ```
-
----
-
-### Stage 4: Generate Initial Adaptation
-
-**What it does:** Applies deterministic formatting + AI-powered content adaptation to create personalized version
-
-**Client-side vs Server-side:** Hybrid (deterministic = client, AI = server)
-
-**Why:**
-- Deterministic formatting (fonts, spacing) runs instantly on client
-- Content-level adaptation (simplification, explanation generation) requires LLM inference
-- We can cache deterministic transformations; AI outputs must be generated or fetched
-
-**Technical details:**
-
-#### 4a. Deterministic Formatting (Client)
-- Apply typography settings from learner profile
-- Apply color scheme (CSS variables)
-- Reformat HTML with optimized layout (margin, padding, max-width)
-- Add ARIA labels for accessibility
-
-#### 4b. AI Adaptation (Server)
-- Send each chunk + learner profile to AI endpoint
-- Prompt: "Given this text and learner profile [dyslexia], provide simplified version with: (1) simpler vocabulary, (2) shorter sentences, (3) clear section breaks, (4) optional concept explanations"
-- LLM returns adapted chunk with:
-  - Simplified text
-  - Original text (for reference/hover)
-  - Concept explanations (if applicable)
-  - Confidence score
-- If confidence < threshold OR LLM timeout: fallback to deterministic only
-
-**API Endpoint (minimal):**
 ```
-POST /api/adapt
-{
-  "chunks": [...],
-  "profile": {...},
-  " adaptationType": "initial"
-}
-Response: {
-  "adaptedChunks": [...],
-  "adaptationMetadata": {
-    "appliedSimplificationLevel": 1,
-    "strategyUsed": "vocabulary_replacement",
-    "explanationsGenerated": true
-  }
-}
+INPUT (PDF / TEXT)
+        ↓
+DETERMINISTIC EXTRACTION
+        ↓
+CONTENT STRUCTURING (LLM — cached)
+        ↓
+STRUCTURED CONTENT REPRESENTATION
+  (Document → Sections → Concepts → Variants)
+        ↓
+LEARNER PROFILE + CONTENT STATE
+        ↓
+INITIAL ACCESSIBLE RENDER
+        ↓
+LEARNING SESSION
+    ├── Text (adapted, chunked)
+    ├── Visual (descriptions, diagrams)
+    ├── Voice (TTS read-aloud, STT commands)
+    └── Questions (comprehension checks)
+        ↓
+LEARNER SIGNAL CAPTURE
+  (dwell time, rereads, scroll-back, help requests,
+   question accuracy, answer latency, retries, voice help)
+        ↓
+SCALE ADAPTIVE ENGINE
+  (Signal → Calibrate → Adapt → Let engage → Evaluate)
+        ↓
+STRUGGLE DETECTED?
+    │
+    ├── NO → Continue learning → Loop back to signal capture
+    │
+    └── YES → REWIRE
+                ↓
+          Select alternate cached representation
+                ↓
+          Change chunking / explanation / modality
+                ↓
+          Display "Why I adapted" explanation
+                ↓
+          Adapt next question
+                ↓
+          Learner engages again
+                ↓
+          Outcome measured (pre/post accuracy)
+                ↓
+          Learner state updated
+                ↓
+          SCALE LOOP CONTINUES
 ```
 
 ---
 
-### Stage 5: View Personalized Content
+## AI Architecture — Cache-First
 
-**What it does:** Renders adapted content for learner
+> **Critical rule:** The live adaptation hot path does NOT require a new LLM request.
 
-**Client-side vs Server-side:** 100% client-side
+```
+Document Upload
+      ↓
+Extraction (deterministic — PDF.js / Tesseract.js)
+      ↓
+LLM Content Structuring (one-time)
+      ↓
+Cache structured representation (SQLite)
+      ↓
+Pre-generate alternate explanations (levels 1–3)
+Pre-generate visual descriptions
+Pre-generate comprehension questions
+      ↓
+Cache all LLM outputs (SQLite)
+      ↓
+Live learner interaction
+      ↓
+Deterministic signal processing (client-side)
+      ↓
+Deterministic/rule-based adaptation decision (SCALE)
+      ↓
+Retrieve cached alternative from content graph
+      ↓
+REWIRE — visible restructuring
+```
 
-**Why:** Rendering is pure DOM manipulation. The adapted content is already fully available from Stage 4.
+**Why:** LLM calls are slow (1–5s) and unreliable. The live path must be instant and deterministic. All expensive AI work happens at upload time and is cached.
 
-**Technical details:**
-- Render each chunk in scrollable container
-- Enable read-aloud on click of "play" button
-- Sync TTS highlighting with audio playback
-- Track reading time per chunk (start time on render, end time on navigation)
-- Track navigation events (next/previous chunk)
+---
 
-**UX Elements:**
-- "Read Aloud" button with play/pause/stop
+## Component Architecture
+
+### 1. Input Layer
+
+**What:** Accept content from user via PDF upload or text paste.
+
+**Ownership:** Client → Server
+
+| Step | Client/Server | Technology |
+|------|--------------|------------|
+| PDF file selection / text paste | Client | HTML input, drag-and-drop |
+| PDF binary upload | Client → Server | HTTP POST multipart |
+| Text extraction from PDF | Server | PDF.js (text-based) + Tesseract.js (OCR fallback) |
+| Text validation & cleaning | Server | Deterministic string processing |
+
+**Fallback:** If PDF extraction fails, return error with suggestion to paste text manually.
+
+---
+
+### 2. Content Structuring (LLM — One-Time)
+
+**What:** Transform raw extracted text into a structured content graph.
+
+**Ownership:** Server (LLM pipeline)
+
+| Step | Client/Server | Technology |
+|------|--------------|------------|
+| Sentence/paragraph segmentation | Server | Deterministic (Intl.Segmenter, regex) |
+| Content structuring (text → sections → concepts) | Server | LLM (GPT-4o-mini) |
+| Alternate explanation generation (per concept, levels 1–3) | Server | LLM (GPT-4o-mini) |
+| Visual description generation (per concept) | Server | LLM (GPT-4o-mini) |
+| Question generation (per concept, 3 questions) | Server | LLM (GPT-4o-mini) |
+| Cache all outputs | Server | SQLite |
+
+**Output:** Content graph stored in SQLite:
+```
+Document
+  └── Section[]
+        └── Concept[]
+              ├── original_text
+              ├── variants[]: { level, simplified_text, visual_description }
+              └── questions[]: { text, type, options, correct_answer, explanation }
+```
+
+**Fallback:** If LLM fails for any concept, use original text as the only variant. Questions fall back to generic self-assessment ("Did you understand this section?").
+
+---
+
+### 3. Learner Profile
+
+**What:** Store and retrieve learner preferences. Provides initial adaptation settings — does NOT drive adaptation decisions (SCALE does).
+
+**Ownership:** Client (creation/editing) + Server (persistence)
+
+| Step | Client/Server | Technology |
+|------|--------------|------------|
+| Profile type selection (Dyslexia, Low Vision, Cognitive Load, Custom) | Client | React UI |
+| Profile customization (font, spacing, color, voice) | Client | React UI |
+| Profile persistence | Server | SQLite |
+
+**Important:** The learner profile is NOT the adaptation engine. It provides starting preferences. The SCALE engine uses behavioral signals to make adaptation decisions.
+
+---
+
+### 4. Initial Accessible Render
+
+**What:** Render content with profile-based formatting + select initial content variant.
+
+**Ownership:** Client
+
+| Step | Client/Server | Technology |
+|------|--------------|------------|
+| Apply typography (font family, size, line height, letter spacing) | Client | CSS variables |
+| Apply color scheme | Client | CSS variables |
+| Select initial content variant based on profile simplification level | Client | Deterministic lookup |
+| Render first chunk | Client | React DOM |
+| Initialize signal capture | Client | JavaScript event listeners |
+| Initialize voice controls | Client | Web Speech API |
+
+---
+
+### 5. Learning Session — Interaction Modes
+
+**What:** The learner interacts with adapted content through multiple modalities.
+
+**Ownership:** Client
+
+#### 5a. Text Interaction
+- Learner reads adapted text chunks
+- Chunk navigation (prev/next)
 - Progress indicator (chunk X of Y)
-- Chunk navigation (previous/next buttons)
-- Optional: "Explain this" button for concept explanations
-- Optional: Highlighter tool (stores highlights in localStorage)
+
+#### 5b. Visual Interaction
+- Visual descriptions rendered alongside text
+- Concept explanations on hover/click (if available)
+
+#### 5c. Voice Interaction (Day-1)
+- **TTS Read-aloud:** Web Speech Synthesis API reads current chunk
+- **STT Commands:** Web Speech Recognition API captures voice commands
+- **Intent routing:** "Read this" → TTS, "Explain this" → show explanation variant, "Explain it simply" → show level-3 simplification, "Give me an example" → show example (if cached), "Repeat that" → re-read current chunk, "Answer" → submit voice answer to quiz
+- **Voice signals:** Voice help requests ("Explain this", "Simplify") are captured as learner signals for SCALE
+
+#### 5d. Assessment
+- 3 comprehension questions per concept (pre-generated, cached)
+- Multiple choice and true/false
+- Answer submission, verification, and explanation display
+- Answer latency tracked as signal
 
 ---
 
-### Stage 6: Learner Interacts & Answers
+### 6. Learner Signal Capture
 
-**What it does:** Captures learner behavior and assessment responses
+**What:** Capture observable behavioral signals during the learning session.
 
-**Client-side vs Server-side:** 100% client-side
+**Ownership:** Client (capture) → Client (processing)
 
-**Why:** Interaction data is lightweight and needs real-time collection. Assessment questions are static (pre-generated).
+| Signal | How Captured | Units |
+|--------|-------------|-------|
+| Dwell time | Timer: start on chunk render, stop on navigation | Milliseconds |
+| Reread count | Scroll-back-to-top within same chunk, or re-selection of text | Count |
+| Scroll-back | Navigation "previous" events | Count |
+| Help request | Click "explain", "simplify", voice "explain this" | Count |
+| Question accuracy | Correct answers / total answers per chunk | Ratio (0–1) |
+| Answer latency | Time from question display to answer submission | Milliseconds |
+| Retry | Re-answering after incorrect answer | Count |
+| Voice help request | STT commands: "explain", "simplify", "repeat" | Count |
 
-**Technical details:**
-- **Reading behavior tracking:**
-  - Time on chunk (from render to navigation away)
-  - Re-read events (select text and re-select within same chunk)
-  - Skipped sections (fast scroll through)
-  - Navigation events (next/previous/first/last)
-  - Pause/resume events (for read-aloud)
-
-- **Assessment:**
-  - 3 comprehension questions per chunk (pre-written or generated once per session)
-  - Answer storage: `localStorage.setItem('prism_answers_{chunkId}', selectedOptionId)`
-  - Answer verification: compare against correct answer ID
-
-- **Question types:**
-  - Multiple choice (4 options)
-  - True/False
-  - Optional: short answer (stored as text)
+**All signals are captured client-side.** No network call needed for signal capture.
 
 ---
 
-### Stage 7: Analyze Learner Signals
+### 7. SCALE Adaptive Engine
 
-**What it does:** Evaluate whether behavioral signals indicate struggle requiring further adaptation
+**What:** The core behavioral adaptation loop.
 
-**Client-side vs Server-side:** 100% client-side
+**Ownership:** Client (signal processing is deterministic, runs entirely client-side)
 
-**Why:** Simple threshold-based analysis requires only local data. No network call needed.
-
-**Technical details:**
-
-#### Signals Tracked:
-1. **Question accuracy:** % correct on recent chunks (sliding window of last 3 chunks)
-2. **Time-on-task:** Average time per chunk vs baseline (what's "normal" for this content)
-3. **Re-reading frequency:** Number of re-read events per chunk
-4. **Navigation patterns:** Backtracking (frequent previous/next switching)
-
-#### Threshold Logic (MVP):
-```javascript
-function shouldReAdapt(signals) {
-  // Criterion 1: Low question accuracy
-  if (signals.questionAccuracy < 0.5) return true;
-  
-  // Criterion 2: Excessive time on task
-  if (signals.avgTimePerChunk > 30000) return true; // 30 seconds
-  
-  // Criterion 3: High re-reading rate
-  if (signals.reReadEventsPerChunk > 3) return true;
-  
-  return false;
-}
+```
+SIGNAL CAPTURE
+      ↓
+NORMALIZE (against per-concept baselines)
+      ↓
+COMPUTE STRUGGLE SCORE (weighted sum of normalized signals)
+      ↓
+CHECK THRESHOLD (struggle_score > threshold?)
+      ↓
+CHECK COOLDOWN (last adaptation was > N chunks ago?)
+      │
+      ├── NO (below threshold or in cooldown) → Continue learning
+      │
+      └── YES → SELECT ADAPTATION STRATEGY
+                      ↓
+                RETRIEVE CACHED VARIANT from content graph
+                      ↓
+                TRIGGER REWIRE
 ```
 
-**Output:** Boolean + rationale for decision (for explanation step)
+**Critical:** SCALE uses **deterministic rules** and **threshold logic**. No ML classifier. No LLM call. Pure computation on client-side data.
+
+See `07-ADAPTIVE-ENGINE-LOGIC.md` for exact calculations, thresholds, and rules.
 
 ---
 
-### Stage 8: Adapt Further (If Needed)
+### 8. REWIRE — Visible Adaptation
 
-**What it does:** Apply additional adaptation based on struggle analysis
+**What:** The signature demo feature. Content visibly restructures when SCALE detects struggle.
 
-**Client-side vs Server-side:** Hybrid (deterministic = client, AI = server, optional)
+**Ownership:** Client (rendering) + cached content from server
 
-**Why:** More aggressive adaptation may require additional AI processing, but simpler adjustments (like reducing chunk size) can be done locally.
+**REWIRE Sequence:**
 
-**Technical details:**
+1. **Transition out:** Current content fades/slides (CSS animation, respects `prefers-reduced-motion`)
+2. **Retrieve variant:** Fetch cached alternate representation from content graph (no LLM call)
+3. **Restructure:** New content renders with different chunking, explanation, or modality
+4. **Explain:** "Why I adapted" banner appears with human-readable explanation
+   - Example: *"We noticed repeated re-reads here, so we switched to shorter chunks and a visual explanation."*
+5. **Adapt question:** Next comprehension question changes to test the struggled concept
+6. **Learner engages:** Learner interacts with adapted content
+7. **Measure outcome:** Track accuracy on adapted question — compare to pre-adaptation accuracy
+8. **Update state:** Record adaptation event, outcome, update learner state
+9. **Loop:** SCALE continues monitoring from step 6
 
-#### 8a. Deterministic Adaptation (Client, Immediate)
-- Increase simplification level (if available)
-- Reduce chunk size (fewer paragraphs per chunk)
-- Increase line height further
-- Reduce font size slightly (more whitespace)
-- Apply more contrasting color scheme
+**Learner controls after REWIRE:**
+- "Continue" — accept adaptation
+- "Go back" — revert to previous version
+- "Customize" — open profile editor
 
-#### 8b. AI Adaptation (Server, Optional)
-- Only if further content simplification needed beyond deterministic limits
-- Send chunks + updated profile (higher simplification level) to AI endpoint
-- Request: "Apply additional simplification to this already-adapted content"
-- Fallback if LLM unavailable: use deterministic-only adjustments
+---
 
-**Updated profile example:**
-```json
-{
-  "profileType": "dyslexia",
-  "simplificationLevel": 2,  // Increased from 1
-  "chunkSize": 2,           // Reduced from 3
-  "fontSize": 20,
-  "lineHeight": 1.8
-}
+### 9. Outcome Measurement
+
+**What:** Measure whether REWIRE actually helped.
+
+**Ownership:** Client (tracking) + Server (persistence)
+
+| Metric | How Measured |
+|--------|-------------|
+| Pre-adaptation accuracy | Question accuracy on chunk before REWIRE |
+| Post-adaptation accuracy | Question accuracy on chunk after REWIRE |
+| Outcome delta | post_accuracy - pre_accuracy |
+| Dwell time change | Compare dwell time before/after adaptation |
+| Help request reduction | Compare help request count before/after |
+
+**Outcome is stored in adaptation history.** This closes the SCALE loop: the system knows whether its adaptation worked.
+
+---
+
+### 10. Caching Strategy
+
+**What:** All expensive AI outputs are cached at upload time.
+
+**Storage:** SQLite (server-side)
+
+| Data | Cached At | Retrieved By |
+|------|-----------|-------------|
+| Structured content graph (sections, concepts) | Upload time | Initial render |
+| Content variants (simplified levels 1–3) | Upload time | REWIRE |
+| Visual descriptions | Upload time | REWIRE or initial render |
+| Comprehension questions | Upload time | Assessment display |
+| Adaptation explanations | REWIRE time | REWIRE banner |
+
+**Cache invalidation:** Not needed for MVP (content is immutable once uploaded).
+
+---
+
+### 11. Failure & Fallback Paths
+
+| Failure | Fallback |
+|---------|----------|
+| PDF extraction fails | Return error, suggest text paste |
+| LLM content structuring fails | Use raw text as single concept, no variants |
+| LLM variant generation fails | Use original text as only variant |
+| LLM question generation fails | Use generic self-assessment questions |
+| Voice STT fails | Show text input fallback |
+| Voice TTS fails | Show text-only content |
+| Signal capture fails | Continue without adaptation |
+| SCALE threshold error | Log error, continue without adaptation |
+| REWIRE cached variant missing | Continue with current content |
+| SQLite write fails | Log error, continue session in memory |
+
+**Philosophy:** Never block the learner. Always degrade gracefully. Log failures for debugging.
+
+---
+
+## Client/Server Ownership Summary
+
+| Component | Client | Server |
+|-----------|--------|--------|
+| Input UI (upload/paste) | ✅ | — |
+| PDF extraction | — | ✅ |
+| Content structuring (LLM) | — | ✅ |
+| Content caching | — | ✅ |
+| Learner profile UI | ✅ | — |
+| Learner profile persistence | — | ✅ |
+| Initial render | ✅ | — |
+| Signal capture | ✅ | — |
+| SCALE engine (signal processing) | ✅ | — |
+| REWIRE rendering | ✅ | — |
+| Cached variant retrieval | ✅ (API call) | ✅ (serve from SQLite) |
+| Voice STT/TTS | ✅ | — |
+| Assessment UI | ✅ | — |
+| Question serving | — | ✅ (from cache) |
+| Outcome measurement | ✅ | — |
+| Progress persistence | — | ✅ |
+
+---
+
+## End-to-End Data Flow
+
 ```
-
----
-
-### Stage 9: Measure Progress (If No Adaptation Needed)
-
-**What it does:** Store progress, provide summary, prepare next content segment
-
-**Client-side vs Server-side:** 100% client-side
-
-**Why:** Progress tracking is local data aggregation.
-
-**Technical details:**
-- Store session metrics in localStorage:
-  ```json
-  {
-    "sessionId": "uuid",
-    "chunksRead": 5,
-    "totalTime": 450000,
-    "questionsAnswered": 15,
-    "questionsCorrect": 12,
-    "adaptationsTriggered": 0
-  }
-  ```
-- Calculate progress percentage
-- Display completion status
-- Option to export progress summary (download JSON)
-- Store for potential future resume (if same device/browser)
-
----
-
-### Stage 10: Explain Adaptation
-
-**What it does:** Communicate to learner why content changed and what changed
-
-**Client-side vs Server-side:** 100% client-side
-
-**Why:** Explanation is static text based on local analysis results.
-
-**Technical details:**
-
-#### Explanation Template:
+User uploads PDF
+      ↓
+[Server] PDF.js extracts text (or Tesseract.js OCR fallback)
+      ↓
+[Server] Deterministic segmentation (sentences, paragraphs)
+      ↓
+[Server] LLM structures content → sections → concepts
+      ↓
+[Server] LLM pre-generates variants (levels 1–3) per concept
+[Server] LLM pre-generates visual descriptions per concept
+[Server] LLM pre-generates questions (3) per concept
+      ↓
+[Server] Cache all outputs → SQLite
+      ↓
+[Server → Client] Return structured content graph + variants
+      ↓
+[Client] Load/create learner profile
+[Client] Select initial variant based on profile.simplificationLevel
+[Client] Apply typography/color from profile
+      ↓
+[Client] Render first chunk → start signal capture
+      ↓
+[Client] Learner reads / listens / answers / uses voice
+      ↓
+[Client] Signals accumulate per chunk
+[Client] SCALE computes struggle score
+      ↓
+[Client] Struggle detected? → REWIRE
+      ↓
+[Client → Server] Request cached variant (if not already loaded)
+      ↓
+[Client] Render adapted content + explanation + adapted question
+      ↓
+[Client] Measure outcome → update learner state
+      ↓
+[Client] SCALE loop continues
 ```
-We've adjusted the next chunk based on how you did with the previous one.
-
-What changed:
-• Shorter paragraphs (fewer sentences per chunk)
-• Simpler vocabulary
-• More white space between lines
-
-Why:
-You scored 40% on the last chunk's questions, which suggests the content may have been too dense. We've simplified it to help you better understand the material.
-
-You can always go back and re-read the previous chunk if you'd like.
-```
-
-**Display:** Modal or inline banner that can be dismissed
-
-**Options:**
-- "Go to next chunk" (accepts adaptation)
-- "Re-read previous chunk" (revert to original adaptation)
-- "Customize settings" (open profile editor)
-
----
-
-### Stage 11: Update Adaptation
-
-**What it does:** Apply newly adapted content to the reader
-
-**Client-side vs Server-side:** 100% client-side
-
-**Why:** Content is already available from Stage 8.
-
-**Technical details:**
-- Replace chunk DOM with new adapted content
-- Reset reading time for new chunk
-- Reset question state (questions are re-displayed)
-- Update progress indicator
-- Log adaptation event for session analytics
-
----
-
-### Stage 12: Store Progress Data
-
-**What it does:** Persist session data for continuity
-
-**Client-side vs Server-side:** 100% client-side
-
-**Why:** localStorage provides persistence without backend.
-
-**Technical details:**
-- Update session object with new metrics
-- Store chunk-level data: adaptation applied, question results, time on task
-- Optional: Send anonymized analytics to telemetry endpoint (opt-in, POST /api/analytics)

@@ -1,138 +1,268 @@
-# PRISM Product Requirements Document
+# PRISM — Product Requirements Document
+
+## Product Name
+
+**PRISM** — Personalized Reader for Intelligent Study Methods
+
+## Tagline
+
+_"The lesson that reshapes itself to how you actually learn."_
+
+## One-Line Pitch
+
+PRISM is an adaptive educational accessibility system that detects when a learner is struggling, visibly restructures the lesson to match how they learn, explains why it adapted, and measures whether the change actually helped.
+
+## 30-Second Pitch
+
+> Imagine a student reading a dense textbook chapter. She re-reads the same paragraph three times. A normal tool doesn't notice. PRISM does.
+>
+> PRISM captures that signal — the re-reads, the slow pace, the wrong answers — and runs it through our SCALE engine: Signal, Calibrate, Adapt, Let learner engage, Evaluate.
+>
+> When struggle is detected, PRISM triggers REWIRE: the content visibly restructures itself — shorter sentences, a visual explanation, different chunking — and a message appears: *"We noticed repeated re-reads, so we switched to shorter chunks and a visual explanation."*
+>
+> Then the next question adapts too. And we measure: did comprehension improve?
+>
+> This isn't a chatbot. This isn't "make the text bigger." This is a closed behavioral adaptation loop that continuously optimizes for how this student actually learns.
+
+---
 
 ## Problem Statement
 
-**Realistic Student Scenario:**
+### The Core Problem
 
-Maya is a 10th-grade student with dyslexia who struggles to read dense academic texts. In her history class, she's assigned a 12-page chapter on the Industrial Revolution. The textbook uses small, narrow-spaced font with complex vocabulary and long paragraphs. Maya starts reading but quickly loses her place, skips lines, and misreads words. After 10 minutes, she's only absorbed one paragraph and feels overwhelmed. She asks her teacher for help, but the teacher is working with three other students. Maya closes the document in frustration, convinced she's "just not good at reading." The content hasn't changed, but Maya's experience of it—her ability to access, process, and retain the material—has failed her.
+Educational content is static. Learners are not. When a student struggles with dense material, existing tools offer only:
 
-**The core problem:** Adaptive learning tools that exist today either:
-- Provide static formatting adjustments (fonts, colors) but don't simplify content or respond to actual struggle
-- Rely on AI chatbots that require users to prompt, remember context, and reconstruct documents manually
-- Don't create a persistent learner profile that evolves with demonstrated needs
-- Don't loop back to re-adapt content when behavioral signals indicate deeper challenges
+- **Static formatting** (larger fonts, different colors) — doesn't simplify or restructure content
+- **AI chatbots** — require the student to prompt, remember context, and reconstruct documents manually
+- **One-shot personalization** — adapt once, never re-evaluate whether it worked
+- **No behavioral feedback loop** — the tool doesn't know if the student is actually struggling
+
+None of these create a **closed adaptation loop** that detects struggle, adapts, explains the adaptation, and measures the outcome.
+
+### Realistic Scenario
+
+Maya is a 10th-grade student with dyslexia. Her history class assigns a 12-page chapter on the Industrial Revolution. The textbook uses small font, narrow spacing, and complex vocabulary. Maya starts reading but loses her place, skips lines, and misreads words. After 10 minutes she's absorbed one paragraph and feels overwhelmed.
+
+**With PRISM:**
+1. Maya uploads the chapter
+2. PRISM extracts and structures the content into a concept graph
+3. Based on her dyslexia profile, PRISM renders an initial personalized version
+4. As Maya reads, PRISM tracks her behavior — she re-reads paragraph 3 twice
+5. SCALE detects elevated struggle: reread_count=2, dwell_time exceeds baseline
+6. REWIRE activates: the content visibly restructures into shorter chunks with a visual explanation
+7. A message appears: *"We noticed you re-read this section, so we broke it into smaller pieces and added a diagram description."*
+8. The next comprehension question is adapted to test the specific concept she struggled with
+9. Maya answers correctly — PRISM records the outcome and continues with the adapted approach
+
+---
 
 ## Target Users
 
-- **Primary:** Students in grades 6-12 with identified learning differences (dyslexia, visual impairments, ADHD, processing speed deficits) or undiagnosed struggles with reading comprehension
-- **Secondary:** Educators (teachers, tutors, special education staff) who need to quickly adapt materials for multiple students with varying needs
-- **Tertiary:** Parents supporting at-home learning, homeschooling co-ops, and learning specialists
+### Primary
+Students in grades 6–12 with identified learning differences (dyslexia, visual impairments, ADHD, processing speed differences) or undiagnosed struggles with reading comprehension.
 
-## Product Name & Tagline
+### Secondary
+Educators (teachers, tutors, special education staff) who need to quickly adapt materials for multiple students with varying needs.
 
-**PRISM:** Personalized Reader for Intelligent Study Methods
+### Tertiary
+Parents supporting at-home learning, homeschooling co-ops, and learning specialists.
 
-*Tagline: Content that adapts to you—not the other way around.*
+---
 
-## One-Paragraph Pitch
+## User Personas
 
-PRISM is an adaptive learning reader that transforms dense educational content into personalized learning experiences that evolve with the student. Students paste text or upload PDFs, select an accessibility profile (dyslexia, low-vision, cognitive-load, or custom), and PRISM immediately generates a personalized version with simplified vocabulary, optimized typography, strategic chunking, and synced read-aloud with highlighting. What makes PRISM different is its behavior-driven re-adaptation loop: as the student reads and interacts, the system detects struggle signals (slow reading, re-reading, skipped sections, incorrect answers) and automatically decides whether to further simplify or restructure the content—then explains exactly what changed and why—before looping back to the next content segment. This creates a continuous, self-correcting learning experience that doesn't just personalize once but continuously optimizes for the learner's actual behavior in real time.
+### Persona 1: Maya (Primary User — Student with Dyslexia)
+- **Age:** 15, 10th grade
+- **Learning difference:** Dyslexia
+- **Pain points:** Dense paragraphs, small fonts, complex vocabulary, loses her place when reading
+- **Goals:** Understand history content without feeling overwhelmed, pass comprehension checks
+- **Tech comfort:** Uses Chrome daily, familiar with TTS tools
+- **PRISM usage:** Uploads textbook chapters, uses voice commands ("Read this", "Explain it simply"), relies on REWIRE to restructure content when she struggles
 
-## Core Value Proposition
+### Persona 2: Raj (Primary User — Student with Low Vision)
+- **Age:** 13, 8th grade
+- **Learning difference:** Low vision (legally blind)
+- **Pain points:** Standard font sizes unreadable, images without descriptions, poor contrast
+- **Goals:** Access science content independently with high-contrast, large-text, and audio
+- **Tech comfort:** Screen reader user, keyboard navigator
+- **PRISM usage:** High-contrast profile, voice-first interaction, listens to content via TTS, answers questions by voice
 
-**PRISM delivers persistent, behavior-driven personalization that plain AI chatbots cannot:**
+### Persona 3: Ms. Chen (Secondary User — Special Education Teacher)
+- **Age:** 34
+- **Role:** Special education teacher, serves 18 students with varying needs
+- **Pain points:** Manually adapting materials for each student takes hours, no way to know what works
+- **Goals:** Quickly generate accessible versions of curriculum materials, see which adaptations improve comprehension
+- **PRISM usage:** Uploads lesson materials, reviews adaptation outcomes per student profile
 
-1. **Persistent Profile:** Learner preferences and adaptation history are saved across sessions—no re-configuring each time
-2. **Synced Multi-Modal Output:** Text, audio narration, and visual highlighting stay perfectly synchronized
-3. **Zero-Prompt UX:** Students never need to type "simplify this paragraph" or "repeat that" — the system anticipates needs and adapts automatically
-4. **Deterministic + AI Hybrid Reliability:** Core formatting (fonts, spacing, chunking) uses deterministic algorithms; AI is reserved for content-level decisions (simplification, vocabulary replacement, conceptual explanation) with confidence thresholds and fallbacks
-5. **Behavior-Driven Re-Adaptation Loop:** The core differentiator—PRISM doesn't stop after initial personalization. It continuously analyzes how the student interacts (reading time, re-reading patterns, question accuracy) and automatically decides whether to further adapt the content, then explains the change
+### Persona 4: David (Primary User — Student with ADHD)
+- **Age:** 16, 11th grade
+- **Learning difference:** ADHD
+- **Pain points:** Loses focus on long texts, skips sections, rushes through questions
+- **Goals:** Stay engaged through a full chapter, retain key concepts
+- **Tech comfort:** Heavy mobile/desktop user
+- **PRISM usage:** Cognitive-load profile with smaller chunks, benefits from REWIRE when skip-signals detected
 
-## MVP Scope
+---
 
-### MUST BUILD (24 hours)
+## Why Existing Tools Are Insufficient
 
-- **Input Layer:**
-  - Text pasting functionality (max 5000 words per session)
-  - PDF upload and basic text extraction
-  - Manual text segmentation (chunk size control)
+| Tool Type | What It Does | What It Misses |
+|-----------|-------------|----------------|
+| **Font/display adjusters** (e.g., browser extensions) | Change font size, spacing, colors | Don't simplify content, don't detect struggle, don't adapt |
+| **AI chatbots** (e.g., ChatGPT) | Answer questions about content | Require user to prompt, no persistent profile, no behavioral tracking, no structured lesson flow |
+| **Text-to-speech readers** | Read text aloud | Don't restructure content, don't detect comprehension failure |
+| **Readability tools** (e.g., Rewordify) | Replace complex words | One-shot transformation, no feedback loop, no personalization |
+| **LMS accessibility features** | Basic font/contrast settings | Static settings, no behavioral adaptation, no outcome measurement |
 
-- **Learner Profile System:**
-  - Four pre-configured accessibility profiles: Dyslexia, Low Vision, Cognitive Load, Custom
-  - Profile persistence (localStorage)
-  - Basic profile editing (font size, line spacing, color contrast, readability level)
+**PRISM's differentiator:** A closed **SCALE** behavioral loop where the system continuously **detects struggle → adapts content → explains the adaptation → measures the outcome → refines further**.
 
-- **Content Adaptation Engine:**
-  - Typography adjustments: font choice, size, line spacing, letter spacing, text alignment
-  - Content chunking: paragraph length limits, section breaks with headers
-  - Simplified vocabulary layer: replace complex words with simpler synonyms (deterministic dictionary + AI fallback)
-  - Text simplification: shortening sentences, breaking up complex structures (AI-only, with fallback to original)
-  - Read-aloud with synced highlighting: TTS engine synchronized with text highlighting
+---
 
-- **Learner Experience:**
-  - Clean, focused reader interface ( distraction-free reading mode)
-  - Profile selector and customization controls
-  - Play/pause/restart read-aloud controls
-  - Manual chunk navigation (previous/next segment)
-  - Progress indicator (chunk X of Y)
+## Why This Is Adaptive Educational Technology
 
-- **Assessment Integration:**
-  - Three comprehension questions per chunk (multiple choice, true/false)
-  - Basic answer storage (localStorage)
-  - Answer verification against correct answers
+PRISM is NOT:
+- A PDF reformatter
+- An AI chatbot
+- A text-to-speech reader
+- A static accessibility settings panel
 
-- **Feedback Loop (Minimal):**
-  - Track time per chunk, re-read events (select + re-select), question correctness
-  - Simple adaptation trigger: if >50% incorrect on questions OR >30 seconds per chunk average, re-adapt with simplified settings
-  - Simple explanation output: "We simplified the next chunk because you struggled with the previous one"
+PRISM IS:
+- A **behavioral adaptive system** with a closed feedback loop
+- Built on a **structured content representation** (not raw text transformation)
+- Using **deterministic signal processing** and **rule-based adaptation** in the live path
+- Using **cached AI outputs** (not live LLM calls) for content alternatives
+- Providing **visible, explainable adaptation** (REWIRE)
+- **Measuring outcomes** to validate whether adaptation helped
 
-### NICE TO HAVE (If time permits)
+---
 
-- **Input Layer:**
-  - OCR for PDF/image-based document extraction (integration with free OCR API)
-  - URL import (paste article URL, extract main text)
+## Non-Clinical / Non-Diagnostic Positioning
 
-- **Content Adaptation:**
-  - Concept explanations popups (define terms on hover/click)
-  - Visual organizers (timeline, mind map) for complex topics
-  - Audio recording for student responses (oral answers)
+PRISM does NOT:
+- Diagnose learning disabilities or medical conditions
+- Measure cognitive load clinically
+- Provide medical or psychological assessments
+- Store diagnostic information
+- Claim therapeutic outcomes
 
-- **Learner Experience:**
-  - Bookmarking and note-taking
-  - Highlighting with export capability
-  - Keyboard-only navigation for accessibility compliance
-  - Dark/light mode toggle
-  - Progress dashboard with visualizations
+PRISM DOES:
+- Detect **learning signals** (behavioral patterns during reading)
+- Estimate **interaction difficulty** (based on observable behaviors)
+- Compute **struggle estimates** (normalized scores from signals)
+- Measure **comprehension outcomes** (question accuracy before/after adaptation)
+- Use behavioral terminology throughout
 
-- **Feedback Loop:**
-  - Machine learning model that analyzes multiple signals (reading time, re-reading, question accuracy, error patterns) to predict optimal adaptation
-  - Adaptive difficulty curve (easier content → progressively harder based on performance)
-  - Confidence scoring on adaptation decisions with manual override
+---
 
-- **Assessment:**
-  - Open-ended question responses stored
-  - Answer explanations for incorrect responses
-  - Teacher dashboard with class-level analytics (view-only, if backend available)
+## Core Innovation: SCALE + REWIRE
 
-### FUTURE
+### SCALE — The Adaptive Engine
 
-- **Long-term Vision:**
-  - Full backend with user accounts, cloud persistence, progress tracking
-  - Curriculum-aligned adaptation suggestions from educators
-  - Collaborative learning features (study groups with synchronized adaptation)
-  - Mobile app for on-the-go learning
-  - Integration with LMS platforms (Canvas, Google Classroom, Moodle)
-  - Parent portal with progress summaries and adaptation insights
-  - AI tutor that answers questions about content in the reader
-  - Multilingual support with real-time translation + simplified versions
+**S**ignal → **C**alibrate → **A**dapt → **L**et learner engage → **E**valuate
 
-## Out-of-Scope (Explicitly)
+1. **Signal:** Capture learner behavioral signals (dwell time, rereads, scroll-backs, help requests, question accuracy, answer latency, retries, voice help requests)
+2. **Calibrate:** Normalize signals against baselines, compute struggle score
+3. **Adapt:** When struggle threshold is met, select adaptation strategy and retrieve cached content variant
+4. **Let learner engage:** Present adapted content, let learner interact
+5. **Evaluate:** Measure outcome (did comprehension improve?), update learner state, loop continues
 
-These items are **NOT** part of the MVP and should be explicitly avoided during the 24-hour build:
+### REWIRE — The Signature Feature
 
-- **Backend infrastructure:** No user accounts, no database, no cloud storage. All data lives in browser localStorage only.
-- **Payment/monetization:** No subscriptions, no in-app purchases, no billing system.
-- **LMS integration:** No Canvas, Google Classroom, or Moodle integration.
-- **Multi-user collaboration:** No shared notes, no group study, no teacher-student messaging.
-- **Real-time collaboration:** No live co-reading, no shared cursor tracking.
-- **Advanced analytics dashboard:** No charts, graphs, or detailed reporting beyond basic chunk progress and question scores.
-- **Mobile-responsive design:** Prioritize desktop experience. Mobile support is future work.
-- **Video/audio content:** No support for embedding videos, podcasts, or audio-only content.
-- **OCR and image processing:** PDF support is limited to text-based PDFs; no image-to-text conversion.
-- **Speech-to-text:** No voice input for answers or notes.
-- **Real-time collaboration features:** No live co-editing, no shared annotations.
-- **Gamification:** No points, badges, leaderboards, or reward systems.
-- **Real-time LLM calls for every adaptation decision:** Only initial content analysis uses LLM; subsequent adaptations use deterministic rules or cached results.
-- **AI-generated practice questions:** Questions are pre-written or generated once per session, not dynamically on-the-fly per chunk.
-- **Full accessibility audit compliance:** Basic WCAG 2.1 AA compliance attempted, but full compliance (keyboard navigation, screen reader testing, color contrast verification) is future work.
-- **Offline mode:** Browser must be connected for TTS and initial LLM adaptation calls.
+When SCALE detects meaningful struggle, REWIRE activates:
+1. Current content visibly restructures (animation/transition)
+2. "Why I adapted" explanation appears
+3. Next interaction/question changes appropriately
+4. Outcome is measured
+
+---
+
+## MVP Scope (24-Hour Hackathon)
+
+### MUST BUILD
+
+#### Input Layer
+- PDF upload with text extraction (PDF.js)
+- Text paste (max 5000 words)
+- OCR fallback for image-based PDFs (Tesseract.js, best-effort)
+
+#### Content Intelligence (AI — Pre-generation)
+- LLM-powered content structuring: document → sections → concepts
+- Pre-generate alternate explanations per concept (levels 1–3)
+- Pre-generate visual descriptions for concepts
+- Pre-generate comprehension questions per concept
+- Cache all LLM outputs (SQLite)
+- Fact-preservation guardrails
+
+#### Learner Profile
+- Four pre-configured profiles: Dyslexia, Low Vision, Cognitive Load, Custom
+- Profile persistence (SQLite)
+- Profile editing (font, spacing, color, simplification level, voice preferences)
+
+#### Accessible Reader
+- Clean, focused reader interface
+- Deterministic typography/spacing based on profile
+- Chunk navigation (prev/next, progress indicator)
+- Read-aloud with synced word highlighting (Web Speech Synthesis API)
+- Keyboard-navigable
+- Proper ARIA labels and focus management
+
+#### SCALE Adaptive Engine
+- Signal capture: dwell time, reread count, scroll-back, help requests, question accuracy, answer latency, retry count, voice help requests
+- Deterministic signal normalization
+- Struggle score computation
+- Threshold-based adaptation rules
+- Cooldown mechanism (prevent adaptation loops)
+- Adaptation history tracking
+
+#### REWIRE
+- Visible content restructuring with transition animation
+- "Why I adapted" explanation banner
+- Adaptive question selection post-REWIRE
+- Outcome measurement (pre/post accuracy comparison)
+- Learner choice: accept adaptation, revert, or customize
+
+#### Voice Interaction (Day-1)
+- Speech-to-text for voice commands (Web Speech Recognition API)
+- Text-to-speech for content reading (Web Speech Synthesis API)
+- Intent routing: "Read this", "Explain this", "Explain it simply", "Give me an example", "Repeat that", "Answer"
+- Voice quiz answering
+- Voice signals fed into SCALE engine
+- Text fallbacks when voice fails
+
+#### Assessment
+- 3 comprehension questions per concept (pre-generated)
+- Multiple choice and true/false
+- Answer verification with explanations
+- Adaptive question after REWIRE
+
+### NICE TO HAVE (If Time Permits)
+- Concept explanation popups (hover/click)
+- Bookmarking and note-taking
+- Dark/light mode toggle
+- Progress dashboard with visualizations
+- Answer explanations for incorrect responses
+- Synced word highlighting during TTS playback
+- Playback speed control for TTS
+
+### FUTURE SCOPE
+- Full backend with user accounts and cloud persistence
+- Curriculum-aligned adaptation suggestions from educators
+- Mobile-responsive design
+- LMS integration (Canvas, Google Classroom, Moodle)
+- Parent portal with progress summaries
+- Multilingual support
+- Long-term learner modeling across sessions
+- Advanced analytics dashboard
+
+### EXPLICITLY OUT OF SCOPE
+- **No chatbot or avatar** — PRISM is not a conversational agent
+- **No gamification** — no points, badges, leaderboards
+- **No native mobile app** — web-only for MVP
+- **No LMS integration** — standalone application
+- **No custom model training** — use existing LLM with prompt engineering
+- **No medical/diagnostic claims** — behavioral terminology only
+- **No microservices** — monolithic backend for MVP
+- **No payment/monetization** — no subscriptions or billing
+- **No real-time collaboration** — single-user sessions
+- **No video/audio content** — text and PDF only
+- **No live LLM in adaptation hot path** — cached alternatives only

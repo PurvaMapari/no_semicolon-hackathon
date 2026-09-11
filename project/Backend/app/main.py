@@ -8,33 +8,41 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import FRONTEND_ORIGIN
 from app.schemas import (
+    AdaptiveQuizRequest,
+    AdaptiveQuizResponse,
     PipelineRequest,
     LessonQuestionRequest,
     LessonTestRequest,
     PreferenceRequest,
     QuizRequest,
+    RewireRequest,
+    RewireResponse,
     QuizEvaluationRequest,
     TransformRequest,
+    VisualCardResponse,
     VisualRequest,
     VoiceRequest,
 )
 from app.services.extraction import (
+    extract_source_images_from_pdf,
     extract_text_and_tables_from_pdf,
     extract_text_from_document,
     extract_text_from_image,
 )
 from app.services.learning import (
     chunks_for_quiz,
+    generate_adaptive_quiz,
     generate_quiz,
     evaluate_quiz_answer,
     generate_lesson_test,
     parse_user_preference,
+    rewire_content,
     run_pipeline,
     transform_text,
     voice_ask,
     answer_lesson_question,
 )
-from app.services.visuals import generate_visual_spec, render_visual_spec
+from app.services.visuals import render_full_visual_card
 
 
 app = FastAPI(
@@ -155,12 +163,48 @@ def ask_lesson_question(request: LessonQuestionRequest) -> Dict[str, str]:
         _raise_http(error)
 
 
-@app.post("/api/visual")
-def visual(request: VisualRequest) -> Dict[str, Any]:
+@app.post("/api/visual", response_model=VisualCardResponse)
+def visual(request: VisualRequest) -> VisualCardResponse:
+    """
+    Generate a full PRISM visual card for the supplied lesson text.
+
+    Flow:
+      1. If source_pdf_path was supplied, attempt to extract embedded images
+         from the PDF so the frontend can display source figures first.
+      2. Call render_full_visual_card() which runs the LLM spec + SVG renderer.
+      3. Return a VisualCardResponse with svg_html, source_images, explanation,
+         key_takeaways and metadata — everything the frontend needs in one call.
+    """
     try:
-        spec = generate_visual_spec(request.lesson_text, request.profile)
-        image = render_visual_spec(spec, request.profile) if request.include_image else None
-        return {"spec": spec, "image_base64": image}
+        # Step 1 — source image extraction (best-effort, never crashes the route)
+        source_images: list = []
+        if request.source_pdf_path:
+            try:
+                source_images = extract_source_images_from_pdf(request.source_pdf_path)
+            except Exception:
+                pass  # silently degrade — visual card still works without PDF images
+
+        # Step 2 — generate spec + render SVG
+        card = render_full_visual_card(
+            lesson_text=request.lesson_text,
+            profile=request.profile,
+            source_images=source_images,
+        )
+
+        # Step 3 — return typed response
+        return VisualCardResponse(
+            source=card.get("source", "prism"),
+            visual_type=card.get("visual_type", "none"),
+            title=card.get("title", ""),
+            subtitle=card.get("subtitle", ""),
+            explanation=card.get("explanation", ""),
+            key_takeaways=card.get("key_takeaways", []),
+            why_visual=card.get("why_visual", ""),
+            svg_html=card.get("svg_html"),
+            source_images=card.get("source_images", []),
+            spec=card.get("spec", {}),
+            error=card.get("error"),
+        )
     except Exception as error:
         _raise_http(error)
 
@@ -209,5 +253,56 @@ def pipeline(request: PipelineRequest) -> Dict[str, Any]:
 def normalized_chunks(transformed: Dict[str, Any]) -> Dict[str, Any]:
     try:
         return {"chunks": chunks_for_quiz(transformed)}
+    except Exception as error:
+        _raise_http(error)
+
+
+# ── REWIRE — Content Adaptation ───────────────────────────────────────────────
+
+
+@app.post("/api/rewire", response_model=RewireResponse)
+def rewire(request: RewireRequest) -> RewireResponse:
+    """
+    Adapt (re-explain) content after the SCALE engine triggers REWIRE.
+
+    Called when the frontend detects that the learner's struggle score
+    exceeds the adaptation threshold. Returns simplified content,
+    an optional visual description, and a "why I adapted" explanation.
+    """
+    try:
+        result = rewire_content(
+            chunk_text=request.chunk_text,
+            profile=request.profile,
+            variant_level=request.variant_level,
+            actions=request.actions,
+            struggle_explanation=request.struggle_explanation,
+        )
+        return RewireResponse(**result)
+    except Exception as error:
+        _raise_http(error)
+
+
+# ── Adaptive Quiz ─────────────────────────────────────────────────────────────
+
+
+@app.post("/api/adaptive-quiz", response_model=AdaptiveQuizResponse)
+def adaptive_quiz(request: AdaptiveQuizRequest) -> AdaptiveQuizResponse:
+    """
+    Generate a quiz question adapted to the learner's current struggle state.
+
+    After REWIRE, this endpoint generates an easier question focused on the
+    concept the learner struggled with. The difficulty parameter controls
+    complexity: 'easier' (post-struggle), 'same' (normal), 'harder' (mastered).
+    """
+    try:
+        result = generate_adaptive_quiz(
+            chunk_text=request.chunk_text,
+            profile=request.profile,
+            difficulty=request.difficulty,
+            struggle_score=request.struggle_score,
+            previous_question=request.previous_question,
+            previous_answer_correct=request.previous_answer_correct,
+        )
+        return AdaptiveQuizResponse(**result)
     except Exception as error:
         _raise_http(error)
