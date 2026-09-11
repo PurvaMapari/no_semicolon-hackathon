@@ -3,7 +3,12 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+REPOSITORY_DIR = BACKEND_DIR.parents[1]
+
+# Support both project/Backend/.env and the repository-level .env.
+load_dotenv(REPOSITORY_DIR / ".env")
+load_dotenv(BACKEND_DIR / ".env", override=True)
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY") or os.getenv("GROQ_KEY")
 GROQ_MODEL = os.getenv("GROQ_MODEL")

@@ -68,4 +68,20 @@ export function generateQuiz(chunk, profile) {
   });
 }
 
+export function evaluateQuizAnswer(payload) {
+  return request("/api/quiz/evaluate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function generateLessonTest(text, profile, questionCount = 5) {
+  return request("/api/test", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, profile, question_count: questionCount }),
+  });
+}
+
 export { API_BASE_URL };
