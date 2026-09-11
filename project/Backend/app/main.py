@@ -12,10 +12,12 @@ from app.schemas import (
     AdaptiveQuizResponse,
     PipelineRequest,
     LessonQuestionRequest,
+    LessonTestRequest,
     PreferenceRequest,
     QuizRequest,
     RewireRequest,
     RewireResponse,
+    QuizEvaluationRequest,
     TransformRequest,
     VisualCardResponse,
     VisualRequest,
@@ -31,6 +33,8 @@ from app.services.learning import (
     chunks_for_quiz,
     generate_adaptive_quiz,
     generate_quiz,
+    evaluate_quiz_answer,
+    generate_lesson_test,
     parse_user_preference,
     rewire_content,
     run_pipeline,
@@ -209,6 +213,30 @@ def visual(request: VisualRequest) -> VisualCardResponse:
 def quiz(request: QuizRequest) -> Dict[str, Any]:
     try:
         return generate_quiz(request.chunk, request.profile)
+    except Exception as error:
+        _raise_http(error)
+
+
+@app.post("/api/quiz/evaluate")
+def evaluate_quiz(request: QuizEvaluationRequest) -> Dict[str, Any]:
+    try:
+        return evaluate_quiz_answer(
+            request.question,
+            request.options,
+            request.correct_answer,
+            request.selected_answer,
+            request.explanation,
+            request.section_index,
+        )
+    except Exception as error:
+        _raise_http(error)
+
+
+@app.post("/api/test")
+def lesson_test(request: LessonTestRequest) -> Dict[str, Any]:
+    try:
+        questions = generate_lesson_test(request.text, request.profile, request.question_count)
+        return {"questions": questions, "question_count": len(questions)}
     except Exception as error:
         _raise_http(error)
 

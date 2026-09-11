@@ -1,11 +1,19 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import {
+  NavLink,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import * as I from "lucide-react";
 import {
   askLessonQuestion,
   detectProfile,
   extractDocument,
+  evaluateQuizAnswer,
   generateQuiz,
+  generateLessonTest,
   generateVisual,
   transformText,
   rewireContent,
@@ -66,12 +74,9 @@ const GOLDEN_PATH_ADAPTIVE_QUIZ = {
 };
 
 const SessionContext = createContext(null);
+export const useSession = () => useContext(SessionContext);
 
-function useSession() {
-  return useContext(SessionContext);
-}
-
-function SessionProvider({ children }) {
+export function SessionProvider({ children }) {
   const [session, setSession] = useState({
     fileName: "",
     text: "",
@@ -83,25 +88,22 @@ function SessionProvider({ children }) {
     visual: null,
     completed: 0,
     completedSections: [],
-    error: "",
-    // SCALE & REWIRE additions:
+    practiceReport: { answered: [], failed: [], masteredSections: [] },
+    wholeTest: null,
+    error: null,
     signals: createSignalState(),
     sessionMeta: createSessionMeta(),
-    rewireState: {
-      active: false,
-      adaptedContent: null,
-      evaluation: null,
-      chunkIndex: 0,
-    },
+    rewireState: { active: false, adaptedContent: null, evaluation: null, chunkIndex: 0 },
     latestOutcome: null,
   });
+
   const [busy, setBusy] = useState("");
 
-  async function run(action, callback) {
-    setBusy(action);
-    setSession((current) => ({ ...current, error: "" }));
+  async function run(name, fn) {
+    setBusy(name);
+    setSession((current) => ({ ...current, error: null }));
     try {
-      return await callback();
+      return await fn();
     } catch (error) {
       setSession((current) => ({ ...current, error: error.message }));
       return null;
@@ -111,11 +113,12 @@ function SessionProvider({ children }) {
   }
 
   async function upload(file) {
+    if (!file) return null;
     return run("extract", async () => {
       const result = await extractDocument(file);
       setSession((current) => ({
         ...current,
-        fileName: result.filename || file.name,
+        fileName: file.name,
         text: result.text || "",
         wordCount: result.word_count || 0,
         tables: result.tables || [],
@@ -124,6 +127,8 @@ function SessionProvider({ children }) {
         visual: null,
         completed: 0,
         completedSections: [],
+        practiceReport: { answered: [], failed: [], masteredSections: [] },
+        wholeTest: null,
         signals: createSignalState(),
         sessionMeta: createSessionMeta(),
         rewireState: { active: false, adaptedContent: null, evaluation: null, chunkIndex: 0 },
@@ -144,6 +149,8 @@ function SessionProvider({ children }) {
       visual: null,
       completed: 0,
       completedSections: [],
+      practiceReport: { answered: [], failed: [], masteredSections: [] },
+      wholeTest: null,
       signals: createSignalState(),
       sessionMeta: createSessionMeta(),
       rewireState: { active: false, adaptedContent: null, evaluation: null, chunkIndex: 0 },
@@ -163,6 +170,8 @@ function SessionProvider({ children }) {
       visual: null,
       completed: 0,
       completedSections: [],
+      practiceReport: { answered: [], failed: [], masteredSections: [] },
+      wholeTest: null,
       signals: createSignalState(),
       sessionMeta: createSessionMeta(),
       rewireState: { active: false, adaptedContent: null, evaluation: null, chunkIndex: 0 },
@@ -171,13 +180,21 @@ function SessionProvider({ children }) {
   }
 
   async function chooseProfile(profile) {
-    setSession((current) => ({ ...current, profile, transformed: null, quizzes: [], visual: null }));
+    setSession((current) => ({
+      ...current,
+      profile,
+      transformed: null,
+      quizzes: [],
+      visual: null,
+    }));
   }
 
   async function detect(text) {
     return run("profile", async () => {
       const result = await detectProfile(text);
-      await chooseProfile(result.profile);
+      if (result?.profile) {
+        setSession((current) => ({ ...current, profile: result.profile }));
+      }
       return result;
     });
   }
@@ -186,7 +203,12 @@ function SessionProvider({ children }) {
     if (!session.text.trim()) return null;
     return run("transform", async () => {
       const result = await transformText(session.text, session.profile);
-      setSession((current) => ({ ...current, transformed: result, quizzes: [], visual: null }));
+      setSession((current) => ({
+        ...current,
+        transformed: result,
+        quizzes: [],
+        visual: null,
+      }));
       return result;
     });
   }
@@ -194,8 +216,37 @@ function SessionProvider({ children }) {
   async function getQuiz(chunk) {
     return run("quiz", async () => {
       const result = await generateQuiz(chunk, session.profile);
-      setSession((current) => ({ ...current, quizzes: [...current.quizzes, result] }));
+      setSession((current) => ({
+        ...current,
+        quizzes: [...current.quizzes, result],
+      }));
       return result;
+    });
+  }
+
+  async function evaluateAnswer(payload) {
+    return run("evaluate", async () => {
+      const result = await evaluateQuizAnswer(payload);
+      setSession((current) => {
+        const answered = [...current.practiceReport.answered, result];
+        const failed = answered.filter((item) => !item.is_correct);
+        const masteredSections = result.is_correct
+          ? [...new Set([...current.practiceReport.masteredSections, result.section_index])]
+          : current.practiceReport.masteredSections;
+        return {
+          ...current,
+          practiceReport: { answered, failed, masteredSections },
+        };
+      });
+      return result;
+    });
+  }
+
+  async function getWholeTest() {
+    return run("test", async () => {
+      const result = await generateLessonTest(session.text, session.profile, 5);
+      setSession((current) => ({ ...current, wholeTest: result.questions }));
+      return result.questions;
     });
   }
 
@@ -225,7 +276,11 @@ function SessionProvider({ children }) {
     setSession((current) => {
       const completedSections = current.completedSections || [];
       if (completedSections.includes(sectionIndex)) return current;
-      return { ...current, completed: current.completed + 1, completedSections: [...completedSections, sectionIndex] };
+      return {
+        ...current,
+        completed: current.completed + 1,
+        completedSections: [...completedSections, sectionIndex],
+      };
     });
   }
 
@@ -257,13 +312,20 @@ function SessionProvider({ children }) {
       const evaluation = evaluateSignals(strugglingSignals, session.sessionMeta);
 
       let adaptedData = null;
-      const currentChunk = session.transformed?.chunks?.[2] || session.transformed?.text || session.text;
+      const currentChunk =
+        session.transformed?.chunks?.[2] ||
+        session.transformed?.text ||
+        session.text;
       try {
         adaptedData = await rewireContent({
           chunkText: currentChunk,
           profile: session.profile,
           variantLevel: evaluation.adaptationStrategy?.newVariantLevel ?? 2,
-          actions: evaluation.adaptationStrategy?.additionalActions ?? ["increase_simplification", "reduce_chunk_size", "add_visual_description"],
+          actions: evaluation.adaptationStrategy?.additionalActions ?? [
+            "increase_simplification",
+            "reduce_chunk_size",
+            "add_visual_description",
+          ],
           struggleExplanation: evaluation.explanation,
         });
       } catch (err) {
@@ -273,7 +335,9 @@ function SessionProvider({ children }) {
       const updatedMeta = applyAdaptation(session.sessionMeta, evaluation);
       updatedMeta.preAccuracy = 0.0;
       if (updatedMeta.adaptationHistory.length > 0) {
-        updatedMeta.adaptationHistory[updatedMeta.adaptationHistory.length - 1].preAccuracy = 0.0;
+        updatedMeta.adaptationHistory[
+          updatedMeta.adaptationHistory.length - 1
+        ].preAccuracy = 0.0;
       }
 
       setSession((current) => ({
@@ -301,7 +365,8 @@ function SessionProvider({ children }) {
           profile: session.profile,
           difficulty: "easier",
           struggleScore: session.rewireState.evaluation?.struggleScore || 0.76,
-          previousQuestion: "How did cloth production change in the Industrial Revolution?",
+          previousQuestion:
+            "How did cloth production change in the Industrial Revolution?",
           previousAnswerCorrect: false,
         });
       } catch (err) {
@@ -317,7 +382,11 @@ function SessionProvider({ children }) {
 
   function recordQuizAnswerAction(isCorrect, latencyMs = 5000) {
     setSession((current) => {
-      const updatedSignals = recordQuizAnswer(current.signals, isCorrect, latencyMs);
+      const updatedSignals = recordQuizAnswer(
+        current.signals,
+        isCorrect,
+        latencyMs
+      );
       let updatedMeta = current.sessionMeta;
       let outcome = current.latestOutcome;
 
@@ -354,6 +423,8 @@ function SessionProvider({ children }) {
         detect,
         adapt,
         getQuiz,
+        evaluateAnswer,
+        getWholeTest,
         getVisual,
         ask,
         completeChunk,
@@ -375,7 +446,10 @@ function SessionProvider({ children }) {
 
 function Header({ section }) {
   const { session } = useSession();
-  const struggle = evaluateSignals(session.signals, session.sessionMeta).struggleScore;
+  const struggle = evaluateSignals(
+    session.signals,
+    session.sessionMeta
+  ).struggleScore;
   return (
     <header className="topbar">
       <div className="brand">
@@ -386,7 +460,10 @@ function Header({ section }) {
         </div>
       </div>
       {session.rewireState.active && (
-        <div className="rewire-tag" style={{ marginLeft: "auto", marginRight: 8 }}>
+        <div
+          className="rewire-tag"
+          style={{ marginLeft: "auto", marginRight: 8 }}
+        >
           ⚡ REWIRED
         </div>
       )}
@@ -431,7 +508,16 @@ function Layout({ children, section }) {
 function ErrorNotice() {
   const { session } = useSession();
   return session.error ? (
-    <div style={{ background: "#fff0f0", color: "#a12929", padding: 10, borderRadius: 8, marginTop: 12, fontSize: 12 }}>
+    <div
+      style={{
+        background: "#fff0f0",
+        color: "#a12929",
+        padding: 10,
+        borderRadius: 8,
+        marginTop: 12,
+        fontSize: 12,
+      }}
+    >
       {session.error}
     </div>
   ) : null;
@@ -458,7 +544,14 @@ function Upload() {
             <div className="golden-badge">
               <I.Sparkles size={12} /> Golden-Path Demo
             </div>
-            <div style={{ fontWeight: 800, fontSize: 13, marginTop: 4, color: "#1e1b4b" }}>
+            <div
+              style={{
+                fontWeight: 800,
+                fontSize: 13,
+                marginTop: 4,
+                color: "#1e1b4b",
+              }}
+            >
               The Industrial Revolution
             </div>
             <div style={{ fontSize: 11, color: "#64748b" }}>
@@ -477,10 +570,19 @@ function Upload() {
           </button>
         </div>
 
-        <section className="card" style={{ marginTop: 10, padding: 17, background: "#f0f1ff", border: 0 }}>
+        <section
+          className="card"
+          style={{
+            marginTop: 15,
+            padding: 17,
+            background: "#f0f1ff",
+            border: 0,
+          }}
+        >
           <b style={{ fontSize: 16 }}>Add learning material</b>
           <p style={{ fontSize: 12, lineHeight: 1.6, marginBottom: 0 }}>
-            Upload a document or paste a lesson. The backend extracts and prepares it for your learning profile.
+            Upload a document or paste a lesson. The backend extracts and
+            prepares it for your learning profile.
           </p>
         </section>
 
@@ -551,7 +653,9 @@ function Upload() {
             <div className="progressbar" style={{ marginTop: 8 }}>
               <div
                 className="progressfill"
-                style={{ width: busy === "extract" ? "55%" : ready ? "100%" : "0%" }}
+                style={{
+                  width: busy === "extract" ? "55%" : ready ? "100%" : "0%",
+                }}
               />
             </div>
             {session.text && (
@@ -589,8 +693,69 @@ function Profile() {
   const { session, busy, chooseProfile, detect, adapt } = useSession();
   const navigate = useNavigate();
   const [description, setDescription] = useState("");
-  const cards = [["dyslexia", "Shorter sentences, clearer wording, and less visual crowding."], ["cognitive_load", "Digestible chunks with one idea at a time."], ["low_vision", "High-contrast display guidance and larger readable text."]];
-  return <Layout section="Profile"><main className="page"><div className="eyebrow"><b>Step 2 of 3</b><span>Choose your learning mode</span></div><h1 className="page-title">How should this lesson feel?</h1><div className="profile-grid">{cards.map(([profile, descriptionText]) => <button key={profile} className={`profile-option ${session.profile === profile ? "active" : ""}`} onClick={() => chooseProfile(profile)}><span className="radio" /> <span><b>{PROFILE_LABELS[profile]}</b><small>{descriptionText}</small></span></button>)}</div><section className="card" style={{ marginTop: 15, padding: 14 }}><b>Describe your needs</b><textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="For example: long paragraphs are hard for me to follow" style={{ width: "100%", minHeight: 70, marginTop: 9 }} /><button className="secondary-action" disabled={!description.trim() || Boolean(busy)} onClick={() => detect(description)}>Detect profile</button></section><ErrorNotice /><button className="primary-action" disabled={!session.text || Boolean(busy)} onClick={async () => { await adapt(); navigate("/learn"); }} style={{ marginTop: 15 }}>{busy === "transform" ? "Adapting lesson..." : "Transform lesson"}<I.Sparkles size={16} /></button></main></Layout>;
+  const cards = [
+    [
+      "dyslexia",
+      "Shorter sentences, clearer wording, and less visual crowding.",
+    ],
+    ["cognitive_load", "Digestible chunks with one idea at a time."],
+    ["low_vision", "High-contrast display guidance and larger readable text."],
+  ];
+  return (
+    <Layout section="Profile">
+      <main className="page">
+        <div className="eyebrow">
+          <b>Step 2 of 3</b>
+          <span>Choose your learning mode</span>
+        </div>
+        <h1 className="page-title">How should this lesson feel?</h1>
+        <div className="profile-grid">
+          {cards.map(([profile, descriptionText]) => (
+            <button
+              key={profile}
+              className={`profile-option ${session.profile === profile ? "active" : ""}`}
+              onClick={() => chooseProfile(profile)}
+            >
+              <span className="radio" />{" "}
+              <span>
+                <b>{PROFILE_LABELS[profile]}</b>
+                <small>{descriptionText}</small>
+              </span>
+            </button>
+          ))}
+        </div>
+        <section className="card" style={{ marginTop: 15, padding: 14 }}>
+          <b>Describe your needs</b>
+          <textarea
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder="For example: long paragraphs are hard for me to follow"
+            style={{ width: "100%", minHeight: 70, marginTop: 9 }}
+          />
+          <button
+            className="secondary-action"
+            disabled={!description.trim() || Boolean(busy)}
+            onClick={() => detect(description)}
+          >
+            Detect profile
+          </button>
+        </section>
+        <ErrorNotice />
+        <button
+          className="primary-action"
+          disabled={!session.text || Boolean(busy)}
+          onClick={async () => {
+            await adapt();
+            navigate("/learn");
+          }}
+          style={{ marginTop: 15 }}
+        >
+          {busy === "transform" ? "Adapting lesson..." : "Transform lesson"}
+          <I.Sparkles size={16} />
+        </button>
+      </main>
+    </Layout>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -628,7 +793,6 @@ function VisualCard({ visual, onReadAloud }) {
 
   const meta = VTYPE_META[visual_type] || VTYPE_META.none;
 
-  // ── error state ──────────────────────────────────────────────────────────
   if (error) {
     return (
       <section style={styles.card}>
@@ -640,7 +804,6 @@ function VisualCard({ visual, onReadAloud }) {
     );
   }
 
-  // ── no visual needed ─────────────────────────────────────────────────────
   if (
     visual_type === "none" &&
     !svg_html &&
@@ -664,7 +827,6 @@ function VisualCard({ visual, onReadAloud }) {
 
   return (
     <section style={styles.card} aria-label="Visual explanation">
-      {/* ── HEADER ── */}
       <div style={styles.cardHeader}>
         <div style={{ flex: 1 }}>
           <div style={styles.sourceBadge(source)}>
@@ -679,7 +841,6 @@ function VisualCard({ visual, onReadAloud }) {
         </div>
       </div>
 
-      {/* ── HIGH QUALITY EDUCATIONAL INFOGRAPHIC OR SOURCE VISUAL ── */}
       <VisualInfographic
         spec={spec}
         sourceImages={source_images}
@@ -687,10 +848,8 @@ function VisualCard({ visual, onReadAloud }) {
         onReadAloud={onReadAloud}
       />
 
-      {/* ── DIVIDER ── */}
       <div style={styles.divider} />
 
-      {/* ── UNDERSTAND IT ── */}
       {explanation && (
         <div style={styles.explainBlock}>
           <div style={styles.blockLabel}>💡 Understand it</div>
@@ -698,7 +857,6 @@ function VisualCard({ visual, onReadAloud }) {
         </div>
       )}
 
-      {/* ── KEY TAKEAWAYS ── */}
       {key_takeaways.length > 0 && (
         <div style={styles.takeawayBlock}>
           <div style={styles.blockLabel}>📌 Key takeaways</div>
@@ -710,7 +868,6 @@ function VisualCard({ visual, onReadAloud }) {
         </div>
       )}
 
-      {/* ── WHY THIS VISUAL ── */}
       {why_visual && (
         <div style={styles.whyBlock}>
           <span style={{ fontWeight: 600 }}>Why this infographic? </span>
@@ -718,7 +875,6 @@ function VisualCard({ visual, onReadAloud }) {
         </div>
       )}
 
-      {/* ── READ ALOUD ── */}
       {explanation && (
         <button
           style={styles.readBtn}
@@ -731,7 +887,6 @@ function VisualCard({ visual, onReadAloud }) {
   );
 }
 
-// Inline style helpers kept close to the component for readability
 const styles = {
   card: {
     background: "#fff",
@@ -781,66 +936,6 @@ const styles = {
     borderRadius: 10,
     padding: "6px 10px",
     flexShrink: 0,
-  },
-  sourceImgWrap: {
-    margin: "14px 18px 0",
-    borderRadius: 10,
-    overflow: "hidden",
-    border: "1px solid #e5e7eb",
-    background: "#f9fafb",
-  },
-  sourceImg: {
-    width: "100%",
-    display: "block",
-    objectFit: "contain",
-    maxHeight: 320,
-  },
-  imgNav: {
-    display: "flex",
-    justifyContent: "center",
-    gap: 6,
-    padding: "8px 0",
-  },
-  imgDot: (active) => ({
-    width: 8,
-    height: 8,
-    borderRadius: "50%",
-    border: "none",
-    cursor: "pointer",
-    background: active ? "#4f46e5" : "#d1d5db",
-    padding: 0,
-  }),
-  svgWrap: {
-    margin: "14px 18px 0",
-    borderRadius: 10,
-    overflow: "hidden",
-    border: "1px solid #e5e7eb",
-    background: "#fafafa",
-  },
-  nodeDetail: {
-    position: "relative",
-    margin: "10px 18px 0",
-    background: "#eff6ff",
-    border: "1px solid #bfdbfe",
-    borderRadius: 10,
-    padding: "12px 36px 12px 14px",
-  },
-  nodeDetailClose: {
-    position: "absolute",
-    top: 8,
-    right: 10,
-    background: "none",
-    border: "none",
-    cursor: "pointer",
-    fontSize: 13,
-    color: "#6b7280",
-    padding: 0,
-  },
-  tapHint: {
-    margin: "6px 18px 0",
-    fontSize: 10,
-    color: "#9ca3af",
-    fontStyle: "italic",
   },
   divider: {
     height: 1,
@@ -972,7 +1067,6 @@ function Learn() {
 
   const evaluation = evaluateSignals(session.signals, session.sessionMeta);
   const struggleScore = evaluation.struggleScore;
-  const isDyslexia = session.profile === "dyslexia";
   const lessonClass =
     transformed?.profile === "dyslexia"
       ? "dyslexia-lesson"
@@ -1344,6 +1438,8 @@ function Practice() {
     session,
     busy,
     getQuiz,
+    evaluateAnswer,
+    getWholeTest,
     getAdaptiveQuizAction,
     recordQuizAnswerAction,
     completeChunk,
@@ -1355,42 +1451,52 @@ function Practice() {
     session.transformed?.profile === "cognitive_load"
       ? session.transformed.chunks
       : [session.transformed?.text || session.text];
-  const [quiz, setQuiz] = useState(null);
-  const [selected, setSelected] = useState("");
-  const [submitted, setSubmitted] = useState(false);
-  const chunk = chunks[0] || "";
 
   const isRewireActive = session.rewireState.active;
+  const chunk = chunks[0] || "";
 
-  async function loadQuiz() {
-    if (isRewireActive) {
-      const result = await getAdaptiveQuizAction(chunk);
-      if (result) {
-        setQuiz(result);
-        setSelected("");
-        setSubmitted(false);
-      }
-    } else {
-      const result = await getQuiz(chunk);
-      if (result) {
-        setQuiz(result);
-        setSelected("");
-        setSubmitted(false);
-      }
+  // ── REWIRE Adaptive Quiz State ──
+  const [adaptiveQuiz, setAdaptiveQuiz] = useState(null);
+  const [adaptiveSelected, setAdaptiveSelected] = useState("");
+  const [adaptiveSubmitted, setAdaptiveSubmitted] = useState(false);
+
+  // ── Mastery Practice State ──
+  const [sectionIndex, setSectionIndex] = useState(0);
+  const [quiz, setQuiz] = useState(null);
+  const [selected, setSelected] = useState("");
+  const [report, setReport] = useState(null);
+
+  // ── Whole-Lesson Test State ──
+  const [testIndex, setTestIndex] = useState(0);
+  const [testAnswers, setTestAnswers] = useState([]);
+  const [testReport, setTestReport] = useState(null);
+
+  const sectionText = chunks[sectionIndex] || "";
+  const allSectionsMastered =
+    chunks.length > 0 &&
+    chunks.every((_, index) =>
+      session.practiceReport.masteredSections.includes(index)
+    );
+
+  async function loadAdaptiveQuiz() {
+    const result = await getAdaptiveQuizAction(chunk);
+    if (result) {
+      setAdaptiveQuiz(result);
+      setAdaptiveSelected("");
+      setAdaptiveSubmitted(false);
     }
   }
 
-  // Pre-load quiz if rewired
   useEffect(() => {
-    if (isRewireActive && !quiz) {
-      loadQuiz();
+    if (isRewireActive && !adaptiveQuiz) {
+      loadAdaptiveQuiz();
     }
   }, [isRewireActive]);
 
-  function handleSubmit() {
-    if (!selected || submitted) return;
-    setSubmitted(true);
-    const isCorrect = selected === quiz.answer;
+  function handleAdaptiveSubmit() {
+    if (!adaptiveSelected || adaptiveSubmitted) return;
+    setAdaptiveSubmitted(true);
+    const isCorrect = adaptiveSelected === adaptiveQuiz.answer;
     recordQuizAnswerAction(isCorrect);
     if (isCorrect) {
       completeChunk();
@@ -1398,73 +1504,310 @@ function Practice() {
     }
   }
 
+  async function loadSectionQuestion() {
+    const result = await getQuiz(sectionText);
+    if (result) {
+      setQuiz(result);
+      setSelected("");
+      setReport(null);
+    }
+  }
+
+  async function submitSectionAnswer() {
+    if (!quiz || !selected) return;
+    const result = await evaluateAnswer({
+      question: quiz.question,
+      options: quiz.options,
+      correct_answer: quiz.answer,
+      selected_answer: selected,
+      explanation: quiz.explanation,
+      section_index: sectionIndex,
+    });
+    setReport(result);
+    if (result.is_correct) {
+      completeSection(sectionIndex);
+    }
+  }
+
+  async function startWholeTest() {
+    const questions = await getWholeTest();
+    if (questions?.length) {
+      setTestIndex(0);
+      setTestAnswers([]);
+      setTestReport(null);
+    }
+  }
+
+  async function submitTestAnswer() {
+    if (!session.wholeTest?.[testIndex] || !selected) return;
+    const currentQ = session.wholeTest[testIndex];
+    const nextAnswers = [
+      ...testAnswers,
+      {
+        question: currentQ.question,
+        selected,
+        correct: selected === currentQ.answer,
+      },
+    ];
+    setTestAnswers(nextAnswers);
+    setSelected("");
+    if (testIndex < session.wholeTest.length - 1) {
+      setTestIndex((index) => index + 1);
+    } else {
+      setTestReport({
+        answered: nextAnswers,
+        correct: nextAnswers.filter((a) => a.correct).length,
+        failed: nextAnswers.filter((a) => !a.correct),
+      });
+    }
+  }
+
   return (
     <Layout section="Practice">
       <main className="page">
         <div className="eyebrow">
-          <b>Practice</b>
-          <span>{(session.completedSections || []).length || session.completed} completed</span>
+          <b>Practice & Mastery</b>
+          <span>
+            {session.practiceReport.masteredSections.length}/{chunks.length} mastered
+          </span>
         </div>
         <h1 className="page-title">Check your understanding</h1>
 
+        {/* ── REWIRE Adaptive Assessment Card (Active when struggle was detected) ── */}
         {isRewireActive && (
-          <div
-            style={{
-              background: "#ede9fe",
-              color: "#5b21b6",
-              padding: "10px 14px",
-              borderRadius: 10,
-              fontSize: 12,
-              fontWeight: 700,
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              marginBottom: 12,
-            }}
-          >
-            <span>⚡</span>
-            <span>
-              Adaptive Practice: Calibrated for Level 2 Simplification
-            </span>
-          </div>
+          <section className="card" style={{ marginBottom: 16, padding: 16, border: "2px solid #8b5cf6" }}>
+            <div
+              style={{
+                background: "#ede9fe",
+                color: "#5b21b6",
+                padding: "8px 12px",
+                borderRadius: 8,
+                fontSize: 12,
+                fontWeight: 700,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                marginBottom: 10,
+              }}
+            >
+              <span>⚡</span>
+              <span>Adaptive Question: Calibrated to Level 2 Simplification</span>
+            </div>
+
+            {!adaptiveQuiz ? (
+              <div>
+                <p style={{ fontSize: 13, color: "#475569" }}>
+                  Generate an adaptive question calibrated to your learning recovery.
+                </p>
+                <button
+                  className="primary-action"
+                  disabled={Boolean(busy)}
+                  onClick={loadAdaptiveQuiz}
+                >
+                  {busy === "quiz" ? "Generating..." : "Generate Adaptive Question"}
+                  <I.HelpCircle size={16} />
+                </button>
+              </div>
+            ) : (
+              <div className="practice-card" style={{ padding: 0 }}>
+                <h2 style={{ fontSize: 16, marginBottom: 12 }}>{adaptiveQuiz.question}</h2>
+                <div className="option-list">
+                  {adaptiveQuiz.options.map((option) => (
+                    <button
+                      key={option}
+                      className={adaptiveSelected === option ? "selected" : ""}
+                      onClick={() => !adaptiveSubmitted && setAdaptiveSelected(option)}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  className="primary-action"
+                  disabled={!adaptiveSelected || adaptiveSubmitted}
+                  onClick={handleAdaptiveSubmit}
+                >
+                  {adaptiveSubmitted
+                    ? adaptiveSelected === adaptiveQuiz.answer
+                      ? "Correct"
+                      : "Review answer"
+                    : "Submit answer"}
+                </button>
+
+                {adaptiveSubmitted && (
+                  <div className="feedback" style={{ marginTop: 12 }}>
+                    <b>
+                      {adaptiveSelected === adaptiveQuiz.answer
+                        ? "Correct."
+                        : `Answer: ${adaptiveQuiz.answer}`}
+                    </b>
+                    <p>{adaptiveQuiz.explanation}</p>
+                  </div>
+                )}
+
+                {/* SCALE Outcome Measurement Card */}
+                {adaptiveSubmitted && session.latestOutcome && (
+                  <div className="outcome-card" style={{ marginTop: 14 }}>
+                    <div className="outcome-title">
+                      <span className="outcome-delta-badge">
+                        +{((session.latestOutcome.outcomeDelta || 1) * 100).toFixed(0)}%
+                      </span>
+                      <span>SCALE Outcome: Struggle Successfully Resolved!</span>
+                    </div>
+                    <p style={{ fontSize: 13, color: "#065f46", margin: "4px 0 10px" }}>
+                      Pre-adaptation accuracy: 0% → Post-adaptation accuracy: 100%. The cognitive
+                      restructuring enabled mastery.
+                    </p>
+                    <button
+                      className="primary-action"
+                      style={{ background: "#059669", fontSize: 12, padding: "8px 14px" }}
+                      onClick={() => navigate("/progress")}
+                    >
+                      View in Progress Dashboard <I.ArrowRight size={14} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
         )}
 
-        {!chunk ? (
-          <section className="card empty-state">
-            Adapt a lesson first to generate practice questions.
+        {/* ── Section Mastery Report ── */}
+        <section className="card practice-report" style={{ padding: 14 }}>
+          <b>Section report</b>
+          <div className="stats-grid" style={{ marginTop: 10 }}>
+            <div className="stat">
+              <b>{session.practiceReport.answered.length}</b>
+              <span>Answered</span>
+            </div>
+            <div className="stat">
+              <b>{session.practiceReport.failed.length}</b>
+              <span>Need review</span>
+            </div>
+            <div className="stat">
+              <b>{session.practiceReport.masteredSections.length}</b>
+              <span>Mastered</span>
+            </div>
+            <div className="stat">
+              <b>{chunks.length}</b>
+              <span>Total sections</span>
+            </div>
+          </div>
+        </section>
+
+        {/* ── Standard Section Practice ── */}
+        {!sectionText ? (
+          <section className="card empty-state" style={{ marginTop: 14 }}>
+            Adapt a lesson first to generate section questions.
           </section>
-        ) : !quiz ? (
-          <section className="card empty-state">
-            <p>
-              {isRewireActive
-                ? "Generate an adaptive question calibrated to your learning pace."
-                : "Generate a question from your current lesson."}
-            </p>
+        ) : (
+          <section className="card practice-card" style={{ marginTop: 14 }}>
+            <span className="pill">
+              Section {sectionIndex + 1} of {chunks.length}
+            </span>
+            <p className="practice-context">Questions are generated from this lesson section.</p>
+
+            {!quiz ? (
+              <>
+                <p>Complete the section check before moving to the next topic.</p>
+                <button
+                  className="primary-action"
+                  disabled={Boolean(busy)}
+                  onClick={loadSectionQuestion}
+                >
+                  {busy === "quiz" ? "Generating..." : "Start section questions"}
+                  <I.HelpCircle size={16} />
+                </button>
+              </>
+            ) : (
+              <>
+                <h2>{quiz.question}</h2>
+                <div className="option-list">
+                  {quiz.options.map((option) => (
+                    <button
+                      key={option}
+                      className={selected === option ? "selected" : ""}
+                      onClick={() => !report && setSelected(option)}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+                {!report ? (
+                  <button
+                    className="primary-action"
+                    disabled={!selected || Boolean(busy)}
+                    onClick={submitSectionAnswer}
+                  >
+                    {busy === "evaluate" ? "Checking..." : "Submit answer"}
+                  </button>
+                ) : (
+                  <div
+                    className={`feedback ${
+                      report.is_correct ? "correct-feedback" : "failed-feedback"
+                    }`}
+                  >
+                    <b>
+                      {report.is_correct
+                        ? "Correct. Section mastered."
+                        : "Not quite. Review this section."}
+                    </b>
+                    <p>{report.explanation}</p>
+                    {!report.is_correct && (
+                      <button className="secondary-action" onClick={loadSectionQuestion}>
+                        Retry this topic
+                      </button>
+                    )}
+                    {report.is_correct && sectionIndex < chunks.length - 1 && (
+                      <button
+                        className="primary-action"
+                        onClick={() => {
+                          setSectionIndex((index) => index + 1);
+                          setQuiz(null);
+                          setReport(null);
+                        }}
+                      >
+                        Continue to next section
+                      </button>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+        )}
+
+        {/* ── Whole-Lesson Test (Unlocked when all sections mastered) ── */}
+        {allSectionsMastered && !session.wholeTest && (
+          <section
+            className="card mastery-unlocked"
+            style={{ marginTop: 14, padding: 16 }}
+          >
+            <b>All sections mastered</b>
+            <p>You can now take a test covering the entire extracted lesson.</p>
             <button
               className="primary-action"
               disabled={Boolean(busy)}
-              onClick={loadQuiz}
+              onClick={startWholeTest}
             >
-              {busy === "quiz"
-                ? "Generating..."
-                : isRewireActive
-                ? "Generate Adaptive Question"
-                : "Generate question"}
-              <I.HelpCircle size={16} />
+              {busy === "test" ? "Building test..." : "Take whole-lesson test"}
+              <I.ClipboardCheck size={16} />
             </button>
           </section>
-        ) : (
-          <section className="card practice-card">
+        )}
+
+        {session.wholeTest && !testReport && (
+          <section className="card practice-card" style={{ marginTop: 14 }}>
             <span className="pill">
-              {isRewireActive ? "Adaptive Quiz" : session.profile}
+              Whole-lesson test · {testIndex + 1} of {session.wholeTest.length}
             </span>
-            <h2>{quiz.question}</h2>
+            <h2>{session.wholeTest[testIndex].question}</h2>
             <div className="option-list">
-              {quiz.options.map((option) => (
+              {session.wholeTest[testIndex].options.map((option) => (
                 <button
                   key={option}
                   className={selected === option ? "selected" : ""}
-                  onClick={() => !submitted && setSelected(option)}
+                  onClick={() => setSelected(option)}
                 >
                   {option}
                 </button>
@@ -1472,59 +1815,31 @@ function Practice() {
             </div>
             <button
               className="primary-action"
-              disabled={!selected || submitted}
-              onClick={handleSubmit}
+              disabled={!selected || Boolean(busy)}
+              onClick={submitTestAnswer}
             >
-              {submitted
-                ? selected === quiz.answer
-                  ? "Correct"
-                  : "Review answer"
-                : "Submit answer"}
-            </button>
-
-            {submitted && (
-              <div className="feedback">
-                <b>
-                  {selected === quiz.answer
-                    ? "Correct."
-                    : `Answer: ${quiz.answer}`}
-                </b>
-                <p>{quiz.explanation}</p>
-              </div>
-            )}
-
-            {/* SCALE Outcome Measurement Card (shows after correct answer post-REWIRE) */}
-            {submitted && isRewireActive && session.latestOutcome && (
-              <div className="outcome-card">
-                <div className="outcome-title">
-                  <span className="outcome-delta-badge">
-                    +{((session.latestOutcome.outcomeDelta || 1) * 100).toFixed(0)}%
-                  </span>
-                  <span>SCALE Outcome: Struggle Successfully Resolved!</span>
-                </div>
-                <p style={{ fontSize: 13, color: "#065f46", margin: "4px 0 10px" }}>
-                  Pre-adaptation accuracy: 0% → Post-adaptation accuracy: 100%. The
-                  cognitive restructuring enabled mastery.
-                </p>
-                <button
-                  className="primary-action"
-                  style={{ background: "#059669", fontSize: 12, padding: "8px 14px" }}
-                  onClick={() => navigate("/progress")}
-                >
-                  View in Progress Dashboard <I.ArrowRight size={14} />
-                </button>
-              </div>
-            )}
-
-            <button
-              className="text-action"
-              onClick={loadQuiz}
-              style={{ marginTop: 14, display: "block" }}
-            >
-              Generate another question
+              Submit test answer
             </button>
           </section>
         )}
+
+        {testReport && (
+          <section className="card feedback" style={{ marginTop: 14 }}>
+            <b>Whole-lesson test complete</b>
+            <p>
+              {testReport.correct} of {testReport.answered.length} correct.
+            </p>
+            {testReport.failed.length ? (
+              <>
+                <b>Topics to review</b>
+                <p>{testReport.failed.map((item) => item.question).join(" ")}</p>
+              </>
+            ) : (
+              <p>Excellent. You answered every test question correctly.</p>
+            )}
+          </section>
+        )}
+
         <ErrorNotice />
       </main>
     </Layout>
@@ -1567,12 +1882,12 @@ function Progress() {
             <span>Learning chunks</span>
           </div>
           <div className="card stat">
-            <b>{session.quizzes.length}</b>
-            <span>Questions completed</span>
+            <b>{session.quizzes.length + session.practiceReport.answered.length}</b>
+            <span>Questions answered</span>
           </div>
           <div className="card stat">
-            <b>{session.completed}</b>
-            <span>Mastered chunks</span>
+            <b>{session.practiceReport.masteredSections.length || session.completed}</b>
+            <span>Sections mastered</span>
           </div>
         </div>
 
@@ -1693,7 +2008,7 @@ function Progress() {
           </h2>
           <p style={{ marginTop: 0, color: "#4e5265", fontSize: 13 }}>
             {transformed
-              ? "Your transformed lesson, practice questions, and cognitive adaptations are available across the learning flow."
+              ? "Your transformed lesson, practice questions, section mastery tracker, and cognitive adaptations are available across the learning flow."
               : "Upload a document and choose a profile to start."}
           </p>
         </section>

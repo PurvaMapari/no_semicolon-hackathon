@@ -53,6 +53,21 @@ class QuizRequest(BaseModel):
     profile: str
 
 
+class QuizEvaluationRequest(BaseModel):
+    question: str = Field(min_length=1)
+    options: List[str] = Field(min_length=2)
+    correct_answer: str = Field(min_length=1)
+    selected_answer: str = Field(min_length=1)
+    explanation: str = ""
+    section_index: int = Field(default=0, ge=0)
+
+
+class LessonTestRequest(BaseModel):
+    text: str = Field(min_length=1)
+    profile: str
+    question_count: int = Field(default=5, ge=1, le=10)
+
+
 class PipelineRequest(BaseModel):
     text: str = Field(min_length=1)
     profiles: List[str] = ["dyslexia", "low_vision", "cognitive_load"]

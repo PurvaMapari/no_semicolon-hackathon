@@ -2,7 +2,7 @@ import json
 import re
 from typing import Any, Dict, List, Optional
 
-from app.config import GROQ_API_KEY
+from app.config import GROQ_API_KEY, VOICE_GROQ_API_KEY
 from app.services.llm import call_llm, call_voice_llm, parse_json_response
 
 
@@ -140,27 +140,42 @@ def voice_ask(user_request: str, lesson_text: str = "") -> str:
     except Exception as error:
         return f"[Voice assistant error: {error}]"
 
+def answer_lesson_question(
+    question: str,
+    lesson_text: str,
+    section_text: str,
+    profile: str
+) -> str:
+    """Answer a user's question using the active section and full lesson as context."""
 
-def answer_lesson_question(question: str, lesson_text: str, section_text: str, profile: str) -> str:
-    """Answer a question using the active section plus the full extracted lesson."""
-    if not question.strip() or not lesson_text.strip() or not section_text.strip():
-        raise ValueError("question, lesson_text, and section_text are required")
-    if not GROQ_API_KEY:
-        stop_words = {"what", "why", "how", "when", "where", "which", "who", "is", "are", "the", "a", "an", "does", "do", "this", "that", "about"}
-        question_words = {word for word in re.findall(r"[a-zA-Z]+", question.lower()) if word not in stop_words}
-        sentences = [sentence.strip() for sentence in re.split(r"(?<=[.!?])\s+", section_text) if sentence.strip()]
-        matching = next((sentence for sentence in sentences if question_words & set(re.findall(r"[a-zA-Z]+", sentence.lower()))), None)
-        if matching:
-            return f"Based on this section: {matching}"
-        return "The lesson does not provide enough information to answer that."
+    if not question.strip():
+        raise ValueError("Question is required")
+
+    if not lesson_text.strip():
+        raise ValueError("Lesson text is required")
+
+    if not section_text.strip():
+        raise ValueError("Section text is required")
+
+    if not (GROQ_API_KEY or VOICE_GROQ_API_KEY):
+        raise RuntimeError(
+            "Groq API key is required for lesson questions. "
+            "Set GROQ_API_KEY or VOICE_GROQ_API_KEY in .env."
+        )
+
     prompt = LESSON_QUESTION_PROMPT.format(
         profile=profile,
         lesson=lesson_text[:12000],
         section=section_text[:4000],
         question=question.strip(),
     )
+
     try:
-        return call_voice_llm(prompt).strip()
+        # Use the configured voice client first, then fall back to the main Groq client.
+        response = call_voice_llm(prompt)
+
+        return response.strip()
+
     except Exception as error:
         return f"[Lesson assistant error: {error}]"
 
@@ -186,6 +201,36 @@ def generate_quiz(chunk: str, profile: str) -> Dict[str, Any]:
             return {key: quiz[key] for key in required_keys}
 
     raise ValueError("Quiz response must contain a question, four options, answer, and explanation.")
+
+
+def evaluate_quiz_answer(
+    question: str,
+    options: List[str],
+    correct_answer: str,
+    selected_answer: str,
+    explanation: str,
+    section_index: int,
+) -> Dict[str, Any]:
+    """Evaluate one answer and return data suitable for a mastery report."""
+    if correct_answer not in options:
+        raise ValueError("correct_answer must be one of the options")
+    is_correct = selected_answer == correct_answer
+    return {
+        "question": question,
+        "section_index": section_index,
+        "selected_answer": selected_answer,
+        "correct_answer": correct_answer,
+        "is_correct": is_correct,
+        "explanation": explanation,
+        "status": "correct" if is_correct else "needs_review",
+    }
+
+
+def generate_lesson_test(text: str, profile: str, question_count: int = 5) -> List[Dict[str, Any]]:
+    """Generate a whole-lesson test by asking for questions from the full text."""
+    if not text.strip():
+        raise ValueError("text is required")
+    return [generate_quiz(text, profile) for _ in range(question_count)]
 
 
 def chunks_for_quiz(transformed: Dict[str, Any]) -> List[str]:
