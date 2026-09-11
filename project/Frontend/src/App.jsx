@@ -20,6 +20,7 @@ import {
   generateAdaptiveQuiz,
 } from "./api/client";
 import VisualInfographic from "./components/VisualInfographic";
+import VoiceAssistant from "./components/VoiceAssistant";
 import {
   createSignalState,
   createSessionMeta,
@@ -414,6 +415,36 @@ function Header({ section }) {
             <I.Zap size={12} style={{ marginRight: 4 }} /> REWIRED
           </span>
         )}
+        <button
+          type="button"
+          className="voice-status-pill"
+          onClick={() => {
+            const el = document.querySelector(".voice-assistant-card");
+            if (el) {
+              el.scrollIntoView({ behavior: "smooth" });
+              const btn = el.querySelector("button[aria-label='Toggle voice input']");
+              if (btn) btn.click();
+            }
+          }}
+          title="Voice Assistant & Speech-to-Text (Click to activate voice)"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            background: "rgba(99, 102, 241, 0.09)",
+            border: "1px solid rgba(99, 102, 241, 0.22)",
+            borderRadius: 99,
+            padding: "5px 11px",
+            fontSize: 12,
+            fontWeight: 700,
+            color: "var(--primary)",
+            cursor: "pointer",
+            transition: "all 0.2s ease",
+          }}
+        >
+          <I.Mic size={13} />
+          <span>Voice</span>
+        </button>
         <div className="access-badge">
           <span className="access-dot" />
           <span>{PROFILE_LABELS[session.profile]}</span>
@@ -878,9 +909,6 @@ function Learn() {
   const navigate = useNavigate();
 
   const [activeSection, setActiveSection] = useState(0);
-  const [question, setQuestion] = useState("");
-  const [askedQuestion, setAskedQuestion] = useState("");
-  const [answer, setAnswer] = useState("");
   const [playing, setPlaying] = useState(false);
 
   const transformed = session.transformed;
@@ -918,24 +946,19 @@ function Learn() {
 
   function readAloud(text) {
     if ("speechSynthesis" in window) {
+      if (playing) {
+        window.speechSynthesis.cancel();
+        setPlaying(false);
+        return;
+      }
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = 0.95;
       window.speechSynthesis.speak(utterance);
       setPlaying(true);
       utterance.onend = () => setPlaying(false);
+      utterance.onerror = () => setPlaying(false);
     }
-  }
-
-  async function submitQuestion(event) {
-    event.preventDefault();
-    const prompt = question.trim();
-    if (!prompt || !currentSection) return;
-    setAskedQuestion(prompt);
-    setAnswer("");
-    recordVoiceHelpAction();
-    const result = await ask(prompt, currentSection.paragraph);
-    if (result) setAnswer(result.answer);
   }
 
   function markSectionComplete() {
@@ -1217,44 +1240,13 @@ function Learn() {
               />
             )}
 
-            <section className="card ask-card" style={{ marginTop: 16, padding: 18 }}>
-              <b style={{ fontSize: 15, color: "var(--ink)", display: "flex", alignItems: "center", gap: 8 }}>
-                <I.MessageSquare size={18} style={{ color: "var(--primary)" }} /> Ask about this section
-              </b>
-              <p className="ask-context">
-                Your question is answered using the active section and lesson context.
-              </p>
-              <form
-                onSubmit={submitQuestion}
-                style={{ display: "flex", gap: 8, marginTop: 10 }}
-              >
-                <input
-                  value={question}
-                  onChange={(event) => setQuestion(event.target.value)}
-                  placeholder="Ask a question about this section..."
-                  style={{ flex: 1 }}
-                />
-                <button
-                  className="primary-action"
-                  disabled={!question.trim() || Boolean(busy)}
-                  style={{ width: "auto", padding: "10px 18px" }}
-                >
-                  {busy === "voice" ? "Thinking..." : "Ask"}
-                </button>
-              </form>
-              {askedQuestion && (
-                <div className="answer-box">
-                  <span className="section-label">Your question</span>
-                  <p className="asked-question">{askedQuestion}</p>
-                  <span className="section-label" style={{ display: "block", marginTop: 10 }}>Answer</span>
-                  {answer ? (
-                    <p style={{ fontSize: 14, lineHeight: 1.6, color: "#1e293b" }}>{answer}</p>
-                  ) : (
-                    <p style={{ color: "var(--primary)", fontSize: 13 }}>Generating an answer from your lesson...</p>
-                  )}
-                </div>
-              )}
-            </section>
+            <VoiceAssistant
+              currentSection={currentSection}
+              onAsk={ask}
+              busy={busy}
+              onVoiceHelp={recordVoiceHelpAction}
+              onReadSection={() => readAloud(displayText)}
+            />
 
             <ErrorNotice />
           </>

@@ -1186,3 +1186,22 @@ textarea:focus, input:focus {
     grid-template-columns: repeat(4, 1fr);
   }
 }
+
+/* ── PRISM Voice Assistant & Speech-to-Text ──────────────────────────────── */
+.voice-assistant-card {
+  border: 1px solid rgba(199, 210, 254, 0.7) !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(248, 250, 252, 0.96) 100%) !important;
+  box-shadow: 0 10px 30px -5px rgba(99, 102, 241, 0.08), 0 4px 6px -2px rgba(15, 23, 42, 0.03) !important;
+  transition: all 0.25s ease;
+}
+
+.voice-assistant-card:focus-within {
+  border-color: var(--primary) !important;
+  box-shadow: 0 12px 35px -5px rgba(99, 102, 241, 0.16) !important;
+}
+
+.voice-status-pill:hover {
+  background: rgba(99, 102, 241, 0.18) !important;
+  transform: translateY(-1px);
+}
+
