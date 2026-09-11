@@ -66,6 +66,258 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px soli
 .stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.stat{padding:15px}.stat b,.stat span{display:block}.stat b{font-size:24px;color:var(--blue)}.stat span{font-size:11px;margin-top:4px;color:var(--muted)}
 textarea,input{font:inherit;border:1px solid var(--line);border-radius:8px;padding:10px;color:var(--ink)}
 @keyframes fade{from{opacity:.5;transform:translateY(3px)}to{opacity:1;transform:none}}
+
+/* ─── PRISM: SCALE & REWIRE SYSTEM ────────────────────────────────── */
+@keyframes rewireGlow {
+  0% { box-shadow: 0 0 0 rgba(99, 102, 241, 0); }
+  50% { box-shadow: 0 0 20px rgba(99, 102, 241, 0.4); }
+  100% { box-shadow: 0 0 0 rgba(99, 102, 241, 0); }
+}
+
+@keyframes pulseBorder {
+  0%, 100% { border-color: #818cf8; }
+  50% { border-color: #f59e0b; }
+}
+
+.rewire-banner {
+  background: linear-gradient(135deg, #1e1b4b 0%, #2e1065 50%, #1e1b4b 100%);
+  color: #fff;
+  border-radius: 16px;
+  padding: 18px 20px;
+  margin: 16px 0;
+  box-shadow: 0 8px 30px rgba(46, 16, 101, 0.25);
+  animation: rewireGlow 3s infinite ease-in-out;
+  border: 1px solid #4338ca;
+  position: relative;
+  overflow: hidden;
+}
+
+.rewire-banner::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, #f59e0b, #ec4899, #8b5cf6);
+}
+
+.rewire-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.rewire-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.rewire-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #fff;
+  margin: 0 0 6px 0;
+}
+
+.rewire-explanation {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #e2e8f0;
+  margin: 0 0 12px 0;
+  background: rgba(255, 255, 255, 0.07);
+  padding: 10px 14px;
+  border-radius: 10px;
+  border-left: 3px solid #f59e0b;
+}
+
+.rewire-actions-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.rewire-action-pill {
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(129, 140, 248, 0.2);
+  color: #c7d2fe;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(129, 140, 248, 0.3);
+}
+
+/* Adapted Lesson Chunk Card */
+.adapted-chunk-card {
+  border: 2px solid #818cf8 !important;
+  background: #fdfcff !important;
+  position: relative;
+}
+
+.adapted-badge {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  background: #ede9fe;
+  color: #5b21b6;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid #ddd6fe;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.visual-description-box {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-top: 12px;
+}
+
+.visual-description-label {
+  font-size: 11px;
+  font-weight: 800;
+  color: #92400e;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 4px;
+}
+
+.visual-description-text {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #78350f;
+  margin: 0;
+}
+
+/* Dyslexia Mode Typography */
+.dyslexia-mode {
+  font-family: 'OpenDyslexic', 'Comic Sans MS', -apple-system, BlinkMacSystemFont, sans-serif !important;
+  line-height: 1.85 !important;
+  letter-spacing: 0.05em !important;
+  word-spacing: 0.12em !important;
+}
+
+.dyslexia-mode p, .dyslexia-mode span, .dyslexia-mode button {
+  line-height: 1.85 !important;
+  letter-spacing: 0.05em !important;
+}
+
+/* Telemetry & Struggle Gauge */
+.telemetry-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin: 10px 0;
+  font-size: 11px;
+}
+
+.telemetry-gauge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+}
+
+.gauge-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.gauge-dot.normal { background: #10b981; }
+.gauge-dot.warning { background: #f59e0b; }
+.gauge-dot.critical { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
+
+.quick-demo-box {
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin: 12px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.golden-badge {
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Outcome Card */
+.outcome-card {
+  background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%);
+  border: 1px solid #a7f3d0;
+  border-radius: 14px;
+  padding: 16px;
+  margin-top: 14px;
+}
+
+.outcome-title {
+  color: #065f46;
+  font-size: 14px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.outcome-delta-badge {
+  display: inline-block;
+  background: #10b981;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 999px;
+  margin-right: 8px;
+}
+
+/* ─── PRISM: EDUCATIONAL INFOGRAPHICS ────────────────────────── */
+.infographic-card {
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.infographic-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.85; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.02); }
+}
+.hero-glow {
+  animation: pulseGlow 4s infinite ease-in-out;
+}
+
 @media(min-width:700px){
   .phone{max-width:1180px;box-shadow:0 0 40px rgba(40,40,70,.08);background:var(--bg)}
   .topbar{padding-left:48px;padding-right:48px;border-bottom:1px solid #eeeef7}

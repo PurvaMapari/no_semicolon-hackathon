@@ -39,11 +39,16 @@ export function askVoice(question, lessonText) {
   });
 }
 
-export function generateVisual(lessonText, profile) {
+export function generateVisual(lessonText, profile, sourcePdfPath = null) {
   return request("/api/visual", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ lesson_text: lessonText, profile, include_image: true }),
+    body: JSON.stringify({
+      lesson_text: lessonText,
+      profile,
+      include_image: true,
+      source_pdf_path: sourcePdfPath,
+    }),
   });
 }
 
@@ -52,6 +57,48 @@ export function generateQuiz(chunk, profile) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ chunk, profile }),
+  });
+}
+
+export function rewireContent({
+  chunkText,
+  profile,
+  variantLevel = 2,
+  actions = ["increase_simplification"],
+  struggleExplanation = "",
+}) {
+  return request("/api/rewire", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chunk_text: chunkText,
+      profile,
+      variant_level: variantLevel,
+      actions,
+      struggle_explanation: struggleExplanation,
+    }),
+  });
+}
+
+export function generateAdaptiveQuiz({
+  chunkText,
+  profile,
+  difficulty = "easier",
+  struggleScore = 0.0,
+  previousQuestion = null,
+  previousAnswerCorrect = null,
+}) {
+  return request("/api/adaptive-quiz", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chunk_text: chunkText,
+      profile,
+      difficulty,
+      struggle_score: struggleScore,
+      previous_question: previousQuestion,
+      previous_answer_correct: previousAnswerCorrect,
+    }),
   });
 }
 
