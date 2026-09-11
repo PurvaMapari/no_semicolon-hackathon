@@ -653,7 +653,7 @@ function Learn() {
             {session.completedSections.length}/{sections.length} completed
           </span>
         </div>
-        
+
         <div className="lesson-heading">
           <div>
             <h1 className="page-title" style={{ margin: "4px 0" }}>Your adapted lesson</h1>
