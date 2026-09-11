@@ -1,225 +1,182 @@
-# PRISM Tech Stack Document
+# PRISM — Tech Stack
 
 ## Architecture Summary
 
-PRISM is designed for **maximum development velocity with minimal dependencies**. The stack prioritizes free-tier or open-source options that are well-documented, actively maintained, and can be implemented in 24 hours by a small team.
+PRISM uses a **cache-first AI architecture** with a deterministic live path. Every layer has ONE primary choice with a free/open-source fallback. Stack optimized for 24-hour hackathon velocity.
+
+---
 
 ## Tech Stack by Layer
 
 ### Frontend
 
-**Framework: React 18 + Vite**
-
-- **Why this, why fast:** React provides component-based architecture with extensive ecosystem support. Vite delivers instant server start and hot module replacement. Together they enable rapid prototyping and component iteration. Both are free, open-source, and require no build server.
-
-- **Alternative (free):** Next.js 14 (SSR capability, but overkill for MVP; Vite is lighter and faster for pure client-side app)
-
-**Styling: Tailwind CSS (via CDN for MVP)**
-
-- **Why this, why fast:** Utility-first CSS with zero configuration for MVP. Can be switched to CSS-in-JS or SCSS later. CDN version requires no build step, perfect for 24-hour sprint.
-
-- **Alternative (free):** CSS Modules or plain CSS with BEM naming. Tailwind is faster for initial development.
-
-**State Management: React Context + useReducer**
-
-- **Why this, why fast:** Built into React. No external dependency. Sufficient for MVP state needs (learner profile, content chunks, session state).
-
-- **Alternative (free):** Zustand (lightweight, but adds dependency) or Jotai (similar). Context is sufficient for MVP.
-
-**Form Handling: Controlled inputs + simple state**
-
-- **Why this, why fast:** Native HTML form elements with React state. No form library needed for MVP forms (profile settings, text input).
-
-- **Alternative (free):** React Hook Form (overkill for MVP forms with <10 fields)
-
-**Date/Time: Native Date API**
-
-- **Why this, why fast:** Built into JavaScript. No external library needed for timestamp tracking.
-
-- **Alternative (free):** Day.js or date-fns (overkill for simple timestamp storage)
-
----
+| Component | Primary Choice | Why | Free Fallback |
+|-----------|---------------|-----|---------------|
+| **Framework** | React 18 + Vite | Component-based, hot reload, vast ecosystem | Preact (lighter, API-compatible) |
+| **Styling** | Tailwind CSS v3 (CDN) | Utility-first, zero-config for MVP, fast iteration | Plain CSS with BEM |
+| **State Management** | React Context + useReducer | Built-in, no dependency, sufficient for MVP | Zustand |
+| **Form Handling** | Controlled inputs | Native HTML + React state, minimal forms | React Hook Form |
 
 ### Backend
 
-**Runtime: Node.js 20+**
-
-- **Why this, why fast:** Async I/O model fits AI inference pattern (wait for LLM, return result). Same language as frontend reduces context switching. Free, open-source, and widely available.
-
-- **Alternative (free):** Deno (modern, but smaller ecosystem). Python (FastAPI) is excellent but would require separate runtime environment.
-
-**Web Framework: Express.js**
-
-- **Why this, why fast:** Minimal, unopinionated framework. Simple to set up single API endpoint for adaptation service. Mature ecosystem.
-
-- **Alternative (free):** Fastify (faster, but more setup) or Hono (modern, serverless-ready but overkill for MVP)
-
-**API Style: REST**
-
-- **Why this, why fast:** Simple POST /api/adapt endpoint. No complex routing needed for MVP.
-
-- **Alternative (free):** GraphQL (Apollo Server) - adds complexity for no benefit at MVP scale
-
-**Queue/Task Processing: None (synchronous for MVP)**
-
-- **Why this, why fast:** Single LLM call per adaptation, no batching needed for 24-hour build. Synchronous request/response is sufficient.
-
-- **Alternative (free):** Bull (Redis queue) or Agenda (MongoDB-based) - for future scale
-
----
-
-### AI/Model
-
-**Model Provider: OpenAI GPT-4o-mini**
-
-- **Why this, why fast:** Fastest available model with strong performance on content simplification tasks. Low cost (~$0.15/1M tokens). Well-documented API. Free tier available via credits.
-
-- **Free-tier alternative (open-source):** Mistral 7B (via免费 host like Hugging Face Inference API or Groq)
-  - **Tradeoff:** Slower inference (~3-5 seconds vs ~1-2 seconds for GPT-4o-mini), needs optimization
-
-- **Fully self-hosted alternative (open-source):** TinyLlama or Phi-2 (quantized 4-bit)
-  - **Tradeoff:** Requires GPU or CPU optimization; Hugging Face Transformers setup adds complexity
-
-**Prompt Engineering Strategy: Few-shot + chain-of-thought**
-
-- **Why this, why fast:** Template-based prompts with examples. No fine-tuning needed. Can iterate prompts during MVP build.
-
-**Fallback Mechanism: Heuristic simplification**
-
-- **Why this, why fast:** If LLM fails, apply deterministic rules: replace complex words from dictionary, limit sentence length to 20 words, break paragraphs >5 sentences into 2-3 sentences.
-
----
+| Component | Primary Choice | Why | Free Fallback |
+|-----------|---------------|-----|---------------|
+| **Runtime** | Node.js 20 LTS | Same language as frontend, async I/O | Deno |
+| **Framework** | Express.js 4.x | Minimal, mature, fast setup | Fastify |
+| **API Style** | REST (JSON) | Simple endpoints, sufficient for MVP | — |
 
 ### Database
 
-**No database for MVP**
+| Component | Primary Choice | Why | Free Fallback |
+|-----------|---------------|-----|---------------|
+| **Database** | SQLite (better-sqlite3) | Embedded, zero-config, single file, no infra | localStorage (browser-only fallback) |
 
-- **Why this, why fast:** localStorage covers all MVP needs (learner profile, session progress, question answers). No user accounts = no database required.
+**Why SQLite:** Stores the content graph, cached LLM outputs, learner profiles, session data, and adaptation history. Embedded in the Node.js process — no separate database server. Single `.db` file.
 
-- **Free-tier alternative (for future):** Supabase (PostgreSQL + Auth + Storage, free tier 500MB storage)
-  - **When to adopt:** When adding user accounts, cloud sync, or multi-device persistence
+### AI / LLM
 
-- **Open-source alternative (self-hosted):** SQLite with better-sqlite3 (for local file storage)
+| Component | Primary Choice | Why | Free Fallback |
+|-----------|---------------|-----|---------------|
+| **Model** | GPT-4o-mini (OpenAI) | Fast (1–2s), low cost (~$0.15/1M tokens), strong at content tasks | Groq (Llama 3, free tier) |
+| **Prompt Strategy** | Few-shot + JSON mode | Template-based, no fine-tuning needed | Same |
+| **Fallback** | Deterministic heuristics | Dictionary word replacement, sentence splitting, no cost | — |
 
----
+**Important:** LLM is used ONLY at upload time for content structuring and pre-generation. Never in the live adaptation hot path.
 
-### Hosting/Deployment
+### PDF Extraction
 
-**Frontend: Vercel (Free Tier)**
+| Component | Primary Choice | Why | Free Fallback |
+|-----------|---------------|-----|---------------|
+| **Text-based PDFs** | PDF.js (Mozilla) | Open-source, well-maintained, server-side via `pdfjs-dist` | pdf-parse |
+| **OCR Fallback** | Tesseract.js | Open-source, runs in Node.js, handles image-based PDFs | None (return error, suggest text paste) |
 
-- **Why this, why fast:** One-click deploy from git. Automatic SSL, CDN, and edge functions. Free tier sufficient for MVP traffic (unlimited sites, 100GB bandwidth/month).
+### Voice
 
-- **Alternative (free):** Netlify (similar, 300 build minutes/month free)
+| Component | Primary Choice | Why | Free Fallback |
+|-----------|---------------|-----|---------------|
+| **Speech-to-Text (STT)** | Web Speech Recognition API | Free, built into Chrome/Edge, no API key | Text input fallback |
+| **Text-to-Speech (TTS)** | Web Speech Synthesis API | Free, built into all modern browsers, no API key | Text-only display |
 
-**Backend: Vercel Serverless Functions or Render (Free Tier)**
+**Important:** Voice is a Day-1 feature, not a stretch goal. Browser-native APIs ensure zero cost and instant availability.
 
-- **Why this, why fast:** Vercel Serverless Functions let you deploy Express API alongside frontend. Render offers free web services with PostgreSQL option.
+### Validation
 
-- **Alternative (free):** Fly.io (free tier, good for simple Node.js apps)
+| Component | Primary Choice | Why | Free Fallback |
+|-----------|---------------|-----|---------------|
+| **Schema Validation** | Zod | TypeScript-first, great DX, validates LLM outputs | Joi |
 
----
+### Testing
 
-### PDF Processing
+| Component | Primary Choice | Why | Free Fallback |
+|-----------|---------------|-----|---------------|
+| **Unit Tests** | Vitest | Fast, Vite-native, Jest-compatible API | Jest |
+| **E2E / Accessibility** | Playwright | Cross-browser, built-in accessibility testing | Cypress |
+| **API Tests** | Supertest | Express-native, simple HTTP assertions | — |
 
-**PDF.js (Mozilla)**
+### Deployment
 
-- **Why this, why fast:** Open-source, client-side PDF text extraction. No backend needed for MVP.
-
-- **Alternative (free):** pdf-lib (for PDF manipulation, not text extraction)
-
----
-
-### Text-to-Speech (TTS)
-
-**Web Speech API (Native Browser TTS)**
-
-- **Why this, why fast:** Built into modern browsers (Chrome, Edge, Safari). No external dependency. Free and unlimited.
-
-- **Tradeoff:** Quality varies by browser. For consistent quality, need paid service.
-
-- **Free-tier paid alternative:** Google Cloud Text-to-Speech (free tier 4M characters/month)
-
-- **Open-source alternative:**marytts (self-hosted, more setup required)
-
----
-
-### Audio Playback
-
-**Native HTML5 Audio API**
-
-- **Why this, why fast:** Built-in. Supports playback control, events, and simple waveform analysis for highlighting sync.
-
-- **Alternative (free):** Howler.js (for complex audio scenarios, overkill for MVP)
+| Component | Primary Choice | Why | Free Fallback |
+|-----------|---------------|-----|---------------|
+| **Frontend Hosting** | Vercel (Free Tier) | One-click deploy from git, automatic SSL/CDN | Netlify |
+| **Backend Hosting** | Render (Free Tier) | Free web services, supports Node.js + SQLite | Railway |
+| **CI/CD** | GitHub Actions | Free for public repos, automatic deploy on push | GitLab CI |
 
 ---
 
-### Logging/Monitoring
+## Complete Stack Table
 
-**Console logging (MVP)**
-
-- **Why this, why fast:** No logging infrastructure needed for MVP debugging.
-
-- **Free-tier alternative:** Sentry (free tier for error tracking)
-
----
-
-### CI/CD
-
-**GitHub Actions (Free for public repos)**
-
-- **Why this, why fast:** Automatic deploy to Vercel on push to main branch. Zero configuration needed.
-
----
-
-## Complete Tech Stack Table
-
-| Layer | Component | Choice | Why | Free Alternative | Status |
-|-------|-----------|--------|-----|------------------|--------|
-| **Frontend Framework** | React | 18 + Vite | Fast iteration, hot reload | Next.js | ✅ Free |
-| **Styling** | Tailwind CSS | CDN + config | Zero-config MVP | Plain CSS | ✅ Free |
-| **State Management** | React Context | Built-in | No dependency | Zustand | ✅ Free |
-| **Backend Runtime** | Node.js | 20+ | Async I/O, same lang as FE | Deno | ✅ Free |
-| **Backend Framework** | Express | 4.x | Minimal, mature | Fastify | ✅ Free |
-| **API Style** | REST | Simple POST | Sufficient for MVP | GraphQL | ✅ Free |
-| **AI Model** | GPT-4o-mini | OpenAI | Fast, reliable, low cost | Mistral 7B (Hugging Face) | ⚠️ Free tier available |
-| **Fallback AI** | Heuristic rules | Deterministic | No cost, always available | N/A | ✅ Free |
-| **PDF Processing** | PDF.js | Mozilla | Client-side, open-source | N/A | ✅ Free |
-| **Database** | None | localStorage | No accounts needed | Supabase (PostgreSQL) | ⚠️ Free tier |
-| **Hosting (FE)** | Vercel | Free tier | One-click deploy | Netlify | ✅ Free |
-| **Hosting (BE)** | Vercel Serverless | Free tier | Same platform, simple | Render | ✅ Free |
-| **TTS** | Web Speech API | Native | Free, no config | Google Cloud TTS | ⚠️ Free tier |
-| **Audio** | HTML5 Audio | Native | Built-in | Howler.js | ✅ Free |
-| **Logging** | Console | Built-in | MVP only | Sentry | ⚠️ Free tier |
-| **CI/CD** | GitHub Actions | Public repos | Automatic deploy | GitLab CI | ✅ Free |
+| Layer | Choice | Version | Cost | Notes |
+|-------|--------|---------|------|-------|
+| Frontend | React + Vite | 18.x + 5.x | ✅ Free | — |
+| Styling | Tailwind CSS | 3.x (CDN) | ✅ Free | — |
+| State | Context + useReducer | Built-in | ✅ Free | — |
+| Backend | Node.js + Express | 20 LTS + 4.x | ✅ Free | — |
+| Database | SQLite | better-sqlite3 | ✅ Free | Embedded, single file |
+| AI/LLM | GPT-4o-mini | OpenAI API | ⚠️ ~$0.15/1M tokens | Free tier credits available |
+| PDF Extraction | PDF.js | pdfjs-dist | ✅ Free | — |
+| OCR | Tesseract.js | 5.x | ✅ Free | Best-effort for image PDFs |
+| STT | Web Speech Recognition | Browser API | ✅ Free | Chrome/Edge |
+| TTS | Web Speech Synthesis | Browser API | ✅ Free | All modern browsers |
+| Validation | Zod | 3.x | ✅ Free | — |
+| Unit Tests | Vitest | 1.x | ✅ Free | — |
+| E2E Tests | Playwright | 1.x | ✅ Free | — |
+| API Tests | Supertest | 6.x | ✅ Free | — |
+| Frontend Hosting | Vercel | Free tier | ✅ Free | — |
+| Backend Hosting | Render | Free tier | ✅ Free | — |
+| CI/CD | GitHub Actions | Free tier | ✅ Free | — |
 
 ---
 
-## Cost Estimate (24-hour build, no users)
+## Cost Estimate (24-Hour Build)
 
 | Service | Free Tier Limit | Estimated Usage | Cost |
 |---------|----------------|-----------------|------|
-| OpenAI API | $5 credit | ~100 adaptations (1k tokens each) | **$0** (within credit) |
+| OpenAI API | $5 credit | ~200 structuring calls | **$0** (within credit) |
 | Vercel | Unlimited sites | 1 site | **$0** |
-| GitHub Actions | 2,000 min/month | ~30 min for deploy | **$0** |
-| Web Speech API | Free | 100% free | **$0** |
-| PDF.js | Open-source | Free | **$0** |
+| Render | Free web service | 1 service | **$0** |
+| GitHub Actions | 2,000 min/month | ~30 min | **$0** |
+| Web Speech APIs | Free | Unlimited | **$0** |
 | **Total** | | | **$0** |
 
 ---
 
-## Single-Command Setup (Developer Experience)
+## Project Setup Commands
 
 ```bash
 # Frontend
-npx create-vite@latest prism-fe -- --template react
-cd prism-fe && npm install
-npm run dev  # Instant server start
+npx -y create-vite@latest ./ -- --template react
+npm install
+npm install -D tailwindcss@3
+npm run dev
 
 # Backend
-mkdir prism-be && cd prism-be
-npm init -y && npm install express cors
-# Create server.js with /api/adapt endpoint
-node server.js  # Instant API
+mkdir server && cd server
+npm init -y
+npm install express cors better-sqlite3 pdfjs-dist tesseract.js zod openai uuid
+npm install -D vitest supertest
+node server.js
+
+# Full project dependencies
+npm install @anthropic-ai/sdk  # Only if using Anthropic as fallback
 ```
 
-Both frontend and backend run locally with **no configuration files required** for MVP.
+---
+
+## Dependency Summary
+
+### Frontend (`package.json`)
+```json
+{
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.0.0",
+    "vite": "^5.0.0",
+    "tailwindcss": "^3.4.0",
+    "vitest": "^1.0.0",
+    "@playwright/test": "^1.40.0"
+  }
+}
+```
+
+### Backend (`server/package.json`)
+```json
+{
+  "dependencies": {
+    "express": "^4.18.0",
+    "cors": "^2.8.5",
+    "better-sqlite3": "^9.0.0",
+    "pdfjs-dist": "^4.0.0",
+    "tesseract.js": "^5.0.0",
+    "zod": "^3.22.0",
+    "openai": "^4.0.0",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "vitest": "^1.0.0",
+    "supertest": "^6.3.0"
+  }
+}
+```
