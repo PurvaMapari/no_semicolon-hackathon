@@ -36,7 +36,6 @@ function Header({ section }) {
       <div className="access">☀︎</div>
       <Link to="/profile" style={{ display: "flex", alignItems: "center" }}>
         {hasProfile && profile?.name ? (
-          /* Initials avatar when profile exists */
           <div
             className="avatar"
             style={{
@@ -52,7 +51,6 @@ function Header({ section }) {
             {profile.name.trim().split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
           </div>
         ) : (
-          /* Placeholder avatar for guests */
           <div className="avatar" style={{ cursor: "pointer", background: "#e0e2f1" }} />
         )}
       </Link>
@@ -114,7 +112,6 @@ function Layout({ children }) {
 function RequireProfile({ children }) {
   const { hasProfile } = useAppStore();
   const { pathname } = useLocation();
-  // Let profile page and learner-profile through always
   if (!hasProfile && pathname !== "/profile") {
     return <Navigate to="/profile" replace />;
   }

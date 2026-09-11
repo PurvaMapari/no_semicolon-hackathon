@@ -1,1 +1,29 @@
+# ── Environment & secrets ─────────────────────────────
 .env
+.env.*
+!.env.example
+
+# ── Python ────────────────────────────────────────────
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.ipynb_checkpoints/
+
+# ── Node / Frontend ───────────────────────────────────
+node_modules/
+project/Frontend/node_modules/
+project/Frontend/dist/
+project/Frontend/.env
+
+# ── Editor & OS ───────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
