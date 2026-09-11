@@ -1,6 +1,8 @@
 import json
+import re
 from typing import Any, Dict, List, Optional
 
+from app.config import GROQ_API_KEY
 from app.services.llm import call_llm, call_voice_llm, parse_json_response
 
 
@@ -26,6 +28,22 @@ LESSON CONTENT:
 
 LEARNER REQUEST:
 {request}"""
+
+LESSON_QUESTION_PROMPT = """You are the question-answering assistant inside an adaptive learning platform.
+Answer the learner's question using only the supplied lesson and active section.
+Treat the active section as the primary context and use the full lesson only to clarify it.
+Do not invent facts or use outside knowledge.
+Answer clearly in 2 to 5 sentences and match the learner profile: {profile}.
+If the answer is not supported by the lesson, say: The lesson does not provide enough information to answer that.
+
+FULL EXTRACTED LESSON:
+{lesson}
+
+ACTIVE LESSON SECTION:
+{section}
+
+LEARNER QUESTION:
+{question}"""
 
 QUIZ_PROMPT = """Create one practice question based only on the chunk below. Adjust phrasing complexity to the learner profile: {profile}. Return valid JSON only with exactly these keys: question, options, answer, explanation. The options value must contain exactly four strings. The answer must exactly match one option. Do not use information outside the chunk. Include the marker QUIZ_JSON.
 
@@ -61,6 +79,12 @@ CHUNK:
 VALID_PROFILES = {"dyslexia", "low_vision", "cognitive_load"}
 
 
+def _dyslexia_fallback(text: str) -> str:
+    """Keep facts intact while making fallback text easier to scan."""
+    sentences = [sentence.strip() for sentence in text.replace("\n", " ").split(".") if sentence.strip()]
+    return "\n\n".join(f"{sentence}." for sentence in sentences)
+
+
 def parse_user_preference(user_text: str) -> Dict[str, Any]:
     """Convert free-text accessibility needs into a structured profile."""
     result = parse_json_response(call_llm(PREFERENCE_PARSE_PROMPT.format(text=user_text)))
@@ -72,12 +96,31 @@ def parse_user_preference(user_text: str) -> Dict[str, Any]:
 def transform_text(text: str, profile: str) -> Dict[str, Any]:
     """Transform text according to an accessibility profile."""
     if profile == "low_vision":
-        return {"profile": profile, "text": text, "formatting": {"font_size_multiplier": 1.5, "contrast_mode": "high"}}
+        return {
+            "profile": profile,
+            "text": text,
+            "formatting": {
+                "font_size_multiplier": 1.5,
+                "line_height": 2.0,
+                "letter_spacing": "0.03em",
+                "contrast_mode": "high",
+                "max_line_width": "42rem",
+            },
+        }
     if profile == "dyslexia":
-        rewritten = call_llm(DYSLEXIA_PROMPT.format(text=text)).strip()
+        rewritten = _dyslexia_fallback(text) if not GROQ_API_KEY else call_llm(DYSLEXIA_PROMPT.format(text=text)).strip()
         if not rewritten:
-            raise ValueError("The language model returned an empty dyslexia transformation.")
-        return {"profile": profile, "text": rewritten}
+            rewritten = _dyslexia_fallback(text)
+        return {
+            "profile": profile,
+            "text": rewritten,
+            "formatting": {
+                "font_family": "dyslexia-friendly",
+                "line_height": 1.9,
+                "letter_spacing": "0.04em",
+                "paragraph_spacing": "1.2rem",
+            },
+        }
     if profile == "cognitive_load":
         parsed = parse_json_response(call_llm(COGNITIVE_LOAD_PROMPT.format(text=text)))
         chunks = parsed.get("chunks") if isinstance(parsed, dict) else parsed
@@ -96,6 +139,30 @@ def voice_ask(user_request: str, lesson_text: str = "") -> str:
         return call_voice_llm(VOICE_HELP_PROMPT.format(lesson=lesson, request=user_request.strip())).strip()
     except Exception as error:
         return f"[Voice assistant error: {error}]"
+
+
+def answer_lesson_question(question: str, lesson_text: str, section_text: str, profile: str) -> str:
+    """Answer a question using the active section plus the full extracted lesson."""
+    if not question.strip() or not lesson_text.strip() or not section_text.strip():
+        raise ValueError("question, lesson_text, and section_text are required")
+    if not GROQ_API_KEY:
+        stop_words = {"what", "why", "how", "when", "where", "which", "who", "is", "are", "the", "a", "an", "does", "do", "this", "that", "about"}
+        question_words = {word for word in re.findall(r"[a-zA-Z]+", question.lower()) if word not in stop_words}
+        sentences = [sentence.strip() for sentence in re.split(r"(?<=[.!?])\s+", section_text) if sentence.strip()]
+        matching = next((sentence for sentence in sentences if question_words & set(re.findall(r"[a-zA-Z]+", sentence.lower()))), None)
+        if matching:
+            return f"Based on this section: {matching}"
+        return "The lesson does not provide enough information to answer that."
+    prompt = LESSON_QUESTION_PROMPT.format(
+        profile=profile,
+        lesson=lesson_text[:12000],
+        section=section_text[:4000],
+        question=question.strip(),
+    )
+    try:
+        return call_voice_llm(prompt).strip()
+    except Exception as error:
+        return f"[Lesson assistant error: {error}]"
 
 
 def generate_quiz(chunk: str, profile: str) -> Dict[str, Any]:

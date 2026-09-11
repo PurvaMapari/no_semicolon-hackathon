@@ -17,6 +17,13 @@ class VoiceRequest(BaseModel):
     lesson_text: str = ""
 
 
+class LessonQuestionRequest(BaseModel):
+    question: str = Field(min_length=1)
+    lesson_text: str = Field(min_length=1)
+    section_text: str = Field(min_length=1)
+    profile: str = "cognitive_load"
+
+
 class VisualRequest(BaseModel):
     lesson_text: str = Field(min_length=1)
     profile: str

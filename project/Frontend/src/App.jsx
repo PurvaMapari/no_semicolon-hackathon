@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import * as I from "lucide-react";
 import {
-  askVoice,
+  askLessonQuestion,
   detectProfile,
   extractDocument,
   generateQuiz,
@@ -82,6 +82,7 @@ function SessionProvider({ children }) {
     quizzes: [],
     visual: null,
     completed: 0,
+    completedSections: [],
     error: "",
     // SCALE & REWIRE additions:
     signals: createSignalState(),
@@ -122,6 +123,7 @@ function SessionProvider({ children }) {
         quizzes: [],
         visual: null,
         completed: 0,
+        completedSections: [],
         signals: createSignalState(),
         sessionMeta: createSessionMeta(),
         rewireState: { active: false, adaptedContent: null, evaluation: null, chunkIndex: 0 },
@@ -141,6 +143,7 @@ function SessionProvider({ children }) {
       quizzes: [],
       visual: null,
       completed: 0,
+      completedSections: [],
       signals: createSignalState(),
       sessionMeta: createSessionMeta(),
       rewireState: { active: false, adaptedContent: null, evaluation: null, chunkIndex: 0 },
@@ -159,6 +162,7 @@ function SessionProvider({ children }) {
       quizzes: [],
       visual: null,
       completed: 0,
+      completedSections: [],
       signals: createSignalState(),
       sessionMeta: createSessionMeta(),
       rewireState: { active: false, adaptedContent: null, evaluation: null, chunkIndex: 0 },
@@ -203,13 +207,26 @@ function SessionProvider({ children }) {
     });
   }
 
-  async function ask(question) {
+  async function ask(question, sectionText) {
     recordVoiceHelpAction();
-    return run("voice", () => askVoice(question, session.text));
+    return run("voice", () => {
+      if (sectionText) {
+        return askLessonQuestion(question, session.text, sectionText, session.profile);
+      }
+      return askLessonQuestion(question, session.text, session.text, session.profile);
+    });
   }
 
   function completeChunk() {
     setSession((current) => ({ ...current, completed: current.completed + 1 }));
+  }
+
+  function completeSection(sectionIndex) {
+    setSession((current) => {
+      const completedSections = current.completedSections || [];
+      if (completedSections.includes(sectionIndex)) return current;
+      return { ...current, completed: current.completed + 1, completedSections: [...completedSections, sectionIndex] };
+    });
   }
 
   // ── SCALE Signal & REWIRE Actions ──────────────────────────────────────────
@@ -340,6 +357,7 @@ function SessionProvider({ children }) {
         getVisual,
         ask,
         completeChunk,
+        completeSection,
         loadGoldenPath,
         simulateGoldenPath,
         recordRereadAction,
@@ -913,13 +931,18 @@ function Learn() {
     ask,
     getVisual,
     completeChunk,
+    completeSection,
     simulateGoldenPath,
     recordRereadAction,
     recordHelpAction,
+    recordVoiceHelpAction,
     dismissRewire,
   } = useSession();
   const navigate = useNavigate();
+
+  const [activeSection, setActiveSection] = useState(0);
   const [question, setQuestion] = useState("");
+  const [askedQuestion, setAskedQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [playing, setPlaying] = useState(false);
 
@@ -928,11 +951,34 @@ function Learn() {
     transformed?.profile === "cognitive_load"
       ? transformed.chunks
       : [transformed?.text || session.text];
-  const lessonText = chunks.filter(Boolean).join("\n\n");
+
+  const sections = chunks.filter(Boolean).flatMap((chunk, chunkIndex) =>
+    chunk
+      .split(/\n\s*\n|(?<=[.!?])\s+(?=[A-Z])/)
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((paragraph, paragraphIndex) => ({
+        id: `${chunkIndex}-${paragraphIndex}`,
+        paragraph,
+        chunk: chunkIndex + 1,
+        chunkIndex,
+      }))
+  );
+
+  const currentSection = sections[activeSection] || sections[0];
+  const formatting = transformed?.formatting || {};
+  const completedSections = session.completedSections || [];
+  const isComplete = completedSections.includes(activeSection);
 
   const evaluation = evaluateSignals(session.signals, session.sessionMeta);
   const struggleScore = evaluation.struggleScore;
   const isDyslexia = session.profile === "dyslexia";
+  const lessonClass =
+    transformed?.profile === "dyslexia"
+      ? "dyslexia-lesson"
+      : transformed?.profile === "low_vision"
+      ? "low-vision-lesson"
+      : "";
 
   function readAloud(text) {
     if ("speechSynthesis" in window) {
@@ -947,18 +993,58 @@ function Learn() {
 
   async function submitQuestion(event) {
     event.preventDefault();
-    const result = await ask(question);
+    const prompt = question.trim();
+    if (!prompt || !currentSection) return;
+    setAskedQuestion(prompt);
+    setAnswer("");
+    recordVoiceHelpAction();
+    const result = await ask(prompt, currentSection.paragraph);
     if (result) setAnswer(result.answer);
   }
+
+  function markSectionComplete() {
+    completeSection(activeSection);
+    completeChunk();
+    if (activeSection < sections.length - 1) {
+      setActiveSection((index) => index + 1);
+    }
+  }
+
+  const isAdapted =
+    session.rewireState.active &&
+    (currentSection?.chunkIndex === session.rewireState.chunkIndex ||
+      (chunks.length === 1 && session.rewireState.chunkIndex >= 0));
+  const displayText = isAdapted
+    ? session.rewireState.adaptedContent?.adapted_text || currentSection?.paragraph
+    : currentSection?.paragraph;
 
   return (
     <Layout section="Learn">
       <main className="page">
         <div className="eyebrow">
           <b>{PROFILE_LABELS[session.profile]}</b>
-          <span>{session.wordCount} words</span>
+          <span>
+            {completedSections.length}/{sections.length} completed · {session.wordCount} words
+          </span>
         </div>
-        <h1 className="page-title">Your adapted lesson</h1>
+
+        <div className="lesson-heading">
+          <div>
+            <h1 className="page-title">Your adapted lesson</h1>
+            <p className="lesson-subtitle">
+              One section at a time · {sections.length} readable sections
+            </p>
+          </div>
+          <button
+            className="icon-action"
+            onClick={() =>
+              readAloud(sections.map((s) => s.paragraph).join("\n\n"))
+            }
+            title="Read the full lesson aloud"
+          >
+            {playing ? "Stop" : "Read all"}
+          </button>
+        </div>
 
         {/* SCALE Real-Time Cognitive Telemetry Bar */}
         <div className="telemetry-bar">
@@ -1054,53 +1140,70 @@ function Learn() {
           </section>
         ) : (
           <>
-            <div className={`card lesson-card ${isDyslexia ? "dyslexia-mode" : ""}`}>
-              <div className="lesson-toolbar">
+            {/* Section Progress Stepper */}
+            <div className="section-progress">
+              <div>
+                <b>
+                  Section {activeSection + 1} of {sections.length}
+                </b>
+                <span>{isComplete ? "Completed" : "In progress"}</span>
+              </div>
+              <div className="progressbar">
+                <div
+                  className="progressfill"
+                  style={{
+                    width: `${((activeSection + (isComplete ? 1 : 0)) / (sections.length || 1)) * 100}%`,
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Active Section Card */}
+            <section className={`lesson-sections active-section ${lessonClass}`}>
+              <div className="lesson-sections-header">
                 <span className="pill">
-                  {chunks.length} learning chunk
-                  {chunks.length === 1 ? "" : "s"}
+                  {currentSection?.chunk > 1
+                    ? `Learning chunk ${currentSection.chunk}`
+                    : "Core idea"}
                 </span>
-                <button
-                  className="icon-action"
-                  onClick={() => readAloud(lessonText)}
-                  title="Read lesson aloud"
-                >
-                  {playing ? "Stop" : "Read aloud"}
-                </button>
+                <span className="reading-note">Read at your pace</span>
               </div>
 
-              {chunks.map((chunk, index) => {
-                const isAdapted =
-                  session.rewireState.active &&
-                  (index === session.rewireState.chunkIndex ||
-                    (chunks.length === 1 && session.rewireState.chunkIndex >= 0));
-                const displayText = isAdapted
-                  ? session.rewireState.adaptedContent?.adapted_text || chunk
-                  : chunk;
-
-                return (
-                  <article
-                    key={`${chunk.slice(0, 20)}-${index}`}
-                    className={`lesson-chunk ${
-                      isAdapted ? "adapted-chunk-card" : ""
-                    }`}
-                    style={isAdapted ? { padding: 14, borderRadius: 12, margin: "10px 0" } : {}}
-                  >
+              {currentSection && (
+                <article
+                  className={`lesson-section ${isAdapted ? "adapted-chunk-card" : ""}`}
+                  style={isAdapted ? { padding: 14, borderRadius: 12, margin: "10px 0" } : {}}
+                >
+                  <div className="section-number">
+                    {String(activeSection + 1).padStart(2, "0")}
+                  </div>
+                  <div className="section-content">
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span className="chunk-label">
-                        {isAdapted ? "⚡ REWIRED CONCEPT" : `Chunk ${index + 1}`}
-                      </span>
+                      <div className="section-label">
+                        {isAdapted ? "⚡ REWIRED CONCEPT" : `Section ${activeSection + 1}`}
+                      </div>
                       {isAdapted && (
                         <span className="adapted-badge">
                           Level {session.rewireState.adaptedContent?.variant_level || 2} Simplification
                         </span>
                       )}
                     </div>
-                    <p>{displayText}</p>
+
+                    <p
+                      style={{
+                        fontSize: formatting.font_size_multiplier
+                          ? `${formatting.font_size_multiplier}em`
+                          : undefined,
+                        lineHeight: formatting.line_height,
+                        letterSpacing: formatting.letter_spacing,
+                      }}
+                    >
+                      {displayText}
+                    </p>
 
                     {/* Visual Description Box for REWIRE */}
                     {isAdapted && session.rewireState.adaptedContent?.visual_description && (
-                      <div className="visual-description-box">
+                      <div className="visual-description-box" style={{ marginTop: 10 }}>
                         <div className="visual-description-label">
                           <span>🖼️</span> Visual Mental Model
                         </div>
@@ -1110,12 +1213,12 @@ function Learn() {
                       </div>
                     )}
 
-                    <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
+                    <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
                       <button
                         className="text-action"
                         onClick={() => readAloud(displayText)}
                       >
-                        🔊 Read this {isAdapted ? "adapted version" : "chunk"}
+                        <I.Volume2 size={13} /> Read this {isAdapted ? "adapted version" : "section"}
                       </button>
                       <span style={{ color: "#cbd5e1" }}>•</span>
                       <button
@@ -1134,24 +1237,62 @@ function Learn() {
                         💡 Need help
                       </button>
                     </div>
-                  </article>
-                );
-              })}
+                  </div>
+                </article>
+              )}
+            </section>
+
+            {/* Navigation & Actions */}
+            <div className="section-actions">
+              <button
+                className="secondary-action"
+                disabled={activeSection === 0}
+                onClick={() => setActiveSection((index) => index - 1)}
+              >
+                <I.ArrowLeft size={15} /> Previous
+              </button>
+              <button className="primary-action" onClick={markSectionComplete}>
+                {isComplete
+                  ? activeSection === sections.length - 1
+                    ? "All sections complete"
+                    : "Next section"
+                  : "Mark section complete"}
+                <I.Check size={16} />
+              </button>
             </div>
 
-            <div className="action-row">
+            {/* Section Jump Bar */}
+            <div className="section-jump">
+              {sections.map((section, index) => (
+                <button
+                  key={section.id}
+                  className={`${index === activeSection ? "current" : ""} ${completedSections.includes(index) ? "done" : ""}`}
+                  onClick={() => setActiveSection(index)}
+                >
+                  {completedSections.includes(index) ? (
+                    <I.Check size={12} />
+                  ) : (
+                    index + 1
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* Visual Support Generator */}
+            <div style={{ marginTop: 16 }}>
               <button
                 className="secondary-action"
                 disabled={Boolean(busy)}
                 onClick={getVisual}
+                style={{ width: "100%", justifyContent: "center" }}
               >
-                {busy === "visual" ? "Building visual..." : "Generate visual"}
-              </button>
-              <button className="primary-action" onClick={completeChunk}>
-                Mark chunk complete <I.Check size={16} />
+                {busy === "visual"
+                  ? "Building infographic visual..."
+                  : "🎨 Generate Visual Infographic Support"}
               </button>
             </div>
 
+            {/* Full PRISM Visual Card / Infographic */}
             {session.visual && (
               <VisualCard
                 visual={session.visual}
@@ -1159,8 +1300,12 @@ function Learn() {
               />
             )}
 
-            <section className="card" style={{ marginTop: 14, padding: 14 }}>
+            {/* In-Context Lesson Assistant */}
+            <section className="card ask-card" style={{ marginTop: 16, padding: 14 }}>
               <b>Ask about this lesson</b>
+              <p className="ask-context">
+                Your question is answered using the active section and lesson context.
+              </p>
               <form
                 onSubmit={submitQuestion}
                 style={{ display: "flex", gap: 8, marginTop: 9 }}
@@ -1168,28 +1313,23 @@ function Learn() {
                 <input
                   value={question}
                   onChange={(event) => setQuestion(event.target.value)}
-                  placeholder="Type a question"
+                  placeholder="Ask a question about this section"
                   style={{ flex: 1 }}
                 />
                 <button
                   className="primary-action"
                   disabled={!question.trim() || Boolean(busy)}
                 >
-                  {busy === "voice" ? "..." : "Ask"}
+                  {busy === "voice" ? "Thinking..." : "Ask"}
                 </button>
               </form>
-              {answer && (
-                <p
-                  style={{
-                    background: "#f0f1ff",
-                    padding: 10,
-                    borderRadius: 8,
-                    marginBottom: 0,
-                    marginTop: 10,
-                  }}
-                >
-                  {answer}
-                </p>
+              {askedQuestion && (
+                <div className="answer-box" style={{ marginTop: 12 }}>
+                  <span className="section-label">Your question</span>
+                  <p className="asked-question">{askedQuestion}</p>
+                  <span className="section-label">Answer</span>
+                  {answer ? <p>{answer}</p> : <p>Generating an answer from your lesson...</p>}
+                </div>
               )}
             </section>
           </>
@@ -1207,6 +1347,7 @@ function Practice() {
     getAdaptiveQuizAction,
     recordQuizAnswerAction,
     completeChunk,
+    completeSection,
   } = useSession();
   const navigate = useNavigate();
 
@@ -1253,6 +1394,7 @@ function Practice() {
     recordQuizAnswerAction(isCorrect);
     if (isCorrect) {
       completeChunk();
+      completeSection(0);
     }
   }
 
@@ -1261,7 +1403,7 @@ function Practice() {
       <main className="page">
         <div className="eyebrow">
           <b>Practice</b>
-          <span>{session.completed} completed</span>
+          <span>{(session.completedSections || []).length || session.completed} completed</span>
         </div>
         <h1 className="page-title">Check your understanding</h1>
 

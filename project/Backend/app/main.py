@@ -11,6 +11,7 @@ from app.schemas import (
     AdaptiveQuizRequest,
     AdaptiveQuizResponse,
     PipelineRequest,
+    LessonQuestionRequest,
     PreferenceRequest,
     QuizRequest,
     RewireRequest,
@@ -35,6 +36,7 @@ from app.services.learning import (
     run_pipeline,
     transform_text,
     voice_ask,
+    answer_lesson_question,
 )
 from app.services.visuals import render_full_visual_card
 
@@ -138,6 +140,21 @@ def transform(request: TransformRequest) -> Dict[str, Any]:
 def ask_voice(request: VoiceRequest) -> Dict[str, str]:
     try:
         return {"answer": voice_ask(request.question, request.lesson_text)}
+    except Exception as error:
+        _raise_http(error)
+
+
+@app.post("/api/lesson/question")
+def ask_lesson_question(request: LessonQuestionRequest) -> Dict[str, str]:
+    """Answer a learner question using the active section and full lesson context."""
+    try:
+        answer = answer_lesson_question(
+            request.question,
+            request.lesson_text,
+            request.section_text,
+            request.profile,
+        )
+        return {"answer": answer}
     except Exception as error:
         _raise_http(error)
 

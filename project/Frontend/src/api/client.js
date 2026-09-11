@@ -39,6 +39,19 @@ export function askVoice(question, lessonText) {
   });
 }
 
+export function askLessonQuestion(question, lessonText, sectionText, profile) {
+  return request("/api/lesson/question", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      question,
+      lesson_text: lessonText,
+      section_text: sectionText,
+      profile,
+    }),
+  });
+}
+
 export function generateVisual(lessonText, profile, sourcePdfPath = null) {
   return request("/api/visual", {
     method: "POST",
