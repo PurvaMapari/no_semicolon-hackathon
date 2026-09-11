@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useState } from "react";
 import {
   NavLink,
   Route,
@@ -30,47 +30,13 @@ import {
   evaluateSignals,
   applyAdaptation,
   recordAdaptationOutcome,
-  injectGoldenPathStruggle,
 } from "./engine/signals";
-import { SCALE_CONFIG, measureOutcome } from "./engine/scale";
+import { measureOutcome } from "./engine/scale";
 
 const PROFILE_LABELS = {
   dyslexia: "Dyslexia support",
   cognitive_load: "Cognitive load support",
   low_vision: "Low vision and clarity",
-};
-
-// ─── Golden-Path Demo Fixture (docs/18-GOLDEN-PATH-FIXTURE.md) ───────────────
-const GOLDEN_PATH_TEXT = `The Industrial Revolution was a period of major change in how goods were produced. It began in Great Britain in the late 1700s and spread to other parts of the world over the next century. Before this time, most goods were made by hand in small workshops or at home. The Industrial Revolution changed this by introducing machines and factories that could produce goods much faster and in larger quantities.
-
-One of the most important inventions was the steam engine, improved by James Watt in 1769. The steam engine powered factories, trains, and ships. It allowed goods to be transported over long distances quickly and cheaply. Coal became the main fuel source, and mining grew rapidly to meet demand.
-
-The textile industry was among the first to be transformed. Machines like the spinning jenny, invented by James Hargreaves in 1764, and the power loom allowed cloth to be made much faster than by hand. Factories replaced small workshops, and workers moved from rural areas to cities to find jobs in these new factories.
-
-While the Industrial Revolution brought economic growth and new opportunities, it also created serious problems. Factory workers, including children as young as 5 years old, often worked 12 to 16 hours a day in dangerous conditions. Wages were low, and there were no safety regulations. Cities grew rapidly but lacked proper housing, clean water, and sanitation, leading to disease and poverty.
-
-Over time, reforms were introduced. The Factory Act of 1833 limited child labor and set minimum age requirements. Trade unions formed to fight for workers' rights, including better pay and safer conditions. These changes laid the foundation for modern labor laws that protect workers today.`;
-
-const GOLDEN_PATH_REWIRE = {
-  adapted_text: "Cloth used to be made slowly by hand. Then new machines were invented. The spinning jenny was made by James Hargreaves in 1764. The power loom was another important machine. These machines made cloth much faster. Small workshops closed. Big factories opened. People moved from the countryside to cities to work in factories.",
-  visual_description: "Two contrasting images: 1) A solitary artisan working slowly at a manual wooden loom. 2) A bustling textile factory where rows of steam-powered machines spin dozens of threads simultaneously.",
-  variant_level: 2,
-  explanation: "We noticed you re-read this section 4 times and asked for help twice, so Prism switched to simpler language, shorter sections, and a visual description.",
-  actions_applied: ["increase_simplification", "reduce_chunk_size", "add_visual_description"],
-};
-
-const GOLDEN_PATH_ADAPTIVE_QUIZ = {
-  question: "What did the spinning jenny do?",
-  options: [
-    "It made cloth much faster",
-    "It powered trains and ships",
-    "It heated miners' homes",
-    "It pumped clean water to cities",
-  ],
-  answer: "It made cloth much faster",
-  explanation: "The spinning jenny was a breakthrough textile machine that spun multiple threads at once, producing cloth far faster than by hand.",
-  difficulty: "easier",
-  adapted: true,
 };
 
 const SessionContext = createContext(null);
@@ -105,7 +71,7 @@ export function SessionProvider({ children }) {
     try {
       return await fn();
     } catch (error) {
-      setSession((current) => ({ ...current, error: error.message }));
+      setSession((current) => ({ ...current, error: error.message || "An unexpected error occurred." }));
       return null;
     } finally {
       setBusy("");
@@ -144,27 +110,6 @@ export function SessionProvider({ children }) {
       fileName: "Pasted lesson",
       text,
       wordCount: text.trim() ? text.trim().split(/\s+/).length : 0,
-      transformed: null,
-      quizzes: [],
-      visual: null,
-      completed: 0,
-      completedSections: [],
-      practiceReport: { answered: [], failed: [], masteredSections: [] },
-      wholeTest: null,
-      signals: createSignalState(),
-      sessionMeta: createSessionMeta(),
-      rewireState: { active: false, adaptedContent: null, evaluation: null, chunkIndex: 0 },
-      latestOutcome: null,
-    }));
-  }
-
-  function loadGoldenPath() {
-    setSession((current) => ({
-      ...current,
-      fileName: "The Industrial Revolution (Golden Path)",
-      text: GOLDEN_PATH_TEXT,
-      wordCount: GOLDEN_PATH_TEXT.trim().split(/\s+/).length,
-      profile: "dyslexia",
       transformed: null,
       quizzes: [],
       visual: null,
@@ -233,8 +178,15 @@ export function SessionProvider({ children }) {
         const masteredSections = result.is_correct
           ? [...new Set([...current.practiceReport.masteredSections, result.section_index])]
           : current.practiceReport.masteredSections;
+
+        // Organic cognitive tracking trigger
+        const isCorrect = result.is_correct;
+        const updatedSignals = recordQuizAnswer(current.signals, isCorrect, 4000);
+        const evalState = evaluateSignals(updatedSignals, current.sessionMeta);
+
         return {
           ...current,
+          signals: updatedSignals,
           practiceReport: { answered, failed, masteredSections },
         };
       });
@@ -284,17 +236,76 @@ export function SessionProvider({ children }) {
     });
   }
 
-  // ── SCALE Signal & REWIRE Actions ──────────────────────────────────────────
-  function recordRereadAction() {
+  // Organic SCALE Signals & REWIRE Adaptation Trigger
+  async function triggerRewireForChunk(chunkIndex, chunkText, struggleExplanation = "Detected difficulty during reading and comprehension checks.") {
+    return run("rewire", async () => {
+      const evaluation = evaluateSignals(session.signals, session.sessionMeta);
+      const targetLevel = evaluation.adaptationStrategy?.newVariantLevel ?? 2;
+      const actions = evaluation.adaptationStrategy?.additionalActions ?? ["increase_simplification", "add_visual_description"];
+
+      let adaptedData = null;
+      try {
+        adaptedData = await rewireContent({
+          chunkText: chunkText || session.text,
+          profile: session.profile,
+          variantLevel: targetLevel,
+          actions,
+          struggleExplanation,
+        });
+      } catch (err) {
+        adaptedData = {
+          adapted_text: chunkText,
+          variant_level: targetLevel,
+          explanation: struggleExplanation,
+          actions_applied: actions,
+        };
+      }
+
+      const updatedMeta = applyAdaptation(session.sessionMeta, evaluation);
+      updatedMeta.preAccuracy = 0.0;
+
+      setSession((current) => ({
+        ...current,
+        sessionMeta: updatedMeta,
+        rewireState: {
+          active: true,
+          adaptedContent: adaptedData,
+          evaluation,
+          chunkIndex,
+        },
+        latestOutcome: null,
+      }));
+      return adaptedData;
+    });
+  }
+
+  function recordRereadAction(chunkIndex, chunkText) {
     setSession((current) => {
       const updatedSignals = recordReread(current.signals);
+      const evalState = evaluateSignals(updatedSignals, current.sessionMeta);
+      
+      // Auto-trigger REWIRE if struggle score passes threshold (>= 0.5)
+      if (evalState.struggleScore >= 0.5 && !current.rewireState.active) {
+        setTimeout(() => {
+          triggerRewireForChunk(chunkIndex, chunkText, evalState.explanation);
+        }, 100);
+      }
+
       return { ...current, signals: updatedSignals };
     });
   }
 
-  function recordHelpAction() {
+  function recordHelpAction(chunkIndex, chunkText) {
     setSession((current) => {
       const updatedSignals = recordHelpRequest(current.signals);
+      const evalState = evaluateSignals(updatedSignals, current.sessionMeta);
+
+      if (evalState.struggleScore >= 0.5 && !current.rewireState.active) {
+        setTimeout(() => {
+          triggerRewireForChunk(chunkIndex, chunkText, evalState.explanation);
+        }, 100);
+      }
+
       return { ...current, signals: updatedSignals };
     });
   }
@@ -306,56 +317,6 @@ export function SessionProvider({ children }) {
     });
   }
 
-  async function simulateGoldenPath() {
-    return run("rewire", async () => {
-      const strugglingSignals = injectGoldenPathStruggle(session.signals);
-      const evaluation = evaluateSignals(strugglingSignals, session.sessionMeta);
-
-      let adaptedData = null;
-      const currentChunk =
-        session.transformed?.chunks?.[2] ||
-        session.transformed?.text ||
-        session.text;
-      try {
-        adaptedData = await rewireContent({
-          chunkText: currentChunk,
-          profile: session.profile,
-          variantLevel: evaluation.adaptationStrategy?.newVariantLevel ?? 2,
-          actions: evaluation.adaptationStrategy?.additionalActions ?? [
-            "increase_simplification",
-            "reduce_chunk_size",
-            "add_visual_description",
-          ],
-          struggleExplanation: evaluation.explanation,
-        });
-      } catch (err) {
-        adaptedData = GOLDEN_PATH_REWIRE;
-      }
-
-      const updatedMeta = applyAdaptation(session.sessionMeta, evaluation);
-      updatedMeta.preAccuracy = 0.0;
-      if (updatedMeta.adaptationHistory.length > 0) {
-        updatedMeta.adaptationHistory[
-          updatedMeta.adaptationHistory.length - 1
-        ].preAccuracy = 0.0;
-      }
-
-      setSession((current) => ({
-        ...current,
-        signals: strugglingSignals,
-        sessionMeta: updatedMeta,
-        rewireState: {
-          active: true,
-          adaptedContent: adaptedData,
-          evaluation,
-          chunkIndex: current.transformed?.chunks?.length > 2 ? 2 : 0,
-        },
-        latestOutcome: null,
-      }));
-      return adaptedData;
-    });
-  }
-
   async function getAdaptiveQuizAction(chunk) {
     return run("quiz", async () => {
       let quizData = null;
@@ -364,13 +325,10 @@ export function SessionProvider({ children }) {
           chunkText: chunk,
           profile: session.profile,
           difficulty: "easier",
-          struggleScore: session.rewireState.evaluation?.struggleScore || 0.76,
-          previousQuestion:
-            "How did cloth production change in the Industrial Revolution?",
-          previousAnswerCorrect: false,
+          struggleScore: session.rewireState.evaluation?.struggleScore || 0.7,
         });
       } catch (err) {
-        quizData = GOLDEN_PATH_ADAPTIVE_QUIZ;
+        quizData = await generateQuiz(chunk, session.profile);
       }
       setSession((current) => ({
         ...current,
@@ -380,13 +338,9 @@ export function SessionProvider({ children }) {
     });
   }
 
-  function recordQuizAnswerAction(isCorrect, latencyMs = 5000) {
+  function recordQuizAnswerAction(isCorrect) {
     setSession((current) => {
-      const updatedSignals = recordQuizAnswer(
-        current.signals,
-        isCorrect,
-        latencyMs
-      );
+      const updatedSignals = recordQuizAnswer(current.signals, isCorrect, 4000);
       let updatedMeta = current.sessionMeta;
       let outcome = current.latestOutcome;
 
@@ -429,8 +383,7 @@ export function SessionProvider({ children }) {
         ask,
         completeChunk,
         completeSection,
-        loadGoldenPath,
-        simulateGoldenPath,
+        triggerRewireForChunk,
         recordRereadAction,
         recordHelpAction,
         recordVoiceHelpAction,
@@ -457,7 +410,9 @@ function Header({ section }) {
       </NavLink>
       <div className="header-right">
         {session.rewireState?.active && (
-          <span className="rewire-tag">⚡ REWIRED</span>
+          <span className="rewire-tag">
+            <I.Zap size={12} style={{ marginRight: 4 }} /> REWIRED
+          </span>
         )}
         <div className="access-badge">
           <span className="access-dot" />
@@ -528,8 +483,9 @@ function Layout({ children, section }) {
               {PROFILE_LABELS[session.profile]}
             </div>
             {session.fileName && (
-              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                📄 {session.fileName}
+              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, display: "flex", alignItems: "center", gap: 5 }}>
+                <I.FileText size={12} />
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.fileName}</span>
               </div>
             )}
           </div>
@@ -581,7 +537,7 @@ function ErrorNotice() {
 }
 
 function Upload() {
-  const { session, busy, upload, setText, loadGoldenPath } = useSession();
+  const { session, busy, upload, setText } = useSession();
   const navigate = useNavigate();
   const [tab, setTab] = useState("upload");
   const [draft, setDraft] = useState(session.text);
@@ -595,39 +551,6 @@ function Upload() {
           <span>Document Extraction & Setup</span>
         </div>
         <h1 className="page-title">Add learning material</h1>
-
-        {/* 1-Click Golden Path Quick Demo Card */}
-        <div className="quick-demo-box">
-          <div>
-            <div className="golden-badge">
-              <I.Sparkles size={12} /> Golden-Path Demo
-            </div>
-            <div
-              style={{
-                fontWeight: 800,
-                fontSize: 14,
-                marginTop: 4,
-                color: "#1e1b4b",
-                fontFamily: "var(--font-heading)",
-              }}
-            >
-              The Industrial Revolution
-            </div>
-            <div style={{ fontSize: 12, color: "#64748b" }}>
-              Pre-calibrated for Dyslexia, SCALE signals, and REWIRE demo
-            </div>
-          </div>
-          <button
-            className="primary-action"
-            style={{ fontSize: 13, padding: "9px 16px", background: "var(--primary-gradient)", width: "auto" }}
-            onClick={() => {
-              loadGoldenPath();
-              navigate("/profile");
-            }}
-          >
-            Load Demo <I.ArrowRight size={14} />
-          </button>
-        </div>
 
         <section className="hero-card">
           <b>Smart Document Reader</b>
@@ -851,22 +774,6 @@ function Profile() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// VISUAL CARD  — Educational Infographic Visual Support Component
-// ─────────────────────────────────────────────────────────────────────────────
-const VTYPE_META = {
-  process:      { icon: "⚙️",  label: "Process diagram"   },
-  flowchart:    { icon: "🔀",  label: "Flowchart"          },
-  cycle:        { icon: "🔄",  label: "Cycle diagram"       },
-  timeline:     { icon: "📅",  label: "Timeline"           },
-  concept_map:  { icon: "🗺️",  label: "Concept map"        },
-  cause_effect: { icon: "⚡",  label: "Cause & effect"     },
-  comparison:   { icon: "⚖️",  label: "Comparison"         },
-  hierarchy:    { icon: "🌳",  label: "Hierarchy"           },
-  bar_chart:    { icon: "📊",  label: "Chart"              },
-  none:         { icon: "💬",  label: "Text explanation"   },
-};
-
 function VisualCard({ visual, onReadAloud }) {
   if (!visual) return null;
 
@@ -884,8 +791,6 @@ function VisualCard({ visual, onReadAloud }) {
     error         = null,
   } = visual;
 
-  const meta = VTYPE_META[visual_type] || VTYPE_META.none;
-
   if (error) {
     return (
       <section className="card" style={{ padding: 18, marginTop: 16 }}>
@@ -902,14 +807,10 @@ function VisualCard({ visual, onReadAloud }) {
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
         <div style={{ flex: 1 }}>
           <span className="pill" style={{ background: source === "pdf" ? "#fef3c7" : "var(--primary-light)", color: source === "pdf" ? "#92400e" : "var(--primary)", marginBottom: 6 }}>
-            {source === "pdf" ? "SOURCE VISUAL" : "PRISM EDUCATIONAL INFOGRAPHIC"}
+            {source === "pdf" ? "SOURCE VISUAL" : "EDUCATIONAL INFOGRAPHIC"}
           </span>
           {title && <h2 style={{ fontFamily: "var(--font-heading)", fontSize: 18, margin: "4px 0 0", color: "var(--ink)" }}>{title}</h2>}
           {subtitle && <p style={{ fontSize: 13, color: "var(--muted)", margin: "4px 0 0" }}>{subtitle}</p>}
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--secondary-bg)", padding: "6px 12px", borderRadius: 10 }}>
-          <span style={{ fontSize: 16 }}>{meta.icon}</span>
-          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink)" }}>{meta.label}</span>
         </div>
       </div>
 
@@ -922,14 +823,16 @@ function VisualCard({ visual, onReadAloud }) {
 
       {explanation && (
         <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border-color)" }}>
-          <b style={{ fontSize: 12, fontWeight: 800, color: "var(--primary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>💡 Understand It</b>
+          <b style={{ fontSize: 12, fontWeight: 800, color: "var(--primary)", textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: 6 }}>
+            <I.Lightbulb size={14} /> Understand It
+          </b>
           <p style={{ fontSize: 14, lineHeight: 1.6, color: "#334155", marginTop: 4 }}>{explanation}</p>
         </div>
       )}
 
       {key_takeaways.length > 0 && (
         <div style={{ marginTop: 12 }}>
-          <b style={{ fontSize: 12, fontWeight: 800, color: "var(--primary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>📌 Key Takeaways</b>
+          <b style={{ fontSize: 12, fontWeight: 800, color: "var(--primary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Key Takeaways</b>
           <ul style={{ marginTop: 6, paddingLeft: 20 }}>
             {key_takeaways.map((t, i) => (
               <li key={i} style={{ fontSize: 13, color: "#334155", marginBottom: 4, lineHeight: 1.5 }}>{t}</li>
@@ -967,7 +870,6 @@ function Learn() {
     getVisual,
     completeChunk,
     completeSection,
-    simulateGoldenPath,
     recordRereadAction,
     recordHelpAction,
     recordVoiceHelpAction,
@@ -1080,7 +982,7 @@ function Learn() {
           </button>
         </div>
 
-        {/* SCALE Real-Time Cognitive Telemetry Bar */}
+        {/* Real-Time SCALE Cognitive Telemetry Bar */}
         <div className="telemetry-bar">
           <div className="telemetry-gauge">
             <span
@@ -1092,58 +994,51 @@ function Learn() {
                   : "normal"
               }`}
             />
-            <span>
-              SCALE Telemetry:{" "}
-              <b>{(struggleScore * 100).toFixed(0)}% struggle</b>
-              {struggleScore >= 0.6 ? " (REWIRE active)" : " (Optimal)"}
+            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <I.Activity size={14} style={{ color: "var(--primary)" }} />
+              SCALE Cognitive Monitor: <b>{(struggleScore * 100).toFixed(0)}% struggle score</b>
+              {struggleScore >= 0.6 ? " (REWIRE Active)" : " (Optimal Comprehension)"}
             </span>
           </div>
-          <button
-            className="text-action"
-            style={{ fontWeight: 800, color: "var(--primary)" }}
-            onClick={simulateGoldenPath}
-            disabled={Boolean(busy)}
-          >
-            {busy === "rewire" ? "Adapting..." : "⚡ Simulate Struggle (Demo)"}
-          </button>
         </div>
 
-        {/* REWIRE Signature Moment Banner */}
+        {/* REWIRE Restructuring Banner */}
         {session.rewireState.active && (
           <div className="rewire-banner">
             <div className="rewire-header">
-              <span className="rewire-tag">⚡ REWIRE ACTIVATED</span>
+              <span className="rewire-tag">
+                <I.Zap size={13} style={{ marginRight: 4 }} /> REWIRE ACTIVATED
+              </span>
               <button
                 style={{
                   background: "none",
                   border: "none",
                   color: "#94a3b8",
                   cursor: "pointer",
-                  fontSize: 16,
+                  padding: 4,
                 }}
                 onClick={dismissRewire}
               >
-                ✕
+                <I.X size={16} />
               </button>
             </div>
             <div className="rewire-title">
-              Cognitive Adaptation Applied (Level 2)
+              Cognitive Adaptation Applied
             </div>
             <p className="rewire-explanation">
               {session.rewireState.adaptedContent?.explanation ||
                 session.rewireState.evaluation?.explanation ||
-                "We detected increased struggle on this concept and re-explained it using simpler vocabulary and structured mental models."}
+                "Increased comprehension struggle was detected. The material has been automatically restructured into clearer terms."}
             </p>
             <div className="rewire-actions-pills">
               {(
                 session.rewireState.adaptedContent?.actions_applied || [
                   "increase_simplification",
-                  "reduce_chunk_size",
                   "add_visual_description",
                 ]
               ).map((act) => (
                 <span key={act} className="rewire-action-pill">
-                  ✓ {act.replace(/_/g, " ")}
+                  <I.Check size={11} style={{ marginRight: 3 }} /> {act.replace(/_/g, " ")}
                 </span>
               ))}
             </div>
@@ -1151,9 +1046,9 @@ function Learn() {
               className="primary-action"
               style={{
                 marginTop: 14,
-                background: "var(--amber)",
-                color: "#1e1b4b",
-                fontWeight: 800,
+                background: "var(--primary-gradient)",
+                color: "#ffffff",
+                fontWeight: 700,
                 width: "100%",
               }}
               onClick={() => navigate("/practice")}
@@ -1180,7 +1075,7 @@ function Learn() {
                 <b>
                   Section {activeSection + 1} of {sections.length}
                 </b>
-                <span>{isComplete ? "✓ Completed" : "In progress"}</span>
+                <span>{isComplete ? "Completed" : "In progress"}</span>
               </div>
               <div className="progressbar">
                 <div
@@ -1210,7 +1105,7 @@ function Learn() {
                   <div className="section-content">
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <div className="section-label">
-                        {isAdapted ? "⚡ REWIRED CONCEPT" : `Section ${activeSection + 1}`}
+                        {isAdapted ? "REWIRED CONCEPT" : `Section ${activeSection + 1}`}
                       </div>
                       {isAdapted && (
                         <span className="adapted-badge">
@@ -1234,7 +1129,7 @@ function Learn() {
                     {isAdapted && session.rewireState.adaptedContent?.visual_description && (
                       <div className="visual-description-box">
                         <div className="visual-description-label">
-                          <span>🖼️</span> Visual Mental Model
+                          <I.Image size={14} /> Visual Mental Model
                         </div>
                         <p className="visual-description-text">
                           {session.rewireState.adaptedContent.visual_description}
@@ -1242,26 +1137,26 @@ function Learn() {
                       </div>
                     )}
 
-                    <div style={{ display: "flex", gap: 10, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", gap: 12, marginTop: 14, alignItems: "center", flexWrap: "wrap" }}>
                       <button
                         className="text-action"
                         onClick={() => readAloud(displayText)}
                       >
-                        <I.Volume2 size={15} /> Read this {isAdapted ? "adapted version" : "section"}
+                        <I.Volume2 size={14} /> Read section
                       </button>
                       <span style={{ color: "#cbd5e1" }}>•</span>
                       <button
                         className="text-action"
-                        onClick={() => recordRereadAction()}
+                        onClick={() => recordRereadAction(activeSection, currentSection.paragraph)}
                       >
-                        📖 Re-read (+1)
+                        <I.RotateCcw size={13} /> Re-read section
                       </button>
                       <span style={{ color: "#cbd5e1" }}>•</span>
                       <button
                         className="text-action"
-                        onClick={() => recordHelpAction()}
+                        onClick={() => recordHelpAction(activeSection, currentSection.paragraph)}
                       >
-                        💡 Need help
+                        <I.HelpCircle size={13} /> Request explanation
                       </button>
                     </div>
                   </div>
@@ -1309,10 +1204,10 @@ function Learn() {
               onClick={getVisual}
               style={{ width: "100%", marginTop: 14 }}
             >
-              <I.Sparkles size={16} />
+              <I.PieChart size={16} />
               {busy === "visual"
                 ? "Building infographic visual..."
-                : "🎨 Generate Visual Infographic Support"}
+                : "Generate Visual Infographic"}
             </button>
 
             {session.visual && (
@@ -1324,7 +1219,7 @@ function Learn() {
 
             <section className="card ask-card" style={{ marginTop: 16, padding: 18 }}>
               <b style={{ fontSize: 15, color: "var(--ink)", display: "flex", alignItems: "center", gap: 8 }}>
-                <I.HelpCircle size={18} style={{ color: "var(--primary)" }} /> Ask about this lesson
+                <I.MessageSquare size={18} style={{ color: "var(--primary)" }} /> Ask about this section
               </b>
               <p className="ask-context">
                 Your question is answered using the active section and lesson context.
@@ -1419,12 +1314,6 @@ function Practice() {
       setAdaptiveSubmitted(false);
     }
   }
-
-  useEffect(() => {
-    if (isRewireActive && !adaptiveQuiz) {
-      loadAdaptiveQuiz();
-    }
-  }, [isRewireActive]);
 
   function handleAdaptiveSubmit() {
     if (!adaptiveSelected || adaptiveSubmitted) return;
@@ -1523,14 +1412,14 @@ function Practice() {
                 marginBottom: 12,
               }}
             >
-              <span>⚡</span>
-              <span>Adaptive Question: Calibrated to Level 2 Simplification</span>
+              <I.Zap size={13} />
+              <span>Adaptive Question: Calibrated to Simplified Level</span>
             </div>
 
             {!adaptiveQuiz ? (
               <div>
                 <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 12 }}>
-                  Generating an adaptive question calibrated to your learning recovery...
+                  Generate an adaptive question calibrated to your learning recovery.
                 </p>
                 <button
                   className="primary-action"
@@ -1571,15 +1460,19 @@ function Practice() {
                 >
                   {adaptiveSubmitted
                     ? adaptiveSelected === adaptiveQuiz.answer
-                      ? "Correct!"
+                      ? "Correct"
                       : "Review Answer"
                     : "Submit Answer"}
                 </button>
 
                 {adaptiveSubmitted && (
                   <div className={`feedback ${adaptiveSelected === adaptiveQuiz.answer ? "correct-feedback" : "failed-feedback"}`} style={{ marginTop: 14 }}>
-                    <b style={{ fontSize: 15, display: "block", marginBottom: 4 }}>
-                      {adaptiveSelected === adaptiveQuiz.answer ? "✓ Correct!" : `Answer: ${adaptiveQuiz.answer}`}
+                    <b style={{ fontSize: 15, display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                      {adaptiveSelected === adaptiveQuiz.answer ? (
+                        <><I.CheckCircle2 size={16} /> Correct</>
+                      ) : (
+                        <><I.AlertCircle size={16} /> Answer: {adaptiveQuiz.answer}</>
+                      )}
                     </b>
                     <p>{adaptiveQuiz.explanation}</p>
                   </div>
@@ -1591,10 +1484,10 @@ function Practice() {
                       <span className="outcome-delta-badge">
                         +{((session.latestOutcome.outcomeDelta || 1) * 100).toFixed(0)}%
                       </span>
-                      <span>SCALE Outcome: Struggle Successfully Resolved!</span>
+                      <span>SCALE Outcome: Struggle Successfully Resolved</span>
                     </div>
                     <p style={{ fontSize: 13, color: "#065f46", margin: "6px 0 10px", lineHeight: 1.5 }}>
-                      Pre-adaptation accuracy: 0% → Post-adaptation accuracy: 100%. The cognitive restructuring enabled mastery.
+                      Cognitive restructuring enabled mastery. Accuracy improved significantly following adaptation.
                     </p>
                     <button
                       className="primary-action"
@@ -1679,8 +1572,12 @@ function Practice() {
                   </button>
                 ) : (
                   <div className={`feedback ${report.is_correct ? "correct-feedback" : "failed-feedback"}`}>
-                    <b style={{ fontSize: 15, display: "block", marginBottom: 4 }}>
-                      {report.is_correct ? "✓ Correct! Section mastered." : "✕ Not quite. Review this topic."}
+                    <b style={{ fontSize: 15, display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                      {report.is_correct ? (
+                        <><I.CheckCircle2 size={16} /> Correct! Section mastered.</>
+                      ) : (
+                        <><I.AlertCircle size={16} /> Review this topic</>
+                      )}
                     </b>
                     <p>{report.explanation}</p>
                     <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
@@ -1705,7 +1602,7 @@ function Practice() {
         {allSectionsMastered && !session.wholeTest && (
           <section className="card mastery-unlocked" style={{ marginTop: 16 }}>
             <b style={{ fontSize: 16, color: "#065f46", display: "flex", alignItems: "center", gap: 8 }}>
-              <I.Award size={20} /> All Sections Mastered!
+              <I.Award size={20} /> All Sections Mastered
             </b>
             <p style={{ margin: "6px 0 14px" }}>You can now take a comprehensive test covering the entire extracted lesson.</p>
             <button className="primary-action" disabled={Boolean(busy)} onClick={startWholeTest} style={{ background: "linear-gradient(135deg, #059669 0%, #10b981 100%)" }}>
@@ -1743,7 +1640,9 @@ function Practice() {
 
         {testReport && (
           <section className="card feedback correct-feedback" style={{ marginTop: 16, padding: 20 }}>
-            <b style={{ fontSize: 16, display: "block", marginBottom: 6 }}>🎉 Whole-lesson test complete</b>
+            <b style={{ fontSize: 16, display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <I.Award size={20} /> Whole-lesson test complete
+            </b>
             <p style={{ fontSize: 14 }}>You scored {testReport.correct} of {testReport.answered.length} correct.</p>
             {testReport.failed.length ? (
               <div style={{ marginTop: 10 }}>
@@ -1763,8 +1662,7 @@ function Practice() {
 }
 
 function Progress() {
-  const { session, simulateGoldenPath } = useSession();
-  const navigate = useNavigate();
+  const { session } = useSession();
 
   const transformed = Boolean(session.transformed);
   const chunks =
@@ -1811,7 +1709,7 @@ function Progress() {
         <section className="card" style={{ marginTop: 18, padding: 20 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span className="pill" style={{ background: "#f3e8ff", color: "#7e22ce" }}>
-              ⚡ SCALE Cognitive Telemetry
+              <I.Activity size={13} /> SCALE Cognitive Telemetry
             </span>
             <span style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>
               Variant Level: {session.sessionMeta.currentVariantLevel}
@@ -1868,17 +1766,7 @@ function Progress() {
 
           {history.length === 0 ? (
             <div style={{ padding: "18px 0", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>
-              <p style={{ marginBottom: 12 }}>No struggle adaptations triggered in this session yet.</p>
-              <button
-                className="secondary-action"
-                style={{ fontSize: 12, padding: "8px 16px" }}
-                onClick={() => {
-                  simulateGoldenPath();
-                  navigate("/learn");
-                }}
-              >
-                ⚡ Trigger Golden-Path Adaptation
-              </button>
+              <p>No struggle adaptations triggered in this session yet.</p>
             </div>
           ) : (
             <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
@@ -1905,7 +1793,7 @@ function Progress() {
                   </p>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
                     <span className="pill" style={{ background: "#ecfdf5", color: "#047857", fontSize: 11 }}>
-                      Outcome: +100% Accuracy Improvement
+                      Outcome: Accuracy Improvement Recorded
                     </span>
                   </div>
                 </div>
