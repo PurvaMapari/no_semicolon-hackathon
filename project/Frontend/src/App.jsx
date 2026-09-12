@@ -35,6 +35,7 @@ import {
   evaluateSignals,
   applyAdaptation,
   recordAdaptationOutcome,
+  computeSessionStruggleScore,
 } from "./engine/signals";
 import { measureOutcome } from "./engine/scale";
 
