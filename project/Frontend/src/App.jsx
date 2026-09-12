@@ -41,6 +41,7 @@ import {
   applyAdaptation,
   recordAdaptationOutcome,
   resetSectionDwell,
+  computeSessionStruggleScore,
   SECTION_STATES,
 } from "./engine/signals";
 import { SCALE_CONFIG } from "./engine/scale";
@@ -624,63 +625,6 @@ export function SessionProvider({ children }) {
   );
 }
 
-function Header({ section }) {
-  const { session } = useSession();
-  return (
-    <header className="topbar">
-      <NavLink to="/progress" className="brand">
-        <div className="logo">A</div>
-        <div>
-          <div className="brandname">AdaptLearn</div>
-          <div className="subtitle">{section === "Profile" ? "Profile & Verification" : section}</div>
-        </div>
-      </NavLink>
-      <div className="header-right">
-        {session.rewireState?.active && (
-          <span className="rewire-tag">
-            <I.Zap size={12} style={{ marginRight: 4 }} /> REWIRED
-          </span>
-        )}
-        <button
-          type="button"
-          className="voice-status-pill"
-          onClick={() => {
-            const el = document.querySelector(".voice-assistant-card");
-            if (el) {
-              el.scrollIntoView({ behavior: "smooth" });
-              const btn = el.querySelector("button[aria-label='Toggle voice input']");
-              if (btn) btn.click();
-            }
-          }}
-          title="Voice Assistant & Speech-to-Text (Click to activate voice)"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 5,
-            background: "rgba(99, 102, 241, 0.09)",
-            border: "1px solid rgba(99, 102, 241, 0.22)",
-            borderRadius: 99,
-            padding: "5px 11px",
-            fontSize: 12,
-            fontWeight: 700,
-            color: "var(--primary)",
-            cursor: "pointer",
-            transition: "all 0.2s ease",
-          }}
-        >
-          <I.Mic size={13} />
-          <span>Voice</span>
-        </button>
-        <div className="access-badge">
-          <span className="access-dot" />
-          <span>{PROFILE_LABELS[session.profile]}</span>
-        </div>
-        <div className="avatar">AL</div>
-      </div>
-    </header>
-  );
-}
-
 function Layout({ children, section }) {
   const location = useLocation();
   const { session } = useSession();
@@ -696,7 +640,7 @@ function Layout({ children, section }) {
       <div className="desktop-layout">
         <aside className="desktop-sidebar">
           <NavLink to="/progress" className="brand" style={{ marginBottom: 12 }}>
-            <div className="logo">A</div>
+            <img src="/logo.png" alt="AdaptLearn Logo" className="logo" />
             <div>
               <div className="brandname">AdaptLearn</div>
               <div className="subtitle">Adaptive Engine</div>
@@ -708,7 +652,7 @@ function Layout({ children, section }) {
               <NavLink
                 key={to}
                 to={to}
-                className={`sidebar-link ${location.pathname === to || (to === "/learn" && location.pathname === "/profile") ? "active" : ""}`}
+                className={`sidebar-link ${location.pathname === to ? "active" : ""}`}
               >
                 <Icon size={18} />
                 <span>{label}</span>
@@ -716,13 +660,21 @@ function Layout({ children, section }) {
             ))}
           </nav>
 
-          <div
+          <NavLink
+            to="/profile"
             style={{
+              display: "block",
+              textDecoration: "none",
               padding: 14,
-              background: "linear-gradient(135deg, rgba(238, 242, 255, 0.8), rgba(245, 243, 257, 0.8))",
+              background: location.pathname === "/profile"
+                ? "linear-gradient(135deg, rgba(224, 231, 255, 0.95), rgba(238, 242, 255, 0.95))"
+                : "linear-gradient(135deg, rgba(238, 242, 255, 0.8), rgba(245, 243, 257, 0.8))",
               borderRadius: 14,
-              border: "1px solid rgba(199, 210, 254, 0.6)",
+              border: location.pathname === "/profile"
+                ? "1.5px solid var(--primary)"
+                : "1px solid rgba(199, 210, 254, 0.6)",
               marginTop: "auto",
+              transition: "all 0.2s ease",
             }}
           >
             <div
@@ -745,11 +697,10 @@ function Layout({ children, section }) {
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.fileName}</span>
               </div>
             )}
-          </div>
+          </NavLink>
         </aside>
 
         <div className="main-content">
-          <Header section={section} />
           {children}
         </div>
       </div>
@@ -3894,6 +3845,48 @@ function Practice() {
           </section>
         )}
 
+        <section className="card practice-report" style={{ padding: 18 }}>
+          <b style={{ fontSize: 15, color: "var(--ink)", fontFamily: "var(--font-heading)" }}>Section Report</b>
+          <div className="practice-stats-grid" style={{ marginTop: 12 }}>
+            <div className="stat practice-stat-card">
+              <div className="practice-stat-header">
+                <div className="practice-stat-icon" style={{ background: "#eff6ff", color: "#2563eb", borderColor: "#bfdbfe" }}>
+                  <I.FileEdit size={16} />
+                </div>
+              </div>
+              <b>{session.practiceReport.answered.length}</b>
+              <span>Answered</span>
+            </div>
+            <div className="stat practice-stat-card">
+              <div className="practice-stat-header">
+                <div className="practice-stat-icon" style={{ background: "#fff1f2", color: "#e11d48", borderColor: "#fecdd3" }}>
+                  <I.RotateCcw size={16} />
+                </div>
+              </div>
+              <b>{session.practiceReport.failed.length}</b>
+              <span>Need Review</span>
+            </div>
+            <div className="stat practice-stat-card">
+              <div className="practice-stat-header">
+                <div className="practice-stat-icon" style={{ background: "#fffbeb", color: "#d97706", borderColor: "#fde68a" }}>
+                  <I.Trophy size={16} />
+                </div>
+              </div>
+              <b>{session.practiceReport.masteredSections.length}</b>
+              <span>Mastered</span>
+            </div>
+            <div className="stat practice-stat-card">
+              <div className="practice-stat-header">
+                <div className="practice-stat-icon" style={{ background: "#f3e8ff", color: "#7e22ce", borderColor: "#e9d5ff" }}>
+                  <I.BookOpen size={16} />
+                </div>
+              </div>
+              <b>{chunks.length}</b>
+              <span>Total Sections</span>
+            </div>
+          </div>
+        </section>
+
         {/* ── Per-section quiz ─────────────────────────────────────────── */}
         {!sectionText ? (
           <section className="card empty-state" style={{ marginTop: 16 }}>
@@ -4618,39 +4611,56 @@ function ProgressStats({ chunks, qAnswered, mastered }) {
 function Progress() {
   const { session } = useSession();
   const transformed = Boolean(session.transformed);
-  const chunks =
-    Array.isArray(session.transformed?.chunks)
-      ? session.transformed.chunks.length
-      : transformed
-        ? 1
-        : 0;
 
-  const completedSectionsCount = (session.completedSections || []).length;
-  const totalSections = chunks;
-  const answered = session.practiceReport?.answered || [];
-  const totalAnswered = answered.length;
-  const correctCount = answered.filter((item) => item.is_correct).length;
-  const mastered = (session.practiceReport?.masteredSections || []).length;
-  const currentScorePct = totalAnswered
-    ? Math.round((correctCount / totalAnswered) * 100)
-    : null;
-  const evaluation = evaluateSignals(session.signals, session.sessionMeta);
-  const struggleScore = transformed ? evaluation.struggleScore : 0;
-  const masteryPct = totalSections
-    ? Math.round((mastered / totalSections) * 100)
-    : 0;
+  // Single authoritative source of truth for struggle score derived directly from session activity
+  const struggleScore = transformed ? computeSessionStruggleScore(session) : 0;
+
+  // Sections & chunk counts
+  const sections = Array.isArray(session.transformed?.sections)
+    ? session.transformed.sections
+    : Array.isArray(session.transformed?.chunks)
+      ? session.transformed.chunks
+      : transformed
+        ? [session.text]
+        : [];
+  const totalSections = sections.length || (transformed ? 1 : 0);
+  const completedSectionsCount = session.completedSections?.length || session.completed || 0;
+
+  // Quiz / Practice stats
+  const answeredList = session.practiceReport?.answered || [];
+  const totalAnswered = answeredList.length;
+  const correctCount = answeredList.filter((a) => a.is_correct || a.correct).length;
+  const currentScorePct = totalAnswered > 0 ? Math.round((correctCount / totalAnswered) * 100) : null;
+  const mastered = session.practiceReport?.masteredSections?.length || 0;
+
+  // XP & Mastery calculation
   const xpTotal = computeXP({
     questionsAnswered: totalAnswered,
-    chunksCompleted: session.completed || 0,
+    chunksCompleted: completedSectionsCount,
     sectionsMastered: mastered,
   });
+
+  const completionRatio = Math.min(1, completedSectionsCount / totalSections);
+  const currentScoreRatio = totalAnswered > 0 ? correctCount / totalAnswered : null;
+  const performanceRatio = currentScoreRatio !== null ? currentScoreRatio : (completionRatio > 0 ? 0.85 : 0);
+  const strugglePenalty = struggleScore * 0.25;
+
+  let rawProgress = 0;
+  if (totalAnswered > 0) {
+    rawProgress = (completionRatio * 0.35 + performanceRatio * 0.65) * (1 - strugglePenalty);
+  } else if (completionRatio > 0) {
+    rawProgress = completionRatio * 0.7 * (1 - strugglePenalty);
+  } else {
+    rawProgress = 0;
+  }
+  const masteryPct = totalSections > 0 ? Math.min(100, Math.max(0, Math.round(rawProgress * 100))) : 0;
 
   const history = session.sessionMeta.adaptationHistory || [];
   const latestOutcome = session.latestOutcome;
 
   return (
     <Layout section="Progress">
-      <main className="page">
+      <main className="page progress-page">
         {/* Section 1: Header */}
         <div className="animate-stagger-1">
           <div className="eyebrow">
@@ -4696,7 +4706,7 @@ function Progress() {
         </div>
 
         {/* Section 4: SCALE Engine Cognitive Telemetry Card */}
-        <section className="card scale-telemetry-card animate-stagger-4" style={{ marginTop: 18, padding: 20 }}>
+        <section className="card scale-telemetry-card animate-stagger-4">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span className="pill" style={{ background: "#f3e8ff", color: "#7e22ce" }}>
               <I.Activity size={13} /> SCALE Cognitive Telemetry
@@ -4707,8 +4717,8 @@ function Progress() {
           </div>
 
           {/* Current Struggle Score Section */}
-          <div style={{ marginTop: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <div style={{ marginTop: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
               <span style={{ fontSize: 13, fontWeight: 700 }}>Current Struggle Score</span>
               {/* Status Pill */}
               {(() => {
@@ -4723,7 +4733,7 @@ function Progress() {
                       border: `1px solid ${tier.border}`,
                       fontSize: 11,
                       fontWeight: 700,
-                      padding: "4px 10px 4px 7px",
+                      padding: "3px 10px 3px 7px",
                       borderRadius: 20,
                       display: "inline-flex",
                       alignItems: "center",
@@ -4742,7 +4752,7 @@ function Progress() {
             <HeartbeatLine struggleScore={struggleScore} isTransformed={transformed} />
 
             {/* Score Readout with Tier Color & Current Score */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, fontSize: 12, fontWeight: 700 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6, fontSize: 12, fontWeight: 700 }}>
               <span style={{ color: getStruggleTier(struggleScore, transformed).color }}>
                 {transformed ? `Struggle: ${(struggleScore * 100).toFixed(0)}% / 100%` : "Not started"}
               </span>
@@ -4759,29 +4769,26 @@ function Progress() {
           </div>
 
           {/* Total Adaptations & Latest Outcome Delta */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
             {/* Total Adaptations */}
-            <div style={{ background: "#f3f1eb", padding: 14, borderRadius: 12, border: "1px solid var(--border-color)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                <span style={{ fontSize: 18 }}>🛡️</span>
+            <div style={{ background: "#f3f1eb", padding: "10px 14px", borderRadius: 12, border: "1px solid var(--border-color)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                <span style={{ fontSize: 16 }}>🛡️</span>
                 <div style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", fontWeight: 800 }}>
                   Total Adaptations
                 </div>
               </div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: "var(--ink)", marginTop: 2, fontFamily: "var(--font-heading)" }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "var(--ink)", fontFamily: "var(--font-heading)" }}>
                 {session.sessionMeta.totalAdaptations}
-              </div>
-              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, lineHeight: 1.4 }}>
-                Times the lesson adjusted to help you.
               </div>
             </div>
 
             {/* Latest Outcome Delta */}
-            <div style={{ background: "#f3f1eb", padding: 14, borderRadius: 12, border: "1px solid var(--border-color)" }}>
-              <div style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", fontWeight: 800, marginBottom: 6 }}>
+            <div style={{ background: "#f3f1eb", padding: "10px 14px", borderRadius: 12, border: "1px solid var(--border-color)" }}>
+              <div style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", fontWeight: 800, marginBottom: 4 }}>
                 Latest Outcome Delta
               </div>
-              <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "var(--font-heading)", marginTop: 2, display: "flex", alignItems: "baseline", gap: 4 }}>
+              <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "var(--font-heading)", display: "flex", alignItems: "baseline", gap: 4 }}>
                 {latestOutcome ? (
                   <>
                     <span style={{ color: latestOutcome.outcomeDelta > 0 ? "#16a34a" : "#dc2626" }}>
@@ -4792,71 +4799,11 @@ function Progress() {
                     </span>
                   </>
                 ) : (
-                  <span style={{ color: "var(--muted)", fontSize: 14 }}>N/A</span>
+                  <span style={{ color: "var(--muted)", fontSize: 13 }}>N/A</span>
                 )}
               </div>
             </div>
           </div>
-        </section>
-
-        {/* Section 5: Adaptation History Timeline */}
-        <section className="card animate-stagger-5" style={{ marginTop: 18, padding: 20 }}>
-          <b style={{ fontSize: 16, color: "var(--ink)", fontFamily: "var(--font-heading)" }}>Cognitive Adaptation Log</b>
-          <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 4 }}>
-            Real-time interventions triggered by the SCALE behavioral engine.
-          </p>
-
-          {history.length === 0 ? (
-            <div style={{ padding: "18px 0", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>
-              <p>No struggle adaptations triggered in this session yet.</p>
-            </div>
-          ) : (
-            <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
-              {history.map((rec) => (
-                <div
-                  key={rec.id}
-                  style={{
-                    background: "#f3f1eb",
-                    border: "1px solid var(--border-color)",
-                    borderRadius: 14,
-                    padding: 14,
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
-                    <span style={{ fontWeight: 800, color: "var(--primary)" }}>
-                      Level {rec.previousLevel} → Level {rec.newLevel}
-                    </span>
-                    <span style={{ color: "var(--muted)" }}>
-                      Struggle Score: {(rec.struggleScore * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                  <p style={{ fontSize: 13, color: "#334155", margin: "6px 0", lineHeight: 1.5 }}>
-                    {rec.explanation}
-                  </p>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
-                    <span className="pill" style={{ background: "#ecfdf5", color: "#047857", fontSize: 11 }}>
-                      Outcome: Accuracy Improvement Recorded
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* Section 6: Lesson Status Summary */}
-        <section className="card animate-stagger-6" style={{ marginTop: 18, padding: 22 }}>
-          <span className="pill" style={{ marginBottom: 10 }}>
-            {PROFILE_LABELS[session.profile]}
-          </span>
-          <h2 style={{ fontFamily: "var(--font-heading)", fontSize: 22, margin: "6px 0" }}>
-            {transformed ? "Lesson adapted & active" : "Ready to begin"}
-          </h2>
-          <p style={{ color: "var(--muted)", fontSize: 14, lineHeight: 1.6, margin: 0 }}>
-            {transformed
-              ? "Your transformed lesson, practice questions, section mastery tracker, and cognitive adaptations are available across the learning flow."
-              : "Upload a document or choose a profile to start your study session."}
-          </p>
         </section>
       </main>
     </Layout>

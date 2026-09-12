@@ -47,22 +47,29 @@ def _get_candidate_models(client: Any, configured: Optional[str]) -> List[str]:
         candidates.append(configured)
     try:
         available = {model.id for model in client.models.list().data}
-    except Exception:
+    except Exception as e:
+        print(f"Warning: Could not fetch models from Groq ({e}). Using preferred list.")
         available = set(_PREFERRED_MODELS)
+
+    # Try preferred list first
     for model in _PREFERRED_MODELS:
         if model in available and model not in candidates:
             candidates.append(model)
     for model in available:
         if model not in candidates and not any(kw in model for kw in _NON_CHAT_KEYWORDS):
             candidates.append(model)
-    return candidates
+    return candidates or list(_PREFERRED_MODELS)
 
 
 def _client_and_models(api_key: Optional[str], configured_model: Optional[str]):
     if not api_key or Groq is None:
         return None, []
-    client = Groq(api_key=api_key)
-    return client, _get_candidate_models(client, configured_model)
+    try:
+        client = Groq(api_key=api_key)
+        return client, _get_candidate_models(client, configured_model)
+    except Exception as e:
+        print(f"Warning: Failed to initialize Groq client ({e}). Falling back to offline/mock mode.")
+        return None, []
 
 
 _MAIN_CLIENT, _MAIN_MODELS = _client_and_models(GROQ_API_KEY, GROQ_MODEL)

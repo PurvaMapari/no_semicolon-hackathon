@@ -40,7 +40,7 @@ function ProfileForm({ existing, onSave, onCancel }) {
     <div className="pf-form-wrap">
       {/* Hero illustration / brand */}
       <div className="pf-form-brand">
-        <div className="pf-form-logo">▧</div>
+        <img src="/logo.png" alt="AdaptLearn Logo" className="pf-form-logo" />
         <h2 className="pf-form-title">
           {existing ? "Edit your profile" : "Welcome to AdaptLearn"}
         </h2>

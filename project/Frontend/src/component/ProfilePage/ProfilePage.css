@@ -513,15 +513,13 @@
 }
 
 .pf-form-logo {
-  width: 48px;
-  height: 48px;
+  width: 52px;
+  height: 52px;
   border-radius: 12px;
-  background: #eef0ff;
-  color: #2742c7;
-  font-size: 22px;
-  display: grid;
-  place-items: center;
+  object-fit: cover;
+  display: block;
   margin: 0 auto 12px;
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.2);
 }
 
 .pf-form-title {
