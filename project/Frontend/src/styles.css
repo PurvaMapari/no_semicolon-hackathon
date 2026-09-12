@@ -3800,7 +3800,7 @@ input:focus {
   left: 0;
   height: 100%;
   border-radius: 999px 0 0 999px;
-  transition: width 0.05s linear;
+  will-change: width;
 }
 
 .slider-track-empty {
@@ -3815,7 +3815,7 @@ input:focus {
 .slider-face-marker {
   position: absolute;
   top: 2px;
-  transform: translateX(-50%);
+  transform: translate3d(-50%, 0, 0);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3823,6 +3823,7 @@ input:focus {
   pointer-events: none;
   z-index: 5;
   filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.10));
+  will-change: left;
 }
 
 .slider-face-label {
@@ -3844,7 +3845,7 @@ input:focus {
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: slider-face-breathe 2.4s ease-in-out infinite;
+  animation: slider-face-breathe 2.6s ease-in-out infinite;
   filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.08));
 }
 
@@ -3857,31 +3858,43 @@ input:focus {
     transform: scale(1);
   }
   50% {
-    transform: scale(1.06);
+    transform: scale(1.05);
   }
 }
 
-/* ── Staggered Entrance Animations ───────────────────────────── */
+/* ── Ultra-Smooth Staggered Entrance Animations ───────────────── */
 .animate-stagger-1 {
-  animation: progress-entrance 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0ms both;
+  animation: progress-entrance 0.65s cubic-bezier(0.16, 1, 0.3, 1) 0ms both;
 }
 
 .animate-stagger-2 {
-  animation: progress-entrance 0.5s cubic-bezier(0.16, 1, 0.3, 1) 100ms both;
+  animation: progress-entrance 0.65s cubic-bezier(0.16, 1, 0.3, 1) 70ms both;
 }
 
 .animate-stagger-3 {
-  animation: progress-entrance 0.5s cubic-bezier(0.16, 1, 0.3, 1) 200ms both;
+  animation: progress-entrance 0.65s cubic-bezier(0.16, 1, 0.3, 1) 140ms both;
+}
+
+.animate-stagger-4 {
+  animation: progress-entrance 0.65s cubic-bezier(0.16, 1, 0.3, 1) 210ms both;
+}
+
+.animate-stagger-5 {
+  animation: progress-entrance 0.65s cubic-bezier(0.16, 1, 0.3, 1) 280ms both;
+}
+
+.animate-stagger-6 {
+  animation: progress-entrance 0.65s cubic-bezier(0.16, 1, 0.3, 1) 350ms both;
 }
 
 @keyframes progress-entrance {
   0% {
     opacity: 0;
-    transform: translateY(14px);
+    transform: translate3d(0, 14px, 0);
   }
   100% {
     opacity: 1;
-    transform: translateY(0);
+    transform: translate3d(0, 0, 0);
   }
 }
 

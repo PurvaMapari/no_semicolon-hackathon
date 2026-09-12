@@ -2528,23 +2528,21 @@ function HeartbeatLine({ struggleScore = 0, isTransformed = false }) {
   const pct = Math.round((struggleScore || 0) * 100);
   const targetPct = Math.max(3, Math.min(97, pct));
 
-  // Animate slider from 0 → target on every mount (~1.8s ease-in-out for gradual feel)
+  // Animate slider from 0 → target on mount/change with silky smooth quartic ease-out
   React.useEffect(() => {
     if (!isTransformed) return;
 
     let animId = null;
     let start = null;
-    const duration = 1800;
+    const duration = 1200;
 
     setAnimPct(0);
 
     const step = (ts) => {
       if (!start) start = ts;
       const t = Math.min(1, (ts - start) / duration);
-      // Ease-in-out cubic: smooth acceleration and deceleration
-      const eased = t < 0.5
-        ? 4 * t * t * t
-        : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      // Quartic ease-out for organic, butter-smooth deceleration
+      const eased = 1 - Math.pow(1 - t, 4);
       setAnimPct(eased * targetPct);
       if (t < 1) animId = requestAnimationFrame(step);
     };
@@ -2638,14 +2636,14 @@ function MasteryRing({ masteryPct = 0, xpTotal = 0, struggleScore = 0 }) {
   React.useEffect(() => {
     let animId = null;
     let startTime = null;
-    const duration = 1000; // ~1000ms ease-out fill on mount
+    const duration = 1200; // ~1200ms silky ease-out fill on mount
 
     const step = (timestamp) => {
       if (!startTime) startTime = timestamp;
       const elapsed = timestamp - startTime;
       const t = Math.min(1, elapsed / duration);
-      // Ease-out cubic: 1 - (1 - t)^3
-      const eased = 1 - Math.pow(1 - t, 3);
+      // Ease-out quart for smooth deceleration without sudden stop
+      const eased = 1 - Math.pow(1 - t, 4);
       setAnimFraction(eased);
 
       if (t < 1) {
@@ -2673,6 +2671,8 @@ function MasteryRing({ masteryPct = 0, xpTotal = 0, struggleScore = 0 }) {
   const { level, xpInLevel, xpForNext } = xpToLevel(xpTotal);
   const xpBarPct = Math.min(100, Math.round((xpInLevel / xpForNext) * 100));
   const currentXpBarPct = xpBarPct * animFraction;
+  const currentXpTotal = Math.round(xpTotal * animFraction);
+  const currentXpInLevel = Math.round(xpInLevel * animFraction);
 
   // +XP toast: compare to localStorage-cached previous value (frontend-only)
   const [toast, setToast] = React.useState(null);
@@ -2709,7 +2709,7 @@ function MasteryRing({ masteryPct = 0, xpTotal = 0, struggleScore = 0 }) {
         </svg>
         <div className="mastery-ring-center">
           <span className="mastery-ring-level">Lvl {level}</span>
-          <span className="mastery-ring-xp">{xpTotal.toLocaleString()} XP</span>
+          <span className="mastery-ring-xp">{currentXpTotal.toLocaleString()} XP</span>
           <span className="mastery-ring-pct">{Math.round(currentMastery)}%</span>
         </div>
       </div>
@@ -2717,7 +2717,7 @@ function MasteryRing({ masteryPct = 0, xpTotal = 0, struggleScore = 0 }) {
       {/* XP progress bar to next level */}
       <div className="mastery-xp-bar-wrap">
         <div className="mastery-xp-bar-label">
-          <span>{xpInLevel.toLocaleString()} / {xpForNext.toLocaleString()} XP</span>
+          <span>{currentXpInLevel.toLocaleString()} / {xpForNext.toLocaleString()} XP</span>
           <span>to Level {level + 1}</span>
         </div>
         <div className="progressbar mastery-xp-bar-track">
@@ -2741,11 +2741,50 @@ function MasteryRing({ masteryPct = 0, xpTotal = 0, struggleScore = 0 }) {
 }
 
 function ProgressStats({ chunks, qAnswered, mastered }) {
+  const [animFraction, setAnimFraction] = React.useState(0);
+
+  React.useEffect(() => {
+    let animId = null;
+    let startTime = null;
+    const duration = 1000;
+
+    const step = (timestamp) => {
+      if (!startTime) startTime = timestamp;
+      const elapsed = timestamp - startTime;
+      const t = Math.min(1, elapsed / duration);
+      const eased = 1 - Math.pow(1 - t, 4);
+      setAnimFraction(eased);
+
+      if (t < 1) {
+        animId = requestAnimationFrame(step);
+      }
+    };
+
+    setAnimFraction(0);
+    animId = requestAnimationFrame(step);
+    return () => { if (animId) cancelAnimationFrame(animId); };
+  }, [chunks, qAnswered, mastered]);
+
+  const formatAnimatedChunks = (chunksStr, fraction) => {
+    if (typeof chunksStr === "string" && chunksStr.includes("/")) {
+      const parts = chunksStr.split("/").map((s) => s.trim());
+      const current = parseInt(parts[0], 10);
+      const total = parts[1];
+      if (!isNaN(current)) {
+        return `${Math.round(current * fraction)} / ${total}`;
+      }
+    }
+    return chunksStr;
+  };
+
+  const animQAnswered = Math.round((Number(qAnswered) || 0) * animFraction);
+  const animMastered = Math.round((Number(mastered) || 0) * animFraction);
+
   const stats = [
     {
       id: "chunks",
       title: "Learning Chunks",
-      value: chunks,
+      value: formatAnimatedChunks(chunks, animFraction),
       icon: I.Layers,
       color: "#6366f1",
       bgColor: "#eef2ff",
@@ -2754,7 +2793,7 @@ function ProgressStats({ chunks, qAnswered, mastered }) {
     {
       id: "questions",
       title: "Questions Answered",
-      value: qAnswered,
+      value: animQAnswered,
       icon: I.HelpCircle,
       color: "#0284c7",
       bgColor: "#e0f2fe",
@@ -2763,7 +2802,7 @@ function ProgressStats({ chunks, qAnswered, mastered }) {
     {
       id: "mastered",
       title: "Sections Mastered",
-      value: mastered,
+      value: animMastered,
       icon: I.Trophy,
       color: "#d97706",
       bgColor: "#fef3c7",
@@ -2883,31 +2922,34 @@ function Progress() {
   return (
     <Layout section="Progress">
       <main className="page">
-        <div className="eyebrow">
-          <b>Session Progress</b>
-          <span>{session.fileName || "No lesson loaded"}</span>
-        </div>
-        <div className="progress-header-row">
-          <h1 className="page-title" style={{ margin: 0 }}>Your learning session</h1>
-          {(() => {
-            const moodInfo = getCognitiveMood(struggleScore, transformed);
-            return (
-              <span
-                className="hud-mood-label"
-                style={{
-                  color: moodInfo.color,
-                  textShadow: `0 0 12px ${moodInfo.glow}`,
-                }}
-              >
-                <span className="hud-mood-emoji">{moodInfo.emoji}</span>
-                <span>{moodInfo.label}</span>
-              </span>
-            );
-          })()}
+        {/* Section 1: Header */}
+        <div className="animate-stagger-1">
+          <div className="eyebrow">
+            <b>Session Progress</b>
+            <span>{session.fileName || "No lesson loaded"}</span>
+          </div>
+          <div className="progress-header-row">
+            <h1 className="page-title" style={{ margin: 0 }}>Your learning session</h1>
+            {(() => {
+              const moodInfo = getCognitiveMood(struggleScore, transformed);
+              return (
+                <span
+                  className="hud-mood-label"
+                  style={{
+                    color: moodInfo.color,
+                    textShadow: `0 0 12px ${moodInfo.glow}`,
+                  }}
+                >
+                  <span className="hud-mood-emoji">{moodInfo.emoji}</span>
+                  <span>{moodInfo.label}</span>
+                </span>
+              );
+            })()}
+          </div>
         </div>
 
-        {/* Section 1: Staggered Entrance */}
-        <div className="animate-stagger-1">
+        {/* Section 2: Mastery Ring */}
+        <div className="animate-stagger-2">
           <MasteryRing
             masteryPct={masteryPct}
             xpTotal={xpTotal}
@@ -2915,8 +2957,8 @@ function Progress() {
           />
         </div>
 
-        {/* Section 2: Staggered Entrance */}
-        <div className="animate-stagger-2">
+        {/* Section 3: Progress Stats */}
+        <div className="animate-stagger-3">
           <ProgressStats
             chunks={`${completedSectionsCount} / ${totalSections}`}
             qAnswered={totalAnswered}
@@ -2924,8 +2966,8 @@ function Progress() {
           />
         </div>
 
-        {/* SCALE Engine Cognitive Telemetry Card: Section 3 Staggered */}
-        <section className="card scale-telemetry-card animate-stagger-3" style={{ marginTop: 18, padding: 20 }}>
+        {/* Section 4: SCALE Engine Cognitive Telemetry Card */}
+        <section className="card scale-telemetry-card animate-stagger-4" style={{ marginTop: 18, padding: 20 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span className="pill" style={{ background: "#f3e8ff", color: "#7e22ce" }}>
               <I.Activity size={13} /> SCALE Cognitive Telemetry
@@ -3028,8 +3070,8 @@ function Progress() {
           </div>
         </section>
 
-        {/* Adaptation History Timeline */}
-        <section className="card" style={{ marginTop: 18, padding: 20 }}>
+        {/* Section 5: Adaptation History Timeline */}
+        <section className="card animate-stagger-5" style={{ marginTop: 18, padding: 20 }}>
           <b style={{ fontSize: 16, color: "var(--ink)", fontFamily: "var(--font-heading)" }}>Cognitive Adaptation Log</b>
           <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 4 }}>
             Real-time interventions triggered by the SCALE behavioral engine.
@@ -3073,7 +3115,8 @@ function Progress() {
           )}
         </section>
 
-        <section className="card" style={{ marginTop: 18, padding: 22 }}>
+        {/* Section 6: Lesson Status Summary */}
+        <section className="card animate-stagger-6" style={{ marginTop: 18, padding: 22 }}>
           <span className="pill" style={{ marginBottom: 10 }}>
             {PROFILE_LABELS[session.profile]}
           </span>
