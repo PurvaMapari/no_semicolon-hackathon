@@ -2442,6 +2442,49 @@ function getStruggleTier(score, isTransformed = true) {
   }
 }
 
+/* ── Gamified HUD Cognitive Mood Helper ──────────────────────── */
+function getCognitiveMood(score = 0, isTransformed = true) {
+  if (!isTransformed) {
+    return {
+      label: "CALM",
+      emoji: "🧘",
+      color: "#8b5cf6",
+      glow: "rgba(139, 92, 246, 0.45)",
+    };
+  }
+
+  const pct = (score || 0) * 100;
+  if (pct >= 80) {
+    return {
+      label: "STRAIN",
+      emoji: "🔥",
+      color: "#dc2626",
+      glow: "rgba(220, 38, 38, 0.55)",
+    };
+  } else if (pct >= 60) {
+    return {
+      label: "STRUGGLING",
+      emoji: "😅",
+      color: "#ea580c",
+      glow: "rgba(234, 88, 12, 0.5)",
+    };
+  } else if (pct >= 35) {
+    return {
+      label: "FOCUS",
+      emoji: "🎯",
+      color: "#d97706",
+      glow: "rgba(217, 119, 6, 0.45)",
+    };
+  } else {
+    return {
+      label: "CALM",
+      emoji: "🧘",
+      color: "#8b5cf6",
+      glow: "rgba(139, 92, 246, 0.45)",
+    };
+  }
+}
+
 /* ── Reactive Mascot Orb ─────────────────────────────────────── */
 function ReactiveOrb({ struggleScore = 0 }) {
   const isHighStruggle = struggleScore >= 0.7;
@@ -2500,9 +2543,6 @@ function ReactiveOrb({ struggleScore = 0 }) {
         <circle cx="43" cy="47" r="2.5" fill="#ffffff" opacity="0.9" />
         <circle cx="57" cy="47" r="2.5" fill="#ffffff" opacity="0.9" />
       </svg>
-      <span className="orb-mood-pill">
-        {mood === "tense" ? "Strain" : mood === "alert" ? "Focus" : "Calm"}
-      </span>
     </div>
   );
 }
@@ -2769,9 +2809,6 @@ function MasteryRing({ masteryPct = 0, xpTotal = 0, struggleScore = 0 }) {
     <div className="mastery-ring-wrap">
       {toast && <div className="mastery-xp-toast">{toast}</div>}
 
-      {/* Reactive Mascot Orb */}
-      <ReactiveOrb struggleScore={struggleScore} />
-
       <div className={`mastery-ring-svg-wrap${masteryPct >= 100 && animFraction >= 0.9 ? " mastery-ring--gold" : ""}`}>
         <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
           {/* Track */}
@@ -2969,7 +3006,24 @@ function Progress() {
           <b>Session Progress</b>
           <span>{session.fileName || "No lesson loaded"}</span>
         </div>
-        <h1 className="page-title">Your learning session</h1>
+        <div className="progress-header-row">
+          <h1 className="page-title" style={{ margin: 0 }}>Your learning session</h1>
+          {(() => {
+            const moodInfo = getCognitiveMood(struggleScore, transformed);
+            return (
+              <span
+                className="hud-mood-label"
+                style={{
+                  color: moodInfo.color,
+                  textShadow: `0 0 12px ${moodInfo.glow}`,
+                }}
+              >
+                <span className="hud-mood-emoji">{moodInfo.emoji}</span>
+                <span>{moodInfo.label}</span>
+              </span>
+            );
+          })()}
+        </div>
 
         {/* Section 1: Staggered Entrance */}
         <div className="animate-stagger-1">
