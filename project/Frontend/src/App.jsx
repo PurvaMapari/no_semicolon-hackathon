@@ -20,6 +20,7 @@ import {
   generateAdaptiveQuiz,
 } from "./api/client";
 import VisualInfographic from "./components/VisualInfographic";
+import VoiceAssistant from "./components/VoiceAssistant";
 import {
   createSignalState,
   createSessionMeta,
@@ -492,6 +493,36 @@ function Header({ section }) {
             <I.Zap size={12} style={{ marginRight: 4 }} /> REWIRED
           </span>
         )}
+        <button
+          type="button"
+          className="voice-status-pill"
+          onClick={() => {
+            const el = document.querySelector(".voice-assistant-card");
+            if (el) {
+              el.scrollIntoView({ behavior: "smooth" });
+              const btn = el.querySelector("button[aria-label='Toggle voice input']");
+              if (btn) btn.click();
+            }
+          }}
+          title="Voice Assistant & Speech-to-Text (Click to activate voice)"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            background: "rgba(99, 102, 241, 0.09)",
+            border: "1px solid rgba(99, 102, 241, 0.22)",
+            borderRadius: 99,
+            padding: "5px 11px",
+            fontSize: 12,
+            fontWeight: 700,
+            color: "var(--primary)",
+            cursor: "pointer",
+            transition: "all 0.2s ease",
+          }}
+        >
+          <I.Mic size={13} />
+          <span>Voice</span>
+        </button>
         <div className="access-badge">
           <span className="access-dot" />
           <span>{PROFILE_LABELS[session.profile]}</span>
@@ -1361,6 +1392,144 @@ function VisualCard({ visual, onReadAloud }) {
   );
 }
 
+function splitIntoLessonSections(text) {
+  if (!text || typeof text !== "string") return [];
+  const clean = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+  if (!clean) return [];
+
+  const lines = clean.split("\n");
+
+  // Patterns for logical section headings:
+  // e.g. "1. What is OOP?", "1) Introduction", "Section 1:", "Chapter 2", "## Topic"
+  const numberedHeadingRegex = /^(\d+)[\.\)]\s+([A-Z].*)$/;
+  const mdHeadingRegex = /^#{1,4}\s+(.*)$/;
+  const labelHeadingRegex = /^(?:Chapter|Section|Module|Part|Topic)\s+\d+[:\.]?\s*(.*)$/i;
+
+  let firstHeadingNum = null;
+  let matchesCount = 0;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const numM = trimmed.match(numberedHeadingRegex);
+    if (numM) {
+      const num = parseInt(numM[1], 10);
+      if (firstHeadingNum === null && (num === 1 || num === 0)) {
+        firstHeadingNum = num;
+      }
+      matchesCount++;
+    } else if (mdHeadingRegex.test(trimmed) || labelHeadingRegex.test(trimmed)) {
+      matchesCount++;
+    }
+  }
+
+  const hasHeadings = matchesCount >= 2;
+
+  if (hasHeadings) {
+    const sections = [];
+    let currentLines = [];
+    let expectedNextNumber = firstHeadingNum !== null ? firstHeadingNum : 1;
+    let headingSeen = false;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      if (!trimmed) {
+        if (currentLines.length > 0) currentLines.push("");
+        continue;
+      }
+
+      const numM = trimmed.match(numberedHeadingRegex);
+      const isMd = mdHeadingRegex.test(trimmed);
+      const isLabel = labelHeadingRegex.test(trimmed);
+
+      let isNewHeading = false;
+      if (numM) {
+        const num = parseInt(numM[1], 10);
+        if (num === expectedNextNumber) {
+          isNewHeading = true;
+          expectedNextNumber = num + 1;
+        }
+      } else if (isMd || isLabel) {
+        isNewHeading = true;
+      }
+
+      if (isNewHeading) {
+        if (!headingSeen) {
+          headingSeen = true;
+          // Preamble before first heading (e.g. document title / subtitle)
+          if (currentLines.length > 0) {
+            const preambleText = currentLines.join("\n").trim();
+            // If preamble is short (title / subtitle), attach it to the first section
+            if (preambleText.split(/\s+/).length < 40) {
+              currentLines = [preambleText, "", trimmed];
+            } else {
+              sections.push(preambleText);
+              currentLines = [trimmed];
+            }
+          } else {
+            currentLines = [trimmed];
+          }
+        } else {
+          if (currentLines.length > 0) {
+            sections.push(currentLines.join("\n").trim());
+          }
+          currentLines = [trimmed];
+        }
+      } else {
+        currentLines.push(line);
+      }
+    }
+
+    if (currentLines.length > 0) {
+      sections.push(currentLines.join("\n").trim());
+    }
+
+    const filtered = sections.map((s) => s.trim()).filter(Boolean);
+    if (filtered.length >= 2) {
+      return filtered;
+    }
+  }
+
+  // Fallback 2: Check for double line breaks (paragraphs)
+  const paragraphs = clean.split(/\n\s*\n+/).map((p) => p.trim()).filter(Boolean);
+  if (paragraphs.length >= 2 && paragraphs.length <= 15) {
+    return paragraphs;
+  }
+
+  // Fallback 3: Group paragraphs or sentences into 3-5 sentence chunks
+  const sentenceRegex = /(?<=[.!?])\s+(?=[A-Z0-9])/;
+  const rawParts = (paragraphs.length > 1 ? paragraphs : clean.split(sentenceRegex))
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  const groupedSections = [];
+  let currentGroup = [];
+  let currentWordCount = 0;
+
+  for (const part of rawParts) {
+    const words = part.split(/\s+/).length;
+    currentGroup.push(part);
+    currentWordCount += words;
+
+    // Group around 3-5 sentences or 60-120 words
+    if (currentWordCount >= 70 || currentGroup.length >= 4) {
+      groupedSections.push(currentGroup.join("\n\n").trim());
+      currentGroup = [];
+      currentWordCount = 0;
+    }
+  }
+
+  if (currentGroup.length > 0) {
+    if (groupedSections.length > 0 && currentWordCount < 30) {
+      groupedSections[groupedSections.length - 1] += "\n\n" + currentGroup.join("\n\n").trim();
+    } else {
+      groupedSections.push(currentGroup.join("\n\n").trim());
+    }
+  }
+
+  return groupedSections.length > 0 ? groupedSections : [clean];
+}
+
 function Learn() {
   const {
     session,
@@ -1378,27 +1547,27 @@ function Learn() {
   const navigate = useNavigate();
 
   const [activeSection, setActiveSection] = useState(0);
-  const [question, setQuestion] = useState("");
-  const [askedQuestion, setAskedQuestion] = useState("");
-  const [answer, setAnswer] = useState("");
   const [playing, setPlaying] = useState(false);
   const transformed = session.transformed;
   const chunks =
     transformed?.profile === "cognitive_load"
       ? transformed.chunks
       : [transformed?.text || session.text];
-  const sections = chunks.filter(Boolean).flatMap((chunk, chunkIndex) =>
-    chunk
-      .split(/\n\s*\n|(?<=[.!?])\s+(?=[A-Z])/)
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .map((paragraph, paragraphIndex) => ({
+
+  let globalIndex = 0;
+  const sections = chunks.filter(Boolean).flatMap((chunk, chunkIndex) => {
+    const parts = splitIntoLessonSections(chunk);
+    return parts.map((paragraph, paragraphIndex) => {
+      const idx = globalIndex++;
+      return {
         id: `${chunkIndex}-${paragraphIndex}`,
         paragraph,
         chunk: chunkIndex + 1,
         chunkIndex,
-      }))
-  );
+        sectionIndex: idx,
+      };
+    });
+  });
 
   const currentSection = sections[activeSection] || sections[0];
   const formatting = transformed?.formatting || {};
@@ -1415,24 +1584,19 @@ function Learn() {
 
   function readAloud(text) {
     if ("speechSynthesis" in window) {
+      if (playing) {
+        window.speechSynthesis.cancel();
+        setPlaying(false);
+        return;
+      }
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = 0.95;
       window.speechSynthesis.speak(utterance);
       setPlaying(true);
       utterance.onend = () => setPlaying(false);
+      utterance.onerror = () => setPlaying(false);
     }
-  }
-
-  async function submitQuestion(event) {
-    event.preventDefault();
-    const prompt = question.trim();
-    if (!prompt || !currentSection) return;
-    setAskedQuestion(prompt);
-    setAnswer("");
-    recordVoiceHelpAction();
-    const result = await ask(prompt, currentSection.paragraph);
-    if (result) setAnswer(result.answer);
   }
 
   function markSectionComplete() {
@@ -1445,8 +1609,9 @@ function Learn() {
 
   const isAdapted =
     session.rewireState.active &&
-    (currentSection?.chunkIndex === session.rewireState.chunkIndex ||
-      (chunks.length === 1 && session.rewireState.chunkIndex >= 0));
+    (currentSection?.sectionIndex === session.rewireState.chunkIndex ||
+      currentSection?.chunkIndex === session.rewireState.chunkIndex ||
+      (chunks.length === 1 && session.rewireState.chunkIndex === activeSection));
   const displayText = isAdapted
     ? session.rewireState.adaptedContent?.adapted_text || currentSection?.paragraph
     : currentSection?.paragraph;
@@ -1617,6 +1782,7 @@ function Learn() {
                           : undefined,
                         lineHeight: formatting.line_height,
                         letterSpacing: formatting.letter_spacing,
+                        whiteSpace: "pre-line",
                       }}
                     >
                       {displayText}
@@ -1713,44 +1879,13 @@ function Learn() {
               />
             )}
 
-            <section className="card ask-card" style={{ marginTop: 16, padding: 18 }}>
-              <b style={{ fontSize: 15, color: "var(--ink)", display: "flex", alignItems: "center", gap: 8 }}>
-                <I.MessageSquare size={18} style={{ color: "var(--primary)" }} /> Ask about this section
-              </b>
-              <p className="ask-context">
-                Your question is answered using the active section and lesson context.
-              </p>
-              <form
-                onSubmit={submitQuestion}
-                style={{ display: "flex", gap: 8, marginTop: 10 }}
-              >
-                <input
-                  value={question}
-                  onChange={(event) => setQuestion(event.target.value)}
-                  placeholder="Ask a question about this section..."
-                  style={{ flex: 1 }}
-                />
-                <button
-                  className="primary-action"
-                  disabled={!question.trim() || Boolean(busy)}
-                  style={{ width: "auto", padding: "10px 18px" }}
-                >
-                  {busy === "voice" ? "Thinking..." : "Ask"}
-                </button>
-              </form>
-              {askedQuestion && (
-                <div className="answer-box">
-                  <span className="section-label">Your question</span>
-                  <p className="asked-question">{askedQuestion}</p>
-                  <span className="section-label" style={{ display: "block", marginTop: 10 }}>Answer</span>
-                  {answer ? (
-                    <p style={{ fontSize: 14, lineHeight: 1.6, color: "#1e293b" }}>{answer}</p>
-                  ) : (
-                    <p style={{ color: "var(--primary)", fontSize: 13 }}>Generating an answer from your lesson...</p>
-                  )}
-                </div>
-              )}
-            </section>
+            <VoiceAssistant
+              currentSection={currentSection}
+              onAsk={ask}
+              busy={busy}
+              onVoiceHelp={recordVoiceHelpAction}
+              onReadSection={() => readAloud(displayText)}
+            />
 
             <ErrorNotice />
           </>

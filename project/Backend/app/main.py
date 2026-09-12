@@ -10,6 +10,7 @@ from app.config import FRONTEND_ORIGIN
 from app.schemas import (
     AdaptiveQuizRequest,
     AdaptiveQuizResponse,
+    DifficultySection,
     PipelineRequest,
     LessonQuestionRequest,
     LessonTestRequest,
@@ -18,6 +19,8 @@ from app.schemas import (
     RewireRequest,
     RewireResponse,
     QuizEvaluationRequest,
+    StruggleScoreRequest,
+    StruggleScoreResponse,
     TransformRequest,
     VisualCardResponse,
     VisualRequest,
@@ -253,7 +256,7 @@ def lesson_test(request: LessonTestRequest) -> Dict[str, Any]:
 @app.post("/api/pipeline")
 def pipeline(request: PipelineRequest) -> Dict[str, Any]:
     try:
-        return run_pipeline(request.text, request.profiles, request.quiz_limit)
+        return run_pipeline(request.text, request.profiles, request.quiz_limit, request.tag_difficulty)
     except Exception as error:
         _raise_http(error)
 
@@ -313,5 +316,65 @@ def adaptive_quiz(request: AdaptiveQuizRequest) -> AdaptiveQuizResponse:
             previous_answer_correct=request.previous_answer_correct,
         )
         return AdaptiveQuizResponse(**result)
+    except Exception as error:
+        _raise_http(error)
+
+
+# ── SCALE — Struggle Score ────────────────────────────────────────────────────
+
+
+@app.post("/api/struggle-score", response_model=StruggleScoreResponse)
+def struggle_score(request: StruggleScoreRequest) -> StruggleScoreResponse:
+    """
+    Compute difficulty-normalized struggle score from learner signals.
+    
+    This endpoint implements the SCALE (Struggle-aware Content Adaptation Logic Engine)
+    algorithm that normalizes learner behavior against section difficulty.
+    
+    Returns the computed score, whether REWIRE should trigger, component breakdown,
+    and a machine-readable reason for frontend decision-making.
+    """
+    from app.services.scale import compute_struggle_score, should_trigger_rewire, REWIRE_THRESHOLD
+    
+    try:
+        score, components, reason = compute_struggle_score(
+            actual_dwell_seconds=request.actual_dwell_seconds,
+            expected_baseline_seconds=request.expected_baseline_seconds,
+            expected_time_multiplier=request.expected_time_multiplier,
+            reread_count=request.reread_count,
+            help_requested=request.help_requested,
+            quiz_incorrect=request.quiz_incorrect,
+            quiz_response_seconds=request.quiz_response_seconds,
+            expected_quiz_seconds=request.expected_quiz_seconds,
+        )
+        
+        return StruggleScoreResponse(
+            struggle_score=score,
+            should_rewire=should_trigger_rewire(score),
+            components=components,
+            threshold=REWIRE_THRESHOLD,
+            reason=reason,
+        )
+    except Exception as error:
+        _raise_http(error)
+
+
+@app.post("/api/tag-difficulty")
+def tag_difficulty(request: Dict[str, str]) -> Dict[str, Any]:
+    """
+    Tag sections of a lesson with difficulty tiers.
+    
+    This is called once at ingestion time and cached per document.
+    Returns a list of sections with difficulty metadata.
+    """
+    from app.services.scale import tag_section_difficulty
+    
+    try:
+        lesson_text = request.get("text", "")
+        if not lesson_text:
+            raise ValueError("text field is required")
+        
+        sections = tag_section_difficulty(lesson_text)
+        return {"sections": sections}
     except Exception as error:
         _raise_http(error)
