@@ -1,0 +1,14 @@
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import * as I from "lucide-react";
+import { useSession } from "../shared/SessionContext";
+import { ErrorNotice, Layout } from "../shared/Shared";
+import "./Profile.css";
+
+export default function Profile() {
+  const { session, busy, chooseProfile, detect, adapt } = useSession();
+  const navigate = useNavigate();
+  const [description, setDescription] = useState("");
+  const cards = [["dyslexia", "Dyslexia", "Shorter sentences, clear dyslexia-friendly spacing, and reduced visual crowding.", I.BookOpen], ["cognitive_load", "Cognitive load support", "Digestible chunked sections presenting one main concept at a time.", I.Layers], ["low_vision", "Low vision and clarity", "High contrast theme guidance, larger typography, and distinct line height.", I.Eye]];
+  return <Layout section="Profile"><main className="page profile-page"><div className="eyebrow"><b>Step 2 of 3</b><span>Choose learning mode</span></div><h1 className="page-title">How should this lesson feel?</h1><div className="profile-grid">{cards.map(([profile, title, descriptionText, Icon]) => <button key={profile} className={`profile-option ${session.profile === profile ? "active" : ""}`} onClick={() => chooseProfile(profile)}><span className="radio" /><div style={{ flex: 1 }}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><Icon size={18} style={{ color: session.profile === profile ? "var(--primary)" : "var(--muted)" }} /><b>{title}</b></div><small>{descriptionText}</small></div></button>)}</div><section className="card" style={{ marginTop: 20, padding: 18 }}><div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}><I.Sparkles size={16} style={{ color: "var(--primary)" }} /><b style={{ fontSize: 15, color: "var(--ink)" }}>Describe your learning needs</b></div><p style={{ fontSize: 13, color: "var(--muted)", margin: "0 0 10px" }}>Not sure which setting is best? Describe what reading format works best for you and AI will choose.</p><textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="For example: long paragraphs are hard for me to follow" style={{ width: "100%", minHeight: 80 }} /><button className="secondary-action" disabled={!description.trim() || Boolean(busy)} onClick={() => detect(description)} style={{ marginTop: 10, width: "100%" }}>{busy === "profile" ? "Detecting profile..." : "Detect profile"}</button></section><ErrorNotice /><button className="primary-action" disabled={!session.text || Boolean(busy)} onClick={async () => { await adapt(); navigate("/learn"); }} style={{ marginTop: 20 }}>{busy === "transform" ? "Adapting lesson..." : "Transform lesson"}<I.Sparkles size={18} /></button></main></Layout>;
+}

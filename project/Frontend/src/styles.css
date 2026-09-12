@@ -118,11 +118,6 @@ button, input, textarea {
   font-weight: 700;
   font-size: 20px;
   box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
-  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.brand:hover .logo {
-  transform: scale(1.06) rotate(-3deg);
 }
 
 .brandname {
@@ -570,6 +565,14 @@ button, input, textarea {
   transform: translateY(-2px);
 }
 
+.dropzone.document-loaded {
+  cursor: default;
+}
+
+.dropzone.document-loaded:hover {
+  transform: none;
+}
+
 .dropzone svg {
   color: var(--primary);
   transition: transform 0.25s ease;
@@ -599,6 +602,22 @@ button, input, textarea {
   font-weight: 700;
   box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25);
   margin-top: 4px;
+}
+
+.dropzone button {
+  border: 0;
+  border-radius: 10px;
+  background: var(--primary-gradient);
+  color: #ffffff;
+  padding: 10px 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25);
+  margin-top: 4px;
+  cursor: pointer;
 }
 
 .progressbar {

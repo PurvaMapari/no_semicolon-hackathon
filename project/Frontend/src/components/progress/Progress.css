@@ -1,0 +1,15 @@
+.progress-page .telemetry-card, .progress-page .adaptation-log, .progress-page .progress-summary { margin-top: 18px; padding: 20px; }
+.progress-card-heading, .score-row, .history-item > div { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.progress-card-heading > span:last-child, .history-item span { color: var(--muted); font-size: 12px; }
+.score-row { margin-top: 16px; font-size: 13px; }
+.telemetry-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+.telemetry-stats > div { background: #f8fafc; padding: 14px; border-radius: 12px; border: 1px solid var(--border-color); }
+.telemetry-stats span { display: block; font-size: 10px; color: var(--muted); text-transform: uppercase; font-weight: 800; }
+.telemetry-stats b { display: block; margin-top: 2px; font-size: 20px; }
+.adaptation-log > p, .progress-summary > p { color: var(--muted); font-size: 13px; margin-top: 4px; }
+.empty-log { padding: 18px 0; text-align: center; color: var(--muted); font-size: 13px; }
+.history-item { background: #f8fafc; border: 1px solid var(--border-color); border-radius: 14px; padding: 14px; margin-top: 12px; }
+.history-item > div > b { color: var(--primary); font-size: 12px; }
+.history-item p { color: #334155; font-size: 13px; line-height: 1.5; margin: 6px 0; }
+.progress-summary h2 { font-family: var(--font-heading); font-size: 22px; margin: 6px 0; }
+.progress-summary > p { line-height: 1.6; }
