@@ -892,6 +892,144 @@ function VisualCard({ visual, onReadAloud }) {
   );
 }
 
+function splitIntoLessonSections(text) {
+  if (!text || typeof text !== "string") return [];
+  const clean = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+  if (!clean) return [];
+
+  const lines = clean.split("\n");
+
+  // Patterns for logical section headings:
+  // e.g. "1. What is OOP?", "1) Introduction", "Section 1:", "Chapter 2", "## Topic"
+  const numberedHeadingRegex = /^(\d+)[\.\)]\s+([A-Z].*)$/;
+  const mdHeadingRegex = /^#{1,4}\s+(.*)$/;
+  const labelHeadingRegex = /^(?:Chapter|Section|Module|Part|Topic)\s+\d+[:\.]?\s*(.*)$/i;
+
+  let firstHeadingNum = null;
+  let matchesCount = 0;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const numM = trimmed.match(numberedHeadingRegex);
+    if (numM) {
+      const num = parseInt(numM[1], 10);
+      if (firstHeadingNum === null && (num === 1 || num === 0)) {
+        firstHeadingNum = num;
+      }
+      matchesCount++;
+    } else if (mdHeadingRegex.test(trimmed) || labelHeadingRegex.test(trimmed)) {
+      matchesCount++;
+    }
+  }
+
+  const hasHeadings = matchesCount >= 2;
+
+  if (hasHeadings) {
+    const sections = [];
+    let currentLines = [];
+    let expectedNextNumber = firstHeadingNum !== null ? firstHeadingNum : 1;
+    let headingSeen = false;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      if (!trimmed) {
+        if (currentLines.length > 0) currentLines.push("");
+        continue;
+      }
+
+      const numM = trimmed.match(numberedHeadingRegex);
+      const isMd = mdHeadingRegex.test(trimmed);
+      const isLabel = labelHeadingRegex.test(trimmed);
+
+      let isNewHeading = false;
+      if (numM) {
+        const num = parseInt(numM[1], 10);
+        if (num === expectedNextNumber) {
+          isNewHeading = true;
+          expectedNextNumber = num + 1;
+        }
+      } else if (isMd || isLabel) {
+        isNewHeading = true;
+      }
+
+      if (isNewHeading) {
+        if (!headingSeen) {
+          headingSeen = true;
+          // Preamble before first heading (e.g. document title / subtitle)
+          if (currentLines.length > 0) {
+            const preambleText = currentLines.join("\n").trim();
+            // If preamble is short (title / subtitle), attach it to the first section
+            if (preambleText.split(/\s+/).length < 40) {
+              currentLines = [preambleText, "", trimmed];
+            } else {
+              sections.push(preambleText);
+              currentLines = [trimmed];
+            }
+          } else {
+            currentLines = [trimmed];
+          }
+        } else {
+          if (currentLines.length > 0) {
+            sections.push(currentLines.join("\n").trim());
+          }
+          currentLines = [trimmed];
+        }
+      } else {
+        currentLines.push(line);
+      }
+    }
+
+    if (currentLines.length > 0) {
+      sections.push(currentLines.join("\n").trim());
+    }
+
+    const filtered = sections.map((s) => s.trim()).filter(Boolean);
+    if (filtered.length >= 2) {
+      return filtered;
+    }
+  }
+
+  // Fallback 2: Check for double line breaks (paragraphs)
+  const paragraphs = clean.split(/\n\s*\n+/).map((p) => p.trim()).filter(Boolean);
+  if (paragraphs.length >= 2 && paragraphs.length <= 15) {
+    return paragraphs;
+  }
+
+  // Fallback 3: Group paragraphs or sentences into 3-5 sentence chunks
+  const sentenceRegex = /(?<=[.!?])\s+(?=[A-Z0-9])/;
+  const rawParts = (paragraphs.length > 1 ? paragraphs : clean.split(sentenceRegex))
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  const groupedSections = [];
+  let currentGroup = [];
+  let currentWordCount = 0;
+
+  for (const part of rawParts) {
+    const words = part.split(/\s+/).length;
+    currentGroup.push(part);
+    currentWordCount += words;
+
+    // Group around 3-5 sentences or 60-120 words
+    if (currentWordCount >= 70 || currentGroup.length >= 4) {
+      groupedSections.push(currentGroup.join("\n\n").trim());
+      currentGroup = [];
+      currentWordCount = 0;
+    }
+  }
+
+  if (currentGroup.length > 0) {
+    if (groupedSections.length > 0 && currentWordCount < 30) {
+      groupedSections[groupedSections.length - 1] += "\n\n" + currentGroup.join("\n\n").trim();
+    } else {
+      groupedSections.push(currentGroup.join("\n\n").trim());
+    }
+  }
+
+  return groupedSections.length > 0 ? groupedSections : [clean];
+}
+
 function Learn() {
   const {
     session,
@@ -917,18 +1055,20 @@ function Learn() {
       ? transformed.chunks
       : [transformed?.text || session.text];
 
-  const sections = chunks.filter(Boolean).flatMap((chunk, chunkIndex) =>
-    chunk
-      .split(/\n\s*\n|(?<=[.!?])\s+(?=[A-Z])/)
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .map((paragraph, paragraphIndex) => ({
+  let globalIndex = 0;
+  const sections = chunks.filter(Boolean).flatMap((chunk, chunkIndex) => {
+    const parts = splitIntoLessonSections(chunk);
+    return parts.map((paragraph, paragraphIndex) => {
+      const idx = globalIndex++;
+      return {
         id: `${chunkIndex}-${paragraphIndex}`,
         paragraph,
         chunk: chunkIndex + 1,
         chunkIndex,
-      }))
-  );
+        sectionIndex: idx,
+      };
+    });
+  });
 
   const currentSection = sections[activeSection] || sections[0];
   const formatting = transformed?.formatting || {};
@@ -971,8 +1111,9 @@ function Learn() {
 
   const isAdapted =
     session.rewireState.active &&
-    (currentSection?.chunkIndex === session.rewireState.chunkIndex ||
-      (chunks.length === 1 && session.rewireState.chunkIndex >= 0));
+    (currentSection?.sectionIndex === session.rewireState.chunkIndex ||
+      currentSection?.chunkIndex === session.rewireState.chunkIndex ||
+      (chunks.length === 1 && session.rewireState.chunkIndex === activeSection));
   const displayText = isAdapted
     ? session.rewireState.adaptedContent?.adapted_text || currentSection?.paragraph
     : currentSection?.paragraph;
@@ -1144,6 +1285,7 @@ function Learn() {
                           : undefined,
                         lineHeight: formatting.line_height,
                         letterSpacing: formatting.letter_spacing,
+                        whiteSpace: "pre-line",
                       }}
                     >
                       {displayText}
