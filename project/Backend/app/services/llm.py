@@ -43,7 +43,12 @@ _NON_CHAT_KEYWORDS = ("prompt-guard", "whisper", "orpheus", "allam", "safeguard"
 def _select_model(client: Any, configured: Optional[str]) -> Optional[str]:
     if configured:
         return configured
-    available = {model.id for model in client.models.list().data}
+    try:
+        available = {model.id for model in client.models.list().data}
+    except Exception as e:
+        print(f"Warning: Could not fetch models from Groq ({e}). Using default {_PREFERRED_MODELS[0]}.")
+        return _PREFERRED_MODELS[0]
+
     # Try preferred list first
     for model in _PREFERRED_MODELS:
         if model in available:
@@ -52,14 +57,18 @@ def _select_model(client: Any, configured: Optional[str]) -> Optional[str]:
     for model in available:
         if not any(kw in model for kw in _NON_CHAT_KEYWORDS):
             return model
-    return None
+    return _PREFERRED_MODELS[0]
 
 
 def _client_and_model(api_key: Optional[str], configured_model: Optional[str]):
     if not api_key or Groq is None:
         return None, None
-    client = Groq(api_key=api_key)
-    return client, _select_model(client, configured_model)
+    try:
+        client = Groq(api_key=api_key)
+        return client, _select_model(client, configured_model)
+    except Exception as e:
+        print(f"Warning: Failed to initialize Groq client ({e}). Falling back to offline/mock mode.")
+        return None, None
 
 
 _MAIN_CLIENT, _MAIN_MODEL = _client_and_model(GROQ_API_KEY, GROQ_MODEL)

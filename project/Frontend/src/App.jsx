@@ -468,7 +468,7 @@ function Header({ section }) {
   return (
     <header className="topbar">
       <NavLink to="/progress" className="brand">
-        <div className="logo">A</div>
+        <img src="/logo.png" alt="AdaptLearn Logo" className="logo" />
         <div>
           <div className="brandname">AdaptLearn</div>
           <div className="subtitle">{section === "Profile" ? "Profile & Verification" : section}</div>
@@ -535,7 +535,7 @@ function Layout({ children, section }) {
       <div className="desktop-layout">
         <aside className="desktop-sidebar">
           <NavLink to="/progress" className="brand" style={{ marginBottom: 12 }}>
-            <div className="logo">A</div>
+            <img src="/logo.png" alt="AdaptLearn Logo" className="logo" />
             <div>
               <div className="brandname">AdaptLearn</div>
               <div className="subtitle">Adaptive Engine</div>
@@ -3081,12 +3081,34 @@ function ProgressStats({ chunks, qAnswered, mastered }) {
 function Progress() {
   const { session } = useSession();
   const transformed = Boolean(session.transformed);
-  const chunks =
-    Array.isArray(session.transformed?.chunks)
-      ? session.transformed.chunks.length
+
+  // Evaluate SCALE cognitive signals
+  const evaluation = evaluateSignals(session.signals, session.sessionMeta);
+  const struggleScore = evaluation?.struggleScore || 0;
+
+  // Sections & chunk counts
+  const sections = Array.isArray(session.transformed?.sections)
+    ? session.transformed.sections
+    : Array.isArray(session.transformed?.chunks)
+      ? session.transformed.chunks
       : transformed
-        ? 1
-        : 0;
+        ? [session.text]
+        : [];
+  const totalSections = sections.length || (transformed ? 1 : 0);
+  const completedSectionsCount = session.completedSections?.length || session.completed || 0;
+
+  // Quiz / Practice stats
+  const answeredList = session.practiceReport?.answered || [];
+  const totalAnswered = answeredList.length;
+  const correctCount = answeredList.filter((a) => a.is_correct).length;
+  const currentScorePct = totalAnswered > 0 ? Math.round((correctCount / totalAnswered) * 100) : null;
+  const mastered = session.practiceReport?.masteredSections?.length || 0;
+
+  // XP & Mastery calculation
+  const xpTotal = (completedSectionsCount * 50) + (correctCount * 30) + ((totalAnswered - correctCount) * 10);
+  const masteryPct = totalSections > 0
+    ? Math.min(100, Math.round(((mastered * 0.6) + ((completedSectionsCount / totalSections) * 0.4)) * 100) || Math.round((completedSectionsCount / totalSections) * 100))
+    : (transformed ? 20 : 0);
 
   const history = session.sessionMeta.adaptationHistory || [];
   const latestOutcome = session.latestOutcome;
