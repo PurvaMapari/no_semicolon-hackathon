@@ -72,6 +72,41 @@ class PipelineRequest(BaseModel):
     text: str = Field(min_length=1)
     profiles: List[str] = ["dyslexia", "low_vision", "cognitive_load"]
     quiz_limit: int = Field(default=3, ge=1, le=10)
+    tag_difficulty: bool = Field(default=True, description="Whether to tag sections with difficulty tiers")
+
+
+# ── Difficulty & SCALE ────────────────────────────────────────────────────────
+
+
+class DifficultySection(BaseModel):
+    """A section of content tagged with difficulty metadata."""
+    text: str
+    difficulty_tier: str  # "foundational" | "intermediate" | "advanced"
+    expected_time_multiplier: float
+    expected_baseline_seconds: float
+    rationale: str
+    word_count: int
+
+
+class StruggleScoreRequest(BaseModel):
+    """Compute struggle score for a learner on a specific section."""
+    actual_dwell_seconds: float = Field(ge=0.0)
+    expected_baseline_seconds: float = Field(ge=0.0)
+    expected_time_multiplier: float = Field(default=1.6, ge=0.5, le=5.0)
+    reread_count: int = Field(default=0, ge=0)
+    help_requested: bool = Field(default=False)
+    quiz_incorrect: bool = Field(default=False)
+    quiz_response_seconds: Optional[float] = Field(default=None, ge=0.0)
+    expected_quiz_seconds: float = Field(default=30.0, ge=1.0)
+
+
+class StruggleScoreResponse(BaseModel):
+    """Computed struggle score with component breakdown."""
+    struggle_score: float
+    should_rewire: bool
+    components: Dict[str, float]  # Individual weighted components
+    threshold: float  # REWIRE trigger threshold for reference
+    reason: str  # Why REWIRE was triggered (or not) — e.g., "excessive_dwell_on_foundational", "multiple_signals", "quiz_failure"
 
 
 # ── REWIRE ────────────────────────────────────────────────────────────────────

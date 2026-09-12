@@ -263,9 +263,24 @@ def chunks_for_quiz(transformed: Dict[str, Any]) -> List[str]:
     return transformed["chunks"] if transformed["profile"] == "cognitive_load" else [transformed["text"]]
 
 
-def run_pipeline(text: str, profiles: List[str], quiz_limit: int = 3) -> Dict[str, Any]:
-    """Run transformation and quiz generation for each requested profile."""
+def run_pipeline(text: str, profiles: List[str], quiz_limit: int = 3, tag_difficulty: bool = True) -> Dict[str, Any]:
+    """Run transformation and quiz generation for each requested profile.
+    
+    Optionally tags sections with difficulty tiers for SCALE-aware struggle detection.
+    """
+    from app.services.scale import tag_section_difficulty
+    
     summary: Dict[str, Any] = {}
+    
+    # Tag difficulty once for all profiles (cached per document)
+    difficulty_sections: List[Dict[str, Any]] = []
+    if tag_difficulty:
+        try:
+            difficulty_sections = tag_section_difficulty(text)
+        except Exception:
+            # Silently fall back to no tagging on error
+            difficulty_sections = []
+    
     for profile in profiles:
         transformed = transform_text(text, profile)
         quiz_results = [generate_quiz(chunk, profile) for chunk in chunks_for_quiz(transformed)[:quiz_limit]]
@@ -274,6 +289,11 @@ def run_pipeline(text: str, profiles: List[str], quiz_limit: int = 3) -> Dict[st
             "quiz_count": len(quiz_results),
             "quizzes": quiz_results,
         }
+    
+    # Add difficulty metadata to response if generated
+    if difficulty_sections:
+        summary["difficulty_sections"] = difficulty_sections
+    
     return summary
 
 
