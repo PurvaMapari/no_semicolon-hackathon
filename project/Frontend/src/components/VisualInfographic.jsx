@@ -62,13 +62,13 @@ const SEMANTIC_THEMES = {
   },
   process: {
     bg: "#f5f3ff",
-    border: "#8b5cf6",
+    border: "#8faf9a",
     text: "#5b21b6",
     subtext: "#6d28d9",
     badgeBg: "#ede9fe",
     badgeText: "#5b21b6",
     iconBg: "#ddd6fe",
-    iconColor: "#7c3aed",
+    iconColor: "#1f5e63",
     glow: "rgba(139, 92, 246, 0.25)",
   },
   product: {
@@ -117,13 +117,13 @@ const SEMANTIC_THEMES = {
   },
   default: {
     bg: "#f8fafc",
-    border: "#6366f1",
+    border: "#1f5e63",
     text: "#312e81",
-    subtext: "#4338ca",
+    subtext: "#17464a",
     badgeBg: "#e0e7ff",
     badgeText: "#312e81",
     iconBg: "#c7d2fe",
-    iconColor: "#4f46e5",
+    iconColor: "#1f5e63",
     glow: "rgba(99, 102, 241, 0.2)",
   },
 };
@@ -230,7 +230,7 @@ function InfographicNodeCard({ node, index, isHero = false, activeNodeId, onSele
       onClick={() => onSelectNode && onSelectNode(node)}
       style={{
         background: theme.bg,
-        border: `2px solid ${isSelected ? "#4f46e5" : theme.border}`,
+        border: `2px solid ${isSelected ? "#1f5e63" : theme.border}`,
         borderRadius: isHero ? 16 : 14,
         padding: isHero ? "16px 18px" : "12px 14px",
         boxShadow: isHero
@@ -328,7 +328,7 @@ function ConnectorBadge({ label = "produces", direction = "down", split = false 
       {split ? (
         <div style={{ display: "flex", width: "100%", justifyContent: "space-around", alignItems: "center" }}>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-            <I.ArrowDownLeft size={22} style={{ color: "#8b5cf6" }} />
+            <I.ArrowDownLeft size={22} style={{ color: "#8faf9a" }} />
             <span
               style={{
                 fontSize: 10,
@@ -367,7 +367,7 @@ function ConnectorBadge({ label = "produces", direction = "down", split = false 
               style={{
                 width: 2,
                 height: 12,
-                background: "linear-gradient(to bottom, #cbd5e1, #818cf8)",
+                background: "linear-gradient(to bottom, #b7c8bf, #1f5e63)",
               }}
             />
           )}
@@ -376,8 +376,8 @@ function ConnectorBadge({ label = "produces", direction = "down", split = false 
               style={{
                 fontSize: 11,
                 fontWeight: 700,
-                color: "#4f46e5",
-                background: "#eef2ff",
+                color: "#1f5e63",
+                background: "#dfeae5",
                 border: "1px solid #c7d2fe",
                 padding: "2px 10px",
                 borderRadius: 999,
@@ -390,9 +390,9 @@ function ConnectorBadge({ label = "produces", direction = "down", split = false 
             </span>
           )}
           {direction === "down" ? (
-            <I.ArrowDown size={18} style={{ color: "#4f46e5", marginTop: -2 }} />
+            <I.ArrowDown size={18} style={{ color: "#1f5e63", marginTop: -2 }} />
           ) : (
-            <I.ArrowRight size={18} style={{ color: "#4f46e5" }} />
+            <I.ArrowRight size={18} style={{ color: "#1f5e63" }} />
           )}
         </>
       )}
@@ -531,7 +531,7 @@ function ProcessInfographic({ nodes, connections, activeNodeId, onSelectNode }) 
                   width: 28,
                   height: 28,
                   borderRadius: "50%",
-                  background: "#4f46e5",
+                  background: "#1f5e63",
                   color: "#fff",
                   fontSize: 12,
                   fontWeight: 800,
@@ -543,7 +543,7 @@ function ProcessInfographic({ nodes, connections, activeNodeId, onSelectNode }) 
                 {i + 1}
               </div>
               {i < nodes.length - 1 && (
-                <div style={{ width: 2, flex: 1, background: "linear-gradient(#4f46e5, #cbd5e1)", margin: "4px 0" }} />
+                <div style={{ width: 2, flex: 1, background: "linear-gradient(#1f5e63, #b7c8bf)", margin: "4px 0" }} />
               )}
             </div>
 
@@ -560,7 +560,7 @@ function ProcessInfographic({ nodes, connections, activeNodeId, onSelectNode }) 
           </div>
           {i < nodes.length - 1 && (
             <div style={{ marginLeft: 34, padding: "2px 0" }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: "#6366f1" }}>↓ leads to</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#1f5e63" }}>↓ leads to</span>
             </div>
           )}
         </React.Fragment>
@@ -583,7 +583,7 @@ function TimelineInfographic({ nodes, activeNodeId, onSelectNode }) {
           top: 10,
           bottom: 10,
           width: 3,
-          background: "linear-gradient(to bottom, #6366f1, #a855f7, #ec4899)",
+          background: "linear-gradient(to bottom, #1f5e63, #8faf9a, #d1a46d)",
           borderRadius: 999,
         }}
       />
@@ -667,8 +667,8 @@ function ConceptMapInfographic({ nodes, centralConcept, activeNodeId, onSelectNo
 
       {/* Radial Bridge */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "2px 0" }}>
-        <I.Share2 size={16} style={{ color: "#6366f1" }} />
-        <span style={{ fontSize: 11, fontWeight: 700, color: "#4f46e5" }}>connected sub-concepts</span>
+        <I.Share2 size={16} style={{ color: "#1f5e63" }} />
+        <span style={{ fontSize: 11, fontWeight: 700, color: "#1f5e63" }}>connected sub-concepts</span>
         <div style={{ flex: 1, height: 1, background: "#c7d2fe" }} />
       </div>
 

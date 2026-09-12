@@ -710,7 +710,7 @@ function Upload() {
 
           <div
             style={{
-              background: "#f8fafc",
+              background: "#f3f1eb",
               border: "1px solid var(--border-color)",
               borderRadius: 14,
               padding: 14,
@@ -1960,7 +1960,7 @@ function Learn() {
               <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600 }}>
                 SCALE {(struggleScore * 100).toFixed(0)}%
                 {struggleScore >= 0.6 && (
-                  <span style={{ color: "#7c3aed", marginLeft: 4 }}>· REWIRE Active</span>
+                  <span style={{ color: "#1f5e63", marginLeft: 4 }}>· REWIRE Active</span>
                 )}
               </span>
             </div>
@@ -2570,7 +2570,7 @@ function getCognitiveMood(score = 0, isTransformed = true) {
     return {
       label: "CALM",
       emoji: "🧘",
-      color: "#8b5cf6",
+      color: "#1f5e63",
       glow: "rgba(139, 92, 246, 0.45)",
     };
   }
@@ -2601,7 +2601,7 @@ function getCognitiveMood(score = 0, isTransformed = true) {
     return {
       label: "CALM",
       emoji: "🧘",
-      color: "#8b5cf6",
+      color: "#1f5e63",
       glow: "rgba(139, 92, 246, 0.45)",
     };
   }
@@ -2622,7 +2622,7 @@ function ReactiveOrb({ struggleScore = 0 }) {
         <defs>
           <radialGradient id="orb-grad-calm" cx="35%" cy="35%" r="65%">
             <stop offset="0%" stopColor="#c084fc" />
-            <stop offset="50%" stopColor="#818cf8" />
+            <stop offset="50%" stopColor="#1f5e63" />
             <stop offset="100%" stopColor="#fbbf24" />
           </radialGradient>
           <radialGradient id="orb-grad-alert" cx="35%" cy="35%" r="65%">
@@ -2859,7 +2859,7 @@ function HeartbeatLine({ struggleScore = 0, isTransformed = false }) {
 
 /* ── Mastery Ring ─────────────────────────────────────────────────────────── */
 const MASTERY_LEGEND = [
-  { color: "#818CF8", bg: "#ede9fe", label: "Getting Started" },
+  { color: "#1f5e63", bg: "#dfeae5", label: "Getting Started" },
   { color: "#60A5FA", bg: "#dbeafe", label: "Building Momentum" },
   { color: "#34D399", bg: "#d1fae5", label: "Almost Mastered" },
   { color: "#FBBF24", bg: "#fef3c7", label: "Mastered" },
@@ -3027,9 +3027,9 @@ function ProgressStats({ chunks, qAnswered, mastered }) {
       title: "Learning Chunks",
       value: formatAnimatedChunks(chunks, animFraction),
       icon: I.Layers,
-      color: "#6366f1",
-      bgColor: "#eef2ff",
-      borderColor: "#c7d2fe",
+      color: "#1f5e63",
+      bgColor: "#dfeae5",
+      borderColor: "#a9c4b2",
     },
     {
       id: "questions",
@@ -3109,6 +3109,26 @@ function Progress() {
   const masteryPct = totalSections > 0
     ? Math.min(100, Math.round(((mastered * 0.6) + ((completedSectionsCount / totalSections) * 0.4)) * 100) || Math.round((completedSectionsCount / totalSections) * 100))
     : (transformed ? 20 : 0);
+
+  const completedSectionsCount = (session.completedSections || []).length;
+  const totalSections = chunks;
+  const answered = session.practiceReport?.answered || [];
+  const totalAnswered = answered.length;
+  const correctCount = answered.filter((item) => item.is_correct).length;
+  const mastered = (session.practiceReport?.masteredSections || []).length;
+  const currentScorePct = totalAnswered
+    ? Math.round((correctCount / totalAnswered) * 100)
+    : null;
+  const evaluation = evaluateSignals(session.signals, session.sessionMeta);
+  const struggleScore = transformed ? evaluation.struggleScore : 0;
+  const masteryPct = totalSections
+    ? Math.round((mastered / totalSections) * 100)
+    : 0;
+  const xpTotal = computeXP({
+    questionsAnswered: totalAnswered,
+    chunksCompleted: session.completed || 0,
+    sectionsMastered: mastered,
+  });
 
   const history = session.sessionMeta.adaptationHistory || [];
   const latestOutcome = session.latestOutcome;
@@ -3226,7 +3246,7 @@ function Progress() {
           {/* Total Adaptations & Latest Outcome Delta */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 16 }}>
             {/* Total Adaptations */}
-            <div style={{ background: "#f8fafc", padding: 14, borderRadius: 12, border: "1px solid var(--border-color)" }}>
+            <div style={{ background: "#f3f1eb", padding: 14, borderRadius: 12, border: "1px solid var(--border-color)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
                 <span style={{ fontSize: 18 }}>🛡️</span>
                 <div style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", fontWeight: 800 }}>
@@ -3242,7 +3262,7 @@ function Progress() {
             </div>
 
             {/* Latest Outcome Delta */}
-            <div style={{ background: "#f8fafc", padding: 14, borderRadius: 12, border: "1px solid var(--border-color)" }}>
+            <div style={{ background: "#f3f1eb", padding: 14, borderRadius: 12, border: "1px solid var(--border-color)" }}>
               <div style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", fontWeight: 800, marginBottom: 6 }}>
                 Latest Outcome Delta
               </div>
@@ -3281,7 +3301,7 @@ function Progress() {
                 <div
                   key={rec.id}
                   style={{
-                    background: "#f8fafc",
+                    background: "#f3f1eb",
                     border: "1px solid var(--border-color)",
                     borderRadius: 14,
                     padding: 14,
