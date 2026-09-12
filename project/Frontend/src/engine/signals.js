@@ -398,7 +398,7 @@ export function injectGoldenPathStruggle(signals) {
 
 /**
  * Computes the unified struggle score (0.0 to 1.0) from learner session activity.
- * Single source of truth used across Learn, Practice, and Progress.
+ * Single authoritative source of truth used across Learn, Practice, and Progress.
  */
 export function computeSessionStruggleScore(session) {
   if (!session) return 0;
@@ -410,24 +410,23 @@ export function computeSessionStruggleScore(session) {
   const accuracy = totalAnswered > 0 ? correctCount / totalAnswered : null;
 
   const helpRequests = (signals.helpRequests || 0) + (signals.voiceHelpRequests || 0);
-  const rereadCount = signals.rereadCount || 0;
+  const rereadCount = signals.rereadCount || signals.audioReplayCount || 0;
   const retryCount = signals.retryCount || 0;
-  const dwellTime = signals.dwellTime || 0;
+  const dwellTime = signals.dwellTime || signals.activeDwellMs || 0;
   const totalAdaptations = session.sessionMeta?.totalAdaptations || 0;
   const isRewireActive = Boolean(session.rewireState?.active);
   const completedCount = session.completedSections?.length || session.completed || 0;
 
-  // Friction accumulated from help, rereads, retries, dwell time, and adaptations
-  // Proportional increments:
-  // - Help/voice queries: +0.15 each
-  // - Re-reads: +0.12 each
-  // - Retries/wrong attempts: +0.10 each
-  // - Excessive dwell time (>45s): +0.12
-  // - Active REWIRE / prior adaptations: +0.25 base + 0.08 per adaptation
-  const struggleSignals =
+  // Interaction struggle from help queries, retries, excessive dwell, and adaptations:
+  // - Help/voice queries: +0.15 each (clear proportional steps)
+  // - Retries/wrong attempts: +0.12 each
+  // - Re-reads/audio replays: +0.08 each
+  // - Excessive active dwell (>45s): +0.12
+  // - Active REWIRE / adaptations: +0.25 base + 0.08 per adaptation
+  const interactionStruggle =
     (helpRequests * 0.15) +
-    (rereadCount * 0.12) +
-    (retryCount * 0.10) +
+    (retryCount * 0.12) +
+    (rereadCount * 0.08) +
     (dwellTime > 45000 ? 0.12 : 0) +
     (isRewireActive ? 0.25 : 0) +
     (totalAdaptations * 0.08);
@@ -435,30 +434,34 @@ export function computeSessionStruggleScore(session) {
   let rawScore = 0;
 
   if (totalAnswered > 0) {
-    // If practice/tests have been answered:
-    // Weighted 65% quiz inaccuracy + 35% interaction struggle
-    const errorRate = 1 - (accuracy ?? 1); // 0 (all correct) to 1 (all incorrect)
-    const frictionClamped = Math.min(1.0, struggleSignals);
-    rawScore = (errorRate * 0.65) + (frictionClamped * 0.35);
+    // When practice questions have been attempted:
+    // Balance quiz error rate and reading friction dynamically so that neither
+    // crushes the score down to an artificial plateau.
+    const errorRate = 1 - (accuracy ?? 1); // 0 (100% correct) to 1 (0% correct)
+    const friction = Math.min(1.0, interactionStruggle);
 
-    // Clean performance relief: If accuracy is high (>= 70%) and no active rewire,
-    // decay the struggle score smoothly
-    if (accuracy >= 0.70 && !isRewireActive) {
-      const decayStrength = Math.min(0.60, (accuracy - 0.70) * 1.5);
-      rawScore = rawScore * (1 - decayStrength);
+    // Primary driver is the maximum of error rate and interaction friction (70%),
+    // blended with secondary context (30%)
+    const primary = Math.max(errorRate, friction);
+    const secondary = Math.min(errorRate, friction);
+    rawScore = (primary * 0.70) + (secondary * 0.30);
+
+    // If performance is genuinely clean (100% accuracy with zero help/retries), allow natural calm flow
+    if (accuracy === 1.0 && helpRequests === 0 && retryCount === 0 && !isRewireActive) {
+      rawScore = rawScore * 0.50;
     }
   } else if (isRewireActive || session.rewireState?.evaluation) {
-    rawScore = session.rewireState.evaluation?.struggleScore || Math.max(0.6, struggleSignals);
+    rawScore = session.rewireState.evaluation?.struggleScore || Math.max(0.60, interactionStruggle);
   } else {
     // Before quizzes: derived directly from interaction signals (help, rereads, dwell)
-    rawScore = Math.min(1.0, struggleSignals);
+    rawScore = Math.min(1.0, interactionStruggle);
   }
 
   // Clean section completion relief:
-  // For cleanly completed sections (completed without assistance), gradually reduce struggle (-0.04 per clean section)
+  // For cleanly completed sections (completed without help/retries), reduce struggle with a noticeable step (-0.05 per clean section)
   const cleanSections = Math.max(0, completedCount - (helpRequests + retryCount));
   if (cleanSections > 0 && !isRewireActive) {
-    rawScore = Math.max(0, rawScore - (cleanSections * 0.04));
+    rawScore = Math.max(0, rawScore - (cleanSections * 0.05));
   }
 
   // If REWIRE is active, floor at 0.60 so cognitive monitor stays consistent with REWIRE state
@@ -466,7 +469,7 @@ export function computeSessionStruggleScore(session) {
     rawScore = 0.60;
   }
 
-  // Ensure bounded between 0 and 1
+  // Ensure bounded strictly between 0.0 and 1.0
   const score = Math.min(1.0, Math.max(0.0, rawScore));
 
   return Number(score.toFixed(3));

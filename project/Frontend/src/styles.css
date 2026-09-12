@@ -2295,7 +2295,7 @@ input:focus {
 
   .page {
     max-width: 1040px;
-    padding: 36px 40px 60px;
+    padding: 28px 40px 50px;
   }
 
   .stats-grid {
@@ -3955,6 +3955,110 @@ input:focus {
   100% {
     opacity: 1;
     transform: translate3d(0, 0, 0);
+  }
+}
+
+/* ── Progress Page Viewport Fitting & Layout ───────────────────────────── */
+.progress-page {
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 28px 40px 28px;
+  box-sizing: border-box;
+}
+
+.progress-page .progress-header-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.progress-page .mastery-ring-wrap {
+  margin: 0 auto;
+  gap: 14px;
+}
+
+.progress-page .scale-telemetry-card {
+  margin-top: 0 !important;
+  padding: 22px 24px !important;
+}
+
+/* Fallback to scrollable on mobile and short viewport heights */
+@media (max-width: 899px), (max-height: 750px) {
+  .progress-page {
+    height: auto !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+    padding: 24px 20px 90px !important;
+    gap: 24px;
+    justify-content: flex-start !important;
+  }
+}
+
+/* ── Practice Section Report Stats Grid ────────────────────────── */
+.practice-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.practice-stat-card {
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: #ffffff;
+  border: 1px solid var(--border-color, #e2e8f0);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.practice-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.practice-stat-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.practice-stat-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  border: 1.5px solid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.practice-stat-card b {
+  font-family: var(--font-heading);
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--primary);
+  line-height: 1.1;
+  display: block;
+}
+
+.practice-stat-card span {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+  margin-top: 4px;
+  display: block;
+}
+
+@media (max-width: 640px) {
+  .practice-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
   }
 }
 
