@@ -4,41 +4,45 @@
 @tailwind utilities;
 
 :root {
-  --bg-gradient: radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.07) 0px, transparent 50%),
-    radial-gradient(at 100% 0%, rgba(168, 85, 247, 0.07) 0px, transparent 50%),
-    radial-gradient(at 50% 100%, rgba(59, 130, 246, 0.05) 0px, transparent 50%),
-    #f8fafc;
-  --bg-card: rgba(255, 255, 255, 0.85);
-  --bg-card-hover: rgba(255, 255, 255, 0.95);
+  --bg: #e8e6df;
+  --bg-gradient: radial-gradient(at 0% 0%, rgba(143, 175, 154, 0.24) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(31, 94, 99, 0.12) 0px, transparent 50%),
+    radial-gradient(at 50% 100%, rgba(143, 175, 154, 0.14) 0px, transparent 50%),
+    #e8e6df;
+  --bg-card: rgba(250, 249, 245, 0.9);
+  --bg-card-hover: rgba(255, 255, 252, 0.96);
   --glass-blur: blur(16px) saturate(180%);
-  --border-color: rgba(226, 232, 240, 0.85);
-  --border-glow: rgba(99, 102, 241, 0.3);
+  --border-color: rgba(31, 94, 99, 0.2);
+  --border-glow: rgba(31, 94, 99, 0.32);
 
-  --ink: #0f172a;
-  --muted: #64748b;
-  --muted-light: #94a3b8;
+  --ink: #203438;
+  --muted: #607477;
+  --muted-light: #8a9b98;
 
-  --primary: #4f46e5;
-  --primary-hover: #4338ca;
-  --primary-light: #eef2ff;
-  --primary-gradient: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
-  --primary-gradient-hover: linear-gradient(135deg, #4338ca 0%, #6d28d9 100%);
+  --primary: #1f5e63;
+  --primary-hover: #17464a;
+  --primary-light: #dfeae5;
+  --primary-gradient: linear-gradient(135deg, #1f5e63 0%, #8faf9a 100%);
+  --primary-gradient-hover: linear-gradient(135deg, #17464a 0%, #6f9480 100%);
+  --blue: #1f5e63;
+  --blue2: #1f5e63;
+  --lav: #dfeae5;
 
-  --secondary-bg: #f1f5f9;
-  --secondary-hover: #e2e8f0;
-  --secondary-ink: #334155;
+  --secondary-bg: #e1e6df;
+  --secondary-hover: #d2ddd5;
+  --secondary-ink: #2b4d50;
 
-  --emerald: #10b981;
-  --emerald-light: #ecfdf5;
-  --emerald-border: #a7f3d0;
+  --emerald: #6f9480;
+  --emerald-light: #e1eee6;
+  --emerald-border: #a9c4b2;
 
   --amber: #f59e0b;
   --amber-light: #fffbeb;
 
   --shadow-sm: 0 2px 4px rgba(15, 23, 42, 0.03);
-  --shadow-md: 0 10px 25px -5px rgba(79, 70, 229, 0.08), 0 4px 6px -2px rgba(15, 23, 42, 0.02);
-  --shadow-lg: 0 20px 35px -10px rgba(79, 70, 229, 0.15), 0 10px 10px -5px rgba(15, 23, 42, 0.04);
-  --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.25);
+  --shadow-md: 0 10px 25px -5px rgba(31, 94, 99, 0.12), 0 4px 6px -2px rgba(32, 52, 56, 0.04);
+  --shadow-lg: 0 20px 35px -10px rgba(31, 94, 99, 0.18), 0 10px 10px -5px rgba(32, 52, 56, 0.06);
+  --shadow-glow: 0 0 20px rgba(31, 94, 99, 0.25);
 
   --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   --font-heading: 'Space Grotesk', 'Plus Jakarta Sans', sans-serif;
@@ -94,7 +98,7 @@ button {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 4px;
-  background: #e8e9f7;
+  background: #d9e3dc;
   border-radius: 10px;
   padding: 3px
 }
@@ -118,9 +122,9 @@ button {
 .dropzone {
   min-height: 190px;
   margin-top: 12px;
-  border: 1px dashed #bfc5ea;
+  border: 1px dashed #9eb9aa;
   border-radius: 12px;
-  background: #fafaff;
+  background: #f4f3ed;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2074,7 +2078,7 @@ textarea {
 
 /* reuse existing .progressfill, override gradient to purple brand */
 .mastery-xp-bar-fill {
-  background: var(--primary-gradient, linear-gradient(90deg, #6366F1 0%, #818CF8 100%)) !important;
+  background: var(--primary-gradient, linear-gradient(90deg, #1f5e63 0%, #8faf9a 100%)) !important;
   border-radius: 999px !important;
 }
 
@@ -2108,7 +2112,7 @@ textarea {
   position: absolute;
   top: -10px;
   right: -16px;
-  background: var(--primary-gradient, linear-gradient(135deg, #6366F1, #818CF8));
+  background: var(--primary-gradient, linear-gradient(135deg, #1f5e63, #8faf9a));
   color: #fff;
   font-size: 12px;
   font-weight: 800;
