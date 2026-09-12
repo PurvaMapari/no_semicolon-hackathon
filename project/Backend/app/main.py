@@ -22,6 +22,8 @@ from app.schemas import (
     QuizEvaluationRequest,
     StruggleScoreRequest,
     StruggleScoreResponse,
+    TopicChatRequest,
+    TopicChatResponse,
     TransformRequest,
     VisualCardResponse,
     VisualClustersRequest,
@@ -50,6 +52,7 @@ from app.services.learning import (
     transform_text,
     voice_ask,
     answer_lesson_question,
+    chat_topic_assistant,
 )
 from app.services.visuals import (
     render_full_visual_card,
@@ -294,6 +297,22 @@ def practice_quiz(request: PracticeQuizRequest) -> Dict[str, Any]:
     try:
         questions = generate_practice_quiz(request.text, request.profile, request.question_count)
         return {"questions": questions, "question_count": len(questions)}
+    except Exception as error:
+        _raise_http(error)
+
+
+@app.post("/api/topic/chat", response_model=TopicChatResponse)
+def topic_chat(request: TopicChatRequest) -> TopicChatResponse:
+    """Conversational AI Topic Assistant to scaffold and generate full lesson material."""
+    try:
+        messages_dict = [{"role": m.role, "content": m.content} for m in request.messages]
+        result = chat_topic_assistant(
+            messages=messages_dict,
+            current_topic=request.current_topic,
+            profile=request.profile,
+            force_generate=request.force_generate,
+        )
+        return TopicChatResponse(**result)
     except Exception as error:
         _raise_http(error)
 
