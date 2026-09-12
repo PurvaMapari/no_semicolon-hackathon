@@ -51,4 +51,54 @@ if (!lastRecord.outcome?.improved || lastRecord.outcomeDelta !== 1.0) {
 }
 console.log("✓ recordAdaptationOutcome passed!");
 
+// 4. Test computeSessionStruggleScore (Unified Session Struggle Score)
+import { computeSessionStruggleScore } from "./src/engine/signals.js";
+
+// 4a. Initial fresh session -> 0 struggle
+const freshSession = {
+  signals: createSignalState(),
+  sessionMeta: createSessionMeta(),
+  practiceReport: { answered: [], failed: [], masteredSections: [] },
+  completedSections: [],
+  rewireState: { active: false },
+};
+const freshScore = computeSessionStruggleScore(freshSession);
+console.log("Fresh Session Struggle Score:", freshScore);
+if (freshScore !== 0) throw new Error("FAIL: Fresh session struggle score should be 0");
+
+// 4b. Help requests and voice help increase score proportionally
+const helpSession = {
+  ...freshSession,
+  signals: { ...freshSession.signals, helpRequests: 2, voiceHelpRequests: 1 },
+};
+const helpScore = computeSessionStruggleScore(helpSession);
+console.log("Help Session Struggle Score:", helpScore);
+if (helpScore <= 0 || helpScore !== 0.45) throw new Error("FAIL: Help requests should increase score proportionally");
+
+// 4c. Clean completions decrease score
+const cleanCompletedSession = {
+  ...freshSession,
+  completedSections: [0, 1, 2, 3],
+  practiceReport: {
+    answered: [{ is_correct: true }, { is_correct: true }, { is_correct: true }],
+    failed: [],
+    masteredSections: [0, 1, 2],
+  },
+};
+const cleanScore = computeSessionStruggleScore(cleanCompletedSession);
+console.log("Clean Completed Session Struggle Score:", cleanScore);
+if (cleanScore > 0.05) throw new Error("FAIL: Clean completions should decay struggle score near 0");
+
+// 4d. Active REWIRE maintains floor >= 0.60
+const rewireSession = {
+  ...freshSession,
+  rewireState: { active: true },
+};
+const rewireScore = computeSessionStruggleScore(rewireSession);
+console.log("Rewire Session Struggle Score:", rewireScore);
+if (rewireScore < 0.6) throw new Error("FAIL: Active REWIRE must have struggle score >= 0.60");
+
+console.log("✓ computeSessionStruggleScore verification passed!");
+
 console.log("ALL SCALE & SIGNALS TESTS PASSED! 🎉");
+
