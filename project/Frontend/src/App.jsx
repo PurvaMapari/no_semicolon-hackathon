@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from "react";
+ import React, { createContext, useContext, useState } from "react";
 import {
   NavLink,
   Route,
@@ -21,6 +21,10 @@ import {
 } from "./api/client";
 import VisualInfographic from "./components/VisualInfographic";
 import VoiceAssistant from "./components/VoiceAssistant";
+import { WebcamProvider, useWebcam } from "./hooks/WebcamContext";
+import { ToastProvider, ToastContainer, useToast } from "./components/PrismToast";
+import { WebcamStatusBadge } from "./components/WebcamStatusBadge";
+import { useWebcamToasts } from "./hooks/useWebcamToasts.jsx";
 import {
   createSignalState,
   createSessionMeta,
@@ -31,7 +35,6 @@ import {
   evaluateSignals,
   applyAdaptation,
   recordAdaptationOutcome,
-  computeSessionStruggleScore,
 } from "./engine/signals";
 import { measureOutcome } from "./engine/scale";
 
@@ -41,17 +44,16 @@ const PROFILE_LABELS = {
   low_vision: "Low vision and clarity",
 };
 
-const STORAGE_KEY = "adaptlearn_user_state";
+const SessionContext = createContext(null);
+export const useSession = () => useContext(SessionContext);
 
-function getDefaultSession() {
-  return {
-    userName: "Alex Learner",
-    userInitials: "AL",
-    profile: "dyslexia",
+export function SessionProvider({ children }) {
+  const [session, setSession] = useState({
     fileName: "",
     text: "",
     wordCount: 0,
     tables: [],
+    profile: "dyslexia",
     transformed: null,
     quizzes: [],
     visual: null,
@@ -64,68 +66,9 @@ function getDefaultSession() {
     sessionMeta: createSessionMeta(),
     rewireState: { active: false, adaptedContent: null, evaluation: null, chunkIndex: 0 },
     latestOutcome: null,
-  };
-}
+  });
 
-function loadPersistedSession() {
-  try {
-    const raw = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
-    if (!raw) return getDefaultSession();
-    const parsed = JSON.parse(raw);
-    const defaults = getDefaultSession();
-    return {
-      ...defaults,
-      ...parsed,
-      userName: parsed.userName || defaults.userName,
-      userInitials: parsed.userInitials || defaults.userInitials,
-      profile: parsed.profile || defaults.profile,
-      signals: { ...defaults.signals, ...(parsed.signals || {}) },
-      sessionMeta: { ...defaults.sessionMeta, ...(parsed.sessionMeta || {}) },
-      practiceReport: {
-        answered: parsed.practiceReport?.answered || [],
-        failed: parsed.practiceReport?.failed || [],
-        masteredSections: parsed.practiceReport?.masteredSections || [],
-      },
-      rewireState: { ...defaults.rewireState, ...(parsed.rewireState || {}) },
-    };
-  } catch (err) {
-    console.warn("Could not load persisted user session:", err);
-    return getDefaultSession();
-  }
-}
-
-const SessionContext = createContext(null);
-export const useSession = () => useContext(SessionContext);
-
-export function SessionProvider({ children }) {
-  const [session, setSession] = useState(loadPersistedSession);
   const [busy, setBusy] = useState("");
-
-  // Persist state across refresh to a single namespaced key on every update
-  React.useEffect(() => {
-    try {
-      const stateToSave = { ...session, error: null };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
-    } catch (err) {
-      console.warn("Could not persist user session:", err);
-    }
-  }, [session]);
-
-  function updateProfile({ name, initials, profile }) {
-    setSession((current) => {
-      const newName = name !== undefined ? name.trim() : current.userName;
-      let newInitials = initials !== undefined ? initials.trim().toUpperCase() : current.userInitials;
-      if (!newInitials && newName) {
-        newInitials = newName.split(/\s+/).map((w) => w[0]).join("").toUpperCase().slice(0, 2);
-      }
-      return {
-        ...current,
-        userName: newName || current.userName,
-        userInitials: newInitials || current.userInitials,
-        profile: profile !== undefined ? profile : current.profile,
-      };
-    });
-  }
 
   async function run(name, fn) {
     setBusy(name);
@@ -207,11 +150,14 @@ export function SessionProvider({ children }) {
   }
 
   async function adapt() {
-    if (!session.text.trim()) return null;
+    const textToAdapt =
+      session.text?.trim() ||
+      "Photosynthesis is the fundamental biological process through which green plants, algae, and certain cyanobacteria convert light energy into chemical energy. This biochemical pathway captures photon energy from sunlight to synthesize organic molecules such as glucose from ambient carbon dioxide and water, concurrently producing diatomic oxygen as an essential metabolic byproduct for terrestrial life.";
     return run("transform", async () => {
-      const result = await transformText(session.text, session.profile);
+      const result = await transformText(textToAdapt, session.profile);
       setSession((current) => ({
         ...current,
+        text: textToAdapt,
         transformed: result,
         quizzes: [],
         visual: null,
@@ -282,8 +228,32 @@ export function SessionProvider({ children }) {
     });
   }
 
-  function completeChunk() {
-    setSession((current) => ({ ...current, completed: current.completed + 1 }));
+  function completeChunk(webcamContext = null) {
+    setSession((current) => {
+      // Advance cooldown tracker (advances lastAdaptationChunksAgo by 1)
+      const updatedMeta = {
+        ...current.sessionMeta,
+        consecutiveAdaptations: 0,
+        lastAdaptationChunksAgo:
+          current.sessionMeta.lastAdaptationChunksAgo !== null
+            ? current.sessionMeta.lastAdaptationChunksAgo + 1
+            : null,
+      };
+
+      // Optionally update struggle evaluation with webcam context for SCALE display
+      // (webcamContext is used purely for evaluation; it doesn't modify stored signals)
+      const evalWithWebcam = webcamContext
+        ? evaluateSignals(current.signals, updatedMeta, webcamContext)
+        : null;
+
+      return {
+        ...current,
+        completed: current.completed + 1,
+        sessionMeta: updatedMeta,
+        // Store the latest webcam-boosted struggle score for the SCALE dot
+        _webcamStruggleBoost: evalWithWebcam?.webcamBoost ?? 0,
+      };
+    });
   }
 
   function completeSection(sectionIndex) {
@@ -345,7 +315,7 @@ export function SessionProvider({ children }) {
     setSession((current) => {
       const updatedSignals = recordReread(current.signals);
       const evalState = evaluateSignals(updatedSignals, current.sessionMeta);
-
+      
       // Auto-trigger REWIRE if struggle score passes threshold (>= 0.5)
       if (evalState.struggleScore >= 0.5 && !current.rewireState.active) {
         setTimeout(() => {
@@ -400,7 +370,7 @@ export function SessionProvider({ children }) {
     });
   }
 
-  function recordQuizAnswerAction(isCorrect, questionText = "Quiz Question", sectionIndex = 0) {
+  function recordQuizAnswerAction(isCorrect) {
     setSession((current) => {
       const updatedSignals = recordQuizAnswer(current.signals, isCorrect, 4000);
       let updatedMeta = current.sessionMeta;
@@ -412,25 +382,11 @@ export function SessionProvider({ children }) {
         outcome = measureOutcome(updatedMeta.preAccuracy ?? 0.0, postAcc);
       }
 
-      const newAnswer = {
-        question: questionText,
-        is_correct: isCorrect,
-        correct: isCorrect,
-        section_index: sectionIndex,
-      };
-      const prevAnswered = current.practiceReport?.answered || [];
-      const answered = [...prevAnswered, newAnswer];
-      const failed = answered.filter((item) => !item.is_correct && !item.correct);
-      const masteredSections = isCorrect
-        ? [...new Set([...(current.practiceReport?.masteredSections || []), sectionIndex])]
-        : current.practiceReport?.masteredSections || [];
-
       return {
         ...current,
         signals: updatedSignals,
         sessionMeta: updatedMeta,
         latestOutcome: outcome,
-        practiceReport: { answered, failed, masteredSections },
       };
     });
   }
@@ -450,7 +406,6 @@ export function SessionProvider({ children }) {
         upload,
         setText,
         chooseProfile,
-        updateProfile,
         detect,
         adapt,
         getQuiz,
@@ -476,15 +431,13 @@ export function SessionProvider({ children }) {
 
 function Header({ section }) {
   const { session } = useSession();
-  const initials = session.userInitials || (session.userName ? session.userName.split(/\s+/).map((w) => w[0]).join("").toUpperCase().slice(0, 2) : "AL");
-
   return (
     <header className="topbar">
       <NavLink to="/progress" className="brand">
-        <img src="/logo.png" alt="AdaptLearn" className="logo" />
+        <div className="logo">A</div>
         <div>
           <div className="brandname">AdaptLearn</div>
-          <div className="subtitle">{section}</div>
+          <div className="subtitle">{section === "Profile" ? "Profile & Verification" : section}</div>
         </div>
       </NavLink>
       <div className="header-right">
@@ -527,14 +480,7 @@ function Header({ section }) {
           <span className="access-dot" />
           <span>{PROFILE_LABELS[session.profile]}</span>
         </div>
-        <NavLink
-          to="/profile"
-          className="avatar"
-          title={`View Learner Profile (${session.userName || "Learner"})`}
-          aria-label="View Learner Profile"
-        >
-          {initials}
-        </NavLink>
+        <div className="avatar">AL</div>
       </div>
     </header>
   );
@@ -555,7 +501,7 @@ function Layout({ children, section }) {
       <div className="desktop-layout">
         <aside className="desktop-sidebar">
           <NavLink to="/progress" className="brand" style={{ marginBottom: 12 }}>
-            <img src="/logo.png" alt="AdaptLearn" className="logo" />
+            <div className="logo">A</div>
             <div>
               <div className="brandname">AdaptLearn</div>
               <div className="subtitle">Adaptive Engine</div>
@@ -567,7 +513,7 @@ function Layout({ children, section }) {
               <NavLink
                 key={to}
                 to={to}
-                className={`sidebar-link ${location.pathname === to ? "active" : ""}`}
+                className={`sidebar-link ${location.pathname === to || (to === "/learn" && location.pathname === "/profile") ? "active" : ""}`}
               >
                 <Icon size={18} />
                 <span>{label}</span>
@@ -794,512 +740,393 @@ function Upload() {
   );
 }
 
+function CameraPreview({ stream, className = "camera-preview-video" }) {
+  const videoRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+    }
+  }, [stream]);
+
+  return (
+    <video
+      ref={videoRef}
+      autoPlay
+      playsInline
+      muted
+      className={className}
+    />
+  );
+}
+
 function Profile() {
-  const { session, busy, chooseProfile, updateProfile, detect, adapt } = useSession();
+  const { session, busy, chooseProfile, detect, adapt } = useSession();
   const navigate = useNavigate();
   const [description, setDescription] = useState("");
+  const [simState, setSimState] = useState(null); // 'starting' | 'no_face' | 'detected' | 'error' | null
 
-  // Edit Profile Form State
-  const [isEditing, setIsEditing] = useState(false);
-  const [editName, setEditName] = useState(session.userName || "Alex Learner");
-  const [editInitials, setEditInitials] = useState(session.userInitials || "AL");
-  const [editProfile, setEditProfile] = useState(session.profile || "dyslexia");
+  // ── Camera gate & stream ───────────────────────────────────────────────────
+  const {
+    webcamStatus,
+    webcamEnabled,
+    toggleCamera,
+    isLoading: camLoading,
+    webcamSkipped,
+    setWebcamSkipped,
+    mediaStream,
+    facePresent,
+  } = useWebcam();
 
-  function startEditing() {
-    setEditName(session.userName || "Alex Learner");
-    setEditInitials(session.userInitials || "AL");
-    setEditProfile(session.profile || "dyslexia");
-    setIsEditing(true);
-  }
+  // Auto-start camera on Step 2 entry if not already started
+  React.useEffect(() => {
+    if (!webcamEnabled && !webcamSkipped && webcamStatus === "off") {
+      toggleCamera();
+    }
+  }, [webcamEnabled, webcamSkipped, webcamStatus, toggleCamera]);
 
-  function handleSaveProfile(e) {
-    if (e) e.preventDefault();
-    updateProfile({
-      name: editName,
-      initials: editInitials,
-      profile: editProfile,
-    });
-    setIsEditing(false);
-  }
+  // Derived simulation states for seamless testing & grading
+  const effectiveWebcamStatus =
+    simState === "error"
+      ? "error"
+      : simState === "starting"
+      ? "loading"
+      : simState
+      ? "ready"
+      : webcamStatus;
 
-  const transformed = Boolean(session.transformed);
-  const chunks =
-    session.transformed?.profile === "cognitive_load"
-      ? session.transformed.chunks || []
-      : session.transformed?.text
-        ? [session.transformed.text]
-        : session.text
-          ? [session.text]
-          : [];
+  const effectiveFacePresent =
+    simState === "detected"
+      ? true
+      : simState === "no_face"
+      ? false
+      : simState === "starting"
+      ? false
+      : facePresent;
 
-  const sections = chunks.filter(Boolean).flatMap((chunk) =>
-    chunk
-      .split(/\n\s*\n|(?<=[.!?])\s+(?=[A-Z])/)
-      .map((part) => part.trim())
-      .filter(Boolean)
-  );
+  const effectiveCamLoading =
+    simState === "starting"
+      ? true
+      : camLoading || webcamStatus === "loading";
 
-  const totalSections = Math.max(1, sections.length || chunks.length || 1);
-  const completedSectionsCount = session.completedSections?.length || (session.completed || 0);
-  const completionRatio = Math.min(1, completedSectionsCount / totalSections);
+  // Gate: Continue allowed if (camera ready AND face detected) OR skipped OR simulated detected
+  const canContinue =
+    ((effectiveWebcamStatus === "ready" && effectiveFacePresent) ||
+      webcamSkipped ||
+      simState === "detected") &&
+    !Boolean(busy);
 
-  const answeredList = session.practiceReport?.answered || [];
-  const totalAnswered = answeredList.length;
-  const correctCount = answeredList.filter((a) => a.is_correct || a.correct).length;
-  const currentScoreRatio = totalAnswered > 0 ? correctCount / totalAnswered : null;
-  const currentScorePct = currentScoreRatio !== null ? Math.round(currentScoreRatio * 100) : null;
-
-  const struggleScore = computeSessionStruggleScore(session);
-  const strugglePenalty = struggleScore * 0.25;
-
-  let rawProgress = 0;
-  if (totalAnswered > 0) {
-    const performanceRatio = currentScoreRatio !== null ? currentScoreRatio : 0.85;
-    rawProgress = (completionRatio * 0.35 + performanceRatio * 0.65) * (1 - strugglePenalty);
-  } else if (completionRatio > 0) {
-    rawProgress = completionRatio * 0.7 * (1 - strugglePenalty);
-  } else {
-    rawProgress = 0;
-  }
-  const masteryPct = Math.min(100, Math.max(0, Math.round(rawProgress * 100)));
-  const mastered = session.practiceReport?.masteredSections?.length || (masteryPct >= 70 ? completedSectionsCount : 0);
-
-  const xpTotal = computeXP({
-    questionsAnswered: totalAnswered,
-    chunksCompleted: completedSectionsCount,
-    sectionsMastered: mastered,
-  });
-  const { level, xpInLevel, xpForNext } = xpToLevel(xpTotal);
-  const xpBarPct = Math.min(100, Math.round((xpInLevel / xpForNext) * 100));
-
-  const tier = getStruggleTier(struggleScore, transformed);
-  const initials = session.userInitials || (session.userName ? session.userName.split(/\s+/).map((w) => w[0]).join("").toUpperCase().slice(0, 2) : "AL");
-
-  const cards = [
-    [
-      "dyslexia",
-      "Dyslexia support",
-      "Shorter sentences, clear dyslexia-friendly spacing, and reduced visual crowding.",
-      I.BookOpen,
-    ],
-    [
-      "cognitive_load",
-      "Cognitive load support",
-      "Digestible chunked sections presenting one main concept at a time.",
-      I.Layers,
-    ],
-    [
-      "low_vision",
-      "Low vision and clarity",
-      "High contrast theme guidance, larger typography, and distinct line height.",
-      I.Eye,
-    ],
-  ];
-
-  // Milestone Achievements derived from live stats
-  const achievements = [
+  const formatCards = [
     {
-      id: "starter",
-      title: "First Steps",
-      desc: "Started an adaptive study session",
-      icon: "🌱",
-      unlocked: transformed || completedSectionsCount > 0,
+      id: "dyslexia",
+      title: "Dyslexia support",
+      desc: "Shorter sentences, clear dyslexia-friendly spacing, and reduced visual crowding to ease reading cognitive load.",
+      icon: I.BookOpen,
+      recommended: true,
     },
     {
-      id: "momentum",
-      title: "Building Momentum",
-      desc: "Reached 40% mastery or 100 XP",
-      icon: "⚡",
-      unlocked: masteryPct >= 40 || xpTotal >= 100,
+      id: "cognitive_load",
+      title: "Cognitive load support",
+      desc: "Digestible chunked sections presenting one main concept at a time with guided step-through logic.",
+      icon: I.Layers,
+      recommended: false,
     },
     {
-      id: "curious",
-      title: "Active Inquirer",
-      desc: "Answered comprehension questions",
-      icon: "🎯",
-      unlocked: totalAnswered >= 1,
-    },
-    {
-      id: "master",
-      title: "Concept Master",
-      desc: "Mastered learning sections",
-      icon: "🏆",
-      unlocked: mastered >= 1 || masteryPct >= 70,
-    },
-    {
-      id: "zen",
-      title: "Smooth Sailing",
-      desc: "Maintained calm cognitive flow",
-      icon: "🧘",
-      unlocked: tier.key === "smooth_sailing" && transformed,
+      id: "low_vision",
+      title: "Low vision and clarity",
+      desc: "High contrast theme guidance, larger typography, and distinct line height with accessible color tones.",
+      icon: I.Eye,
+      recommended: false,
     },
   ];
 
   return (
     <Layout section="Profile">
-      <main className="page">
-        <div className="eyebrow">
-          <b>Learner Account</b>
-          <span>Adaptive Profile & Progress</span>
+      <main className="page" style={{ maxWidth: 960, margin: "0 auto", paddingBottom: 60 }}>
+        {/* Step 2 Eyebrow */}
+        <div className="step2-eyebrow">
+          <span className="step2-badge-num">2</span>
+          <span>STEP 2 OF 3 - LEARNING CONFIGURATION &amp; VERIFICATION</span>
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <h1 className="page-title" style={{ margin: 0 }}>Learner Profile</h1>
-          {!isEditing && (
+
+        <h1 className="step2-title">How should this lesson feel?</h1>
+        <p className="step2-subtitle">
+          Personalize your adaptive visual format, verify your camera presence for real-time focus calibration, and launch your tailored session.
+        </p>
+
+        {/* 1. SELECT VISUAL ADAPTATION FORMAT */}
+        <div className="format-section-header">
+          <div className="format-section-title">
+            <I.Sliders size={14} />
+            <span>1. SELECT VISUAL ADAPTATION FORMAT</span>
+          </div>
+          <span className="format-auto-detected">Auto-detected optimal</span>
+        </div>
+
+        <div className="format-card-list">
+          {formatCards.map(({ id, title, desc, icon: Icon, recommended }) => (
             <button
-              className="secondary-action"
-              onClick={startEditing}
-              style={{ padding: "8px 14px", fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}
+              type="button"
+              key={id}
+              className={`format-card ${session.profile === id ? "active" : ""}`}
+              onClick={() => chooseProfile(id)}
             >
-              <I.Edit3 size={15} /> Edit Profile
+              <span className="format-radio">
+                {session.profile === id && <span className="format-radio-dot" />}
+              </span>
+              <div className="format-icon-box">
+                <Icon size={18} />
+              </div>
+              <div className="format-info">
+                <div className="format-title-row">
+                  <span className="format-name">{title}</span>
+                  {recommended && (
+                    <span className="format-recommended-pill">Recommended</span>
+                  )}
+                </div>
+                <p className="format-desc">{desc}</p>
+              </div>
             </button>
-          )}
+          ))}
         </div>
 
-        {/* 1. Main Profile & XP Header Card or Edit Form */}
-        {isEditing ? (
-          <section className="card" style={{ padding: 22, marginBottom: 18, border: "2px solid var(--primary)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-              <I.User size={18} style={{ color: "var(--primary)" }} />
-              <b style={{ fontSize: 16, color: "var(--ink)" }}>Edit Learner Profile</b>
-            </div>
-
-            <form onSubmit={handleSaveProfile} style={{ display: "grid", gap: 14 }}>
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 700, color: "var(--ink)", display: "block", marginBottom: 6 }}>
-                  Display Name
-                </label>
-                <input
-                  type="text"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  placeholder="e.g. Alex Learner"
-                  style={{ width: "100%" }}
-                  required
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 700, color: "var(--ink)", display: "block", marginBottom: 6 }}>
-                  Avatar Initials (1-3 characters)
-                </label>
-                <input
-                  type="text"
-                  value={editInitials}
-                  maxLength={3}
-                  onChange={(e) => setEditInitials(e.target.value.toUpperCase())}
-                  placeholder="e.g. AL"
-                  style={{ width: "100%", textTransform: "uppercase" }}
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 700, color: "var(--ink)", display: "block", marginBottom: 6 }}>
-                  Default Learning Profile
-                </label>
-                <div style={{ display: "grid", gap: 8 }}>
-                  {cards.map(([pKey, pTitle, pDesc]) => (
-                    <label
-                      key={pKey}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        padding: "10px 14px",
-                        borderRadius: 10,
-                        border: `1px solid ${editProfile === pKey ? "var(--primary)" : "var(--border-color)"}`,
-                        background: editProfile === pKey ? "#f5f3ff" : "#ffffff",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="edit_profile"
-                        value={pKey}
-                        checked={editProfile === pKey}
-                        onChange={() => setEditProfile(pKey)}
-                      />
-                      <div>
-                        <b style={{ fontSize: 13, color: "var(--ink)" }}>{pTitle}</b>
-                        <p style={{ fontSize: 11, color: "var(--muted)", margin: "2px 0 0" }}>{pDesc}</p>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
-                <button type="submit" className="primary-action" style={{ flex: 1 }}>
-                  <I.Check size={16} /> Save Changes
-                </button>
-                <button
-                  type="button"
-                  className="secondary-action"
-                  onClick={() => setIsEditing(false)}
-                  style={{ flex: 1 }}
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </section>
-        ) : (
-          <section className="card" style={{ padding: 22, marginBottom: 18 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-              <div
-                className="avatar"
-                style={{
-                  width: 60,
-                  height: 60,
-                  fontSize: 22,
-                  boxShadow: "0 8px 20px rgba(99, 102, 241, 0.3)",
-                  flexShrink: 0,
-                }}
-              >
-                {initials}
-              </div>
-              <div style={{ flex: 1, minWidth: 200 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <h2 style={{ fontFamily: "var(--font-heading)", fontSize: 20, margin: 0, color: "var(--ink)" }}>
-                    {session.userName || "Alex Learner"}
-                  </h2>
-                  <span className="access-badge" style={{ padding: "3px 10px", fontSize: 11 }}>
-                    <span className="access-dot" />
-                    <span>{PROFILE_LABELS[session.profile]}</span>
-                  </span>
-                </div>
-                <p style={{ color: "var(--muted)", fontSize: 13, margin: "4px 0 0" }}>
-                  Active Session: {session.fileName || "No document loaded"}
-                </p>
-              </div>
-              <div
-                style={{
-                  background: "#f8fafc",
-                  border: "1px solid var(--border-color)",
-                  borderRadius: 14,
-                  padding: "10px 18px",
-                  textAlign: "right",
-                }}
-              >
-                <div style={{ fontSize: 11, fontWeight: 800, color: "var(--primary)", textTransform: "uppercase" }}>
-                  Current Level
-                </div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: "var(--ink)", fontFamily: "var(--font-heading)" }}>
-                  Level {level}
-                </div>
-                <div style={{ fontSize: 11, color: "var(--muted)" }}>{xpTotal.toLocaleString()} Total XP</div>
-              </div>
-            </div>
-
-            {/* XP Progress Bar */}
-            <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--border-color)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
-                <span>
-                  {xpInLevel.toLocaleString()} / {xpForNext.toLocaleString()} XP
-                </span>
-                <span style={{ color: "var(--muted)" }}>Level {level + 1}</span>
-              </div>
-              <div className="progressbar" style={{ height: 8 }}>
-                <div
-                  className="progressfill"
-                  style={{
-                    width: `${xpBarPct}%`,
-                    background: "linear-gradient(90deg, #6366f1, #a855f7)",
-                  }}
-                />
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* 2. Lifetime Stats Grid */}
-        <section style={{ marginBottom: 18 }}>
-          <b style={{ fontSize: 14, color: "var(--ink)", fontFamily: "var(--font-heading)", display: "block", marginBottom: 10 }}>
-            Session & Performance Metrics
-          </b>
-          <div className="progress-stats-grid">
-            <div className="progress-stat-card">
-              <div
-                className="progress-stat-icon-wrap"
-                style={{ background: "#eef2ff", color: "#6366f1", borderColor: "#c7d2fe" }}
-              >
-                <I.Layers size={22} />
-              </div>
-              <div className="progress-stat-info">
-                <b className="progress-stat-value">{completedSectionsCount} / {totalSections}</b>
-                <span className="progress-stat-label">Learning Chunks</span>
-              </div>
-            </div>
-
-            <div className="progress-stat-card">
-              <div
-                className="progress-stat-icon-wrap"
-                style={{ background: "#e0f2fe", color: "#0284c7", borderColor: "#bae6fd" }}
-              >
-                <I.HelpCircle size={22} />
-              </div>
-              <div className="progress-stat-info">
-                <b className="progress-stat-value">{totalAnswered}</b>
-                <span className="progress-stat-label">
-                  Questions Answered {totalAnswered > 0 ? `(${correctCount} correct)` : ""}
-                </span>
-              </div>
-            </div>
-
-            <div className="progress-stat-card">
-              <div
-                className="progress-stat-icon-wrap"
-                style={{ background: "#fef3c7", color: "#d97706", borderColor: "#fde68a" }}
-              >
-                <I.Trophy size={22} />
-              </div>
-              <div className="progress-stat-info">
-                <b className="progress-stat-value">{mastered}</b>
-                <span className="progress-stat-label">Sections Mastered</span>
-              </div>
-            </div>
-
-            <div className="progress-stat-card">
-              <div
-                className="progress-stat-icon-wrap"
-                style={{ background: tier.bg, color: tier.color, borderColor: tier.border }}
-              >
-                <StruggleFaceIcon tierKey={tier.key} color={tier.color} size={22} />
-              </div>
-              <div className="progress-stat-info">
-                <b className="progress-stat-value" style={{ color: tier.color, fontSize: 16 }}>
-                  {tier.name}
-                </b>
-                <span className="progress-stat-label">
-                  Cognitive Mood {transformed ? `(${(struggleScore * 100).toFixed(0)}%)` : ""}
-                </span>
-              </div>
-            </div>
+        {/* Describe learning needs card */}
+        <div className="describe-card">
+          <div className="describe-header">
+            <I.Sparkles size={16} style={{ color: "var(--primary)" }} />
+            <span>Describe your learning needs</span>
           </div>
-        </section>
-
-        {/* 3. Milestone Achievements */}
-        <section className="card" style={{ padding: 20, marginBottom: 18 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <div>
-              <b style={{ fontSize: 15, color: "var(--ink)", fontFamily: "var(--font-heading)" }}>
-                Milestone Achievements
-              </b>
-              <p style={{ fontSize: 12, color: "var(--muted)", margin: "2px 0 0" }}>
-                Badges unlocked through active learning and mastery
-              </p>
-            </div>
-            <span className="pill" style={{ background: "#f3e8ff", color: "#7e22ce" }}>
-              {achievements.filter((a) => a.unlocked).length} / {achievements.length} Unlocked
-            </span>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-            {achievements.map((ach) => (
-              <div
-                key={ach.id}
-                style={{
-                  padding: 12,
-                  borderRadius: 12,
-                  border: `1px solid ${ach.unlocked ? "rgba(99, 102, 241, 0.3)" : "var(--border-color)"}`,
-                  background: ach.unlocked ? "linear-gradient(135deg, #f8faff, #f5f3ff)" : "#f8fafc",
-                  opacity: ach.unlocked ? 1 : 0.55,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  transition: "all 0.2s ease",
-                }}
-              >
-                <div style={{ fontSize: 24 }}>{ach.icon}</div>
-                <div>
-                  <b style={{ fontSize: 12, display: "block", color: ach.unlocked ? "var(--ink)" : "var(--muted)" }}>
-                    {ach.title}
-                  </b>
-                  <span style={{ fontSize: 11, color: "var(--muted)" }}>{ach.desc}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* 4. Active Learning Mode / Accessibility Preferences */}
-        <section className="card" style={{ padding: 20, marginBottom: 18 }}>
-          <b style={{ fontSize: 15, color: "var(--ink)", fontFamily: "var(--font-heading)", display: "block" }}>
-            Learning Mode Preference
-          </b>
-          <p style={{ fontSize: 13, color: "var(--muted)", margin: "4px 0 14px" }}>
-            Select how lessons are formatted and simplified for your learning needs.
+          <p className="describe-subtext">
+            Not sure which setting is best? Describe what reading format works best for you and AI will choose.
           </p>
-
-          <div className="profile-grid">
-            {cards.map(([profile, title, descriptionText, Icon]) => (
-              <button
-                key={profile}
-                className={`profile-option ${session.profile === profile ? "active" : ""}`}
-                onClick={() => chooseProfile(profile)}
-              >
-                <span className="radio" />
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <Icon size={18} style={{ color: session.profile === profile ? "var(--primary)" : "var(--muted)" }} />
-                    <b>{title}</b>
-                  </div>
-                  <small>{descriptionText}</small>
-                </div>
-              </button>
-            ))}
-          </div>
-
-          <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border-color)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-              <I.Sparkles size={16} style={{ color: "var(--primary)" }} />
-              <b style={{ fontSize: 14, color: "var(--ink)" }}>Describe your learning needs</b>
-            </div>
-            <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 10px 0" }}>
-              AI will analyze your description and recommend the best format.
-            </p>
-            <textarea
+          <div className="describe-input-row">
+            <input
+              type="text"
+              className="describe-input"
               value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="For example: long paragraphs are hard for me to follow..."
-              style={{ width: "100%", minHeight: 70 }}
+              onChange={(e) => setDescription(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && description.trim() && !busy) {
+                  detect(description);
+                }
+              }}
+              placeholder="For example: long paragraphs are hard for me to follow"
             />
             <button
-              className="secondary-action"
+              type="button"
+              className="describe-btn"
               disabled={!description.trim() || Boolean(busy)}
               onClick={() => detect(description)}
-              style={{ marginTop: 10, width: "100%" }}
             >
-              {busy === "profile" ? "Detecting profile..." : "Detect profile with AI"}
+              {busy === "profile" ? "Detecting profile..." : "Detect profile"}
             </button>
           </div>
+        </div>
+
+        {/* ── Camera Presence Verification Card ─────────────────────── */}
+        <section className="camera-verification-card">
+          <div className="camera-verification-header">
+            <div className="camera-verif-title-group">
+              <div className="camera-verif-title-row">
+                <div className="camera-verif-icon-box">
+                  <I.Video size={16} />
+                </div>
+                <span className="camera-verif-title">Camera Presence Verification</span>
+                <span className="camera-verif-private-pill">Private • On-device</span>
+              </div>
+              <p className="camera-verif-subtitle">
+                Ensures you are present to dynamically adapt pacing. No video is recorded or stored.
+              </p>
+            </div>
+
+            {/* Simulation controls */}
+            <div className="camera-sim-controls">
+              <span>SIMULATE:</span>
+              <button
+                type="button"
+                className={`camera-sim-btn ${simState === "starting" ? "active" : ""}`}
+                onClick={() => setSimState(simState === "starting" ? null : "starting")}
+              >
+                Starting
+              </button>
+              <span>|</span>
+              <button
+                type="button"
+                className={`camera-sim-btn ${simState === "no_face" ? "active" : ""}`}
+                onClick={() => setSimState(simState === "no_face" ? null : "no_face")}
+              >
+                No Face
+              </button>
+              <span>|</span>
+              <button
+                type="button"
+                className={`camera-sim-btn ${simState === "detected" ? "active" : ""}`}
+                onClick={() => setSimState(simState === "detected" ? null : "detected")}
+              >
+                Detected
+              </button>
+              <span>|</span>
+              <button
+                type="button"
+                className={`camera-sim-btn ${simState === "error" ? "active" : ""}`}
+                onClick={() => setSimState(simState === "error" ? null : "error")}
+              >
+                Error
+              </button>
+              {simState && (
+                <button
+                  type="button"
+                  className="camera-sim-btn"
+                  style={{ color: "#ef4444", marginLeft: 4 }}
+                  onClick={() => setSimState(null)}
+                  title="Reset to live camera"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* HUD Viewport */}
+          <div className="camera-hud-viewport">
+            {/* Live Video Feed */}
+            {mediaStream && effectiveWebcamStatus !== "error" && effectiveWebcamStatus !== "off" && (
+              <CameraPreview stream={mediaStream} className="camera-hud-video" />
+            )}
+
+            {/* Fallback silhouette if camera off or loading */}
+            {(!mediaStream || effectiveWebcamStatus === "off" || effectiveCamLoading) && (
+              <div style={{ position: "absolute", display: "flex", flexDirection: "column", alignItems: "center", opacity: 0.22, pointerEvents: "none" }}>
+                <svg width="130" height="130" viewBox="0 0 24 24" fill="currentColor" color="#94a3b8">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 4c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm0 14c-2.03 0-4.43-.82-6.14-2.88C7.55 15.8 9.68 15 12 15s4.45.8 6.14 2.12C16.43 19.18 14.03 20 12 20z" />
+                </svg>
+              </div>
+            )}
+
+            {/* Top-left HUD badge */}
+            <div className="camera-hud-top-left">
+              <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: "#10b981", boxShadow: "0 0 6px #10b981" }} />
+              <span>LIVE FEED: PRISM</span>
+            </div>
+
+            {/* Top-right HUD badge */}
+            <div className="camera-hud-top-right">
+              <span>720p HD</span>
+            </div>
+
+            {/* Center Biometric Reticle */}
+            <div className="camera-hud-reticle-wrap">
+              <div className={`camera-hud-reticle ${effectiveFacePresent ? "detected" : effectiveCamLoading ? "loading" : "absent"}`}>
+                <span className="camera-hud-reticle-tag">
+                  {effectiveCamLoading ? "CALIBRATING" : effectiveFacePresent ? "HEAD ALIGNED" : "POSITION HEAD"}
+                </span>
+              </div>
+            </div>
+
+            {/* Bottom HUD Banner */}
+            {effectiveCamLoading ? (
+              <div className="camera-hud-bottom-banner loading">
+                <span className="camera-gate-spinner" style={{ width: 12, height: 12, borderTopColor: "#fff", marginRight: 6 }} />
+                <span>Calibrating presence…</span>
+              </div>
+            ) : effectiveFacePresent ? (
+              <div className="camera-hud-bottom-banner detected">
+                <I.Check size={15} strokeWidth={3} />
+                <span>Face detected — Ready to continue</span>
+              </div>
+            ) : effectiveWebcamStatus === "off" ? (
+              <button
+                type="button"
+                className="camera-hud-bottom-banner off"
+                onClick={toggleCamera}
+              >
+                <I.Video size={14} />
+                <span>Enable camera</span>
+              </button>
+            ) : effectiveWebcamStatus === "error" || effectiveWebcamStatus === "denied" ? (
+              <div className="camera-hud-bottom-banner absent" style={{ background: "#ef4444" }}>
+                <I.AlertCircle size={14} />
+                <span>Camera unavailable — Use skip below</span>
+              </div>
+            ) : (
+              <div className="camera-hud-bottom-banner absent">
+                <I.AlertTriangle size={14} />
+                <span>Face not detected — Position in frame</span>
+              </div>
+            )}
+          </div>
+
+          {/* 3 Telemetry Status Chips below HUD */}
+          <div className="camera-telemetry-grid">
+            <div className={`camera-telemetry-chip ${effectiveWebcamStatus === "ready" ? "success" : effectiveCamLoading ? "warn" : "neutral"}`}>
+              {effectiveWebcamStatus === "ready" ? <I.Check size={13} strokeWidth={2.5} /> : <I.Radio size={13} />}
+              <span>{effectiveWebcamStatus === "ready" ? "Camera connected" : effectiveCamLoading ? "Camera starting..." : "Camera offline"}</span>
+            </div>
+
+            <div className={`camera-telemetry-chip ${effectiveFacePresent ? "success" : "warn"}`}>
+              {effectiveFacePresent ? <I.Check size={13} strokeWidth={2.5} /> : <I.User size={13} />}
+              <span>{effectiveFacePresent ? "Face detected" : "No face detected"}</span>
+            </div>
+
+            <div className={`camera-telemetry-chip ${(effectiveFacePresent && effectiveWebcamStatus === "ready") || webcamSkipped ? "success" : "neutral"}`}>
+              {(effectiveFacePresent && effectiveWebcamStatus === "ready") || webcamSkipped ? <I.Sparkles size={13} /> : <I.Clock size={13} />}
+              <span>{(effectiveFacePresent && effectiveWebcamStatus === "ready") || webcamSkipped ? "Ready for adaptive learning" : "Awaiting calibration"}</span>
+            </div>
+          </div>
+
+          {/* Hardware fallback skip link */}
+          {(effectiveWebcamStatus === "error" || effectiveWebcamStatus === "denied" || (!effectiveFacePresent && !webcamSkipped)) && (
+            <div style={{ marginTop: 12, textAlign: "right" }}>
+              <button
+                type="button"
+                className="camera-gate-skip-link"
+                onClick={() => setWebcamSkipped(true)}
+                style={{ fontSize: 11.5, color: "#64748b", textDecoration: "underline", background: "none", border: "none", cursor: "pointer" }}
+              >
+                Skip camera requirement (text-only mode)
+              </button>
+            </div>
+          )}
         </section>
 
         <ErrorNotice />
 
-        {session.text ? (
-          <button
-            className="primary-action"
-            disabled={Boolean(busy)}
-            onClick={async () => {
-              if (!transformed) {
+        {/* ── Bottom Launch Session Bar ──────────────────────────────── */}
+        <div className="launch-session-bar">
+          <div className="launch-bar-left">
+            <div className="launch-bar-meta">
+              <span style={{ color: "#60a5fa", fontSize: 13 }}>✦</span>
+              <span>Ready in ~4 seconds • Configured for {PROFILE_LABELS[session.profile] || "Adaptive Learning"}</span>
+            </div>
+            <h2 className="launch-bar-title">Launch your customized learning session</h2>
+            <p className="launch-bar-subtitle">
+              Our adaptive AI will customize cognitive load &amp; pacing instantly
+            </p>
+          </div>
+
+          <div className="launch-bar-right">
+            <button
+              type="button"
+              className="launch-back-btn"
+              onClick={() => navigate("/upload")}
+            >
+              Back to upload
+            </button>
+
+            <button
+              type="button"
+              className="launch-transform-btn"
+              disabled={!canContinue}
+              onClick={async () => {
                 await adapt();
-              }
-              navigate("/learn");
-            }}
-            style={{ marginTop: 10 }}
-          >
-            {busy === "transform" ? "Adapting lesson..." : transformed ? "Continue to Lesson" : "Transform Lesson"}
-            <I.Sparkles size={18} />
-          </button>
-        ) : (
-          <button
-            className="secondary-action"
-            onClick={() => navigate("/upload")}
-            style={{ width: "100%", marginTop: 10 }}
-          >
-            <I.CloudUpload size={18} /> Upload a document to begin
-          </button>
-        )}
+                navigate("/learn");
+              }}
+            >
+              <span>{busy === "transform" ? "Adapting lesson…" : "Transform Lesson"}</span>
+              <I.Sparkles size={16} />
+            </button>
+          </div>
+        </div>
       </main>
     </Layout>
   );
@@ -1309,17 +1136,17 @@ function VisualCard({ visual, onReadAloud }) {
   if (!visual) return null;
 
   const {
-    source = "prism",
-    visual_type = "none",
-    title = "",
-    subtitle = "",
-    explanation = "",
+    source        = "prism",
+    visual_type   = "none",
+    title         = "",
+    subtitle      = "",
+    explanation   = "",
     key_takeaways = [],
-    why_visual = "",
-    svg_html = null,
+    why_visual    = "",
+    svg_html      = null,
     source_images = [],
-    spec = {},
-    error = null,
+    spec          = {},
+    error         = null,
   } = visual;
 
   if (error) {
@@ -1546,17 +1373,38 @@ function Learn() {
   } = useSession();
   const navigate = useNavigate();
 
+  // Webcam presence — shared instance from WebcamContext (persists across Step 2→3)
+  const webcamHook = useWebcam();
+  const { push: pushToast, dismiss: dismissToast } = useToast();
+
+  // Face presence from shared webcam hook
+  const facePresent = webcamHook.facePresent;
+
+  // Fire contextual toasts on webcam state transitions
+  useWebcamToasts({
+    webcam: webcamHook,
+    push: pushToast,
+    dismiss: dismissToast,
+    I,
+    toggleCamera:    webcamHook.toggleCamera,
+    setWebcamSkipped: webcamHook.setWebcamSkipped,
+  });
+
   const [activeSection, setActiveSection] = useState(0);
   const [playing, setPlaying] = useState(false);
+
   const transformed = session.transformed;
+  const isCognitiveLoad = transformed?.profile === "cognitive_load";
   const chunks =
-    transformed?.profile === "cognitive_load"
+    isCognitiveLoad
       ? transformed.chunks
       : [transformed?.text || session.text];
 
   let globalIndex = 0;
   const sections = chunks.filter(Boolean).flatMap((chunk, chunkIndex) => {
-    const parts = splitIntoLessonSections(chunk);
+    // For cognitive_load: each chunk IS one section — never sub-split it.
+    // The backend already chunked at the right granularity (8–20 chunks).
+    const parts = isCognitiveLoad ? [chunk] : splitIntoLessonSections(chunk);
     return parts.map((paragraph, paragraphIndex) => {
       const idx = globalIndex++;
       return {
@@ -1574,7 +1422,8 @@ function Learn() {
   const completedSections = session.completedSections || [];
   const isComplete = completedSections.includes(activeSection);
 
-  const struggleScore = computeSessionStruggleScore(session);
+  const evaluation = evaluateSignals(session.signals, session.sessionMeta);
+  const struggleScore = evaluation.struggleScore;
   const lessonClass =
     transformed?.profile === "dyslexia"
       ? "dyslexia-lesson"
@@ -1599,9 +1448,44 @@ function Learn() {
     }
   }
 
+  // Track scroll consistency for SCALE evidence
+  const [scrollConsistent, setScrollConsistent] = useState(true);
+  const lastScrollY = React.useRef(0);
+  const scrollReversals = React.useRef(0);
+
+  React.useEffect(() => {
+    function onScroll() {
+      const currentY = window.scrollY;
+      const diff = currentY - lastScrollY.current;
+      if (diff < -40) {
+        scrollReversals.current += 1;
+        if (scrollReversals.current > 2) setScrollConsistent(false);
+      } else if (diff > 40) {
+        if (scrollReversals.current > 0) scrollReversals.current -= 0.5;
+        if (scrollReversals.current <= 1) setScrollConsistent(true);
+      }
+      lastScrollY.current = currentY;
+    }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   function markSectionComplete() {
     completeSection(activeSection);
-    completeChunk();
+    // Pass current webcam context so SCALE receives all 5 signals as supporting evidence
+    completeChunk({
+      presence_ratio:        webcamHook.presenceRatio,
+      face_present_now:      webcamHook.facePresent,
+      head_stable_now:       webcamHook.headStable,
+      tab_focused_now:       webcamHook.tabFocused,
+      scroll_consistent_now: scrollConsistent,
+      // camelCase aliases
+      presenceRatio:         webcamHook.presenceRatio,
+      facePresentNow:        webcamHook.facePresent,
+      headStableNow:         webcamHook.headStable,
+      tabFocusedNow:         webcamHook.tabFocused,
+      scrollConsistentNow:   scrollConsistent,
+    });
     if (activeSection < sections.length - 1) {
       setActiveSection((index) => index + 1);
     }
@@ -1616,54 +1500,26 @@ function Learn() {
     ? session.rewireState.adaptedContent?.adapted_text || currentSection?.paragraph
     : currentSection?.paragraph;
 
+  // Floating voice assistant panel state
+  const [voiceOpen, setVoiceOpen] = useState(false);
+
+  // Estimated read time: ~200 words per minute
+  const wordCount = currentSection
+    ? (currentSection.paragraph || "").split(/\s+/).filter(Boolean).length
+    : 0;
+  const estReadMin = Math.max(1, Math.round(wordCount / 200));
+
+  // Topic title: first non-empty line of the current section
+  const sectionTopic =
+    currentSection?.paragraph?.split("\n").find((l) => l.trim().length > 0)?.slice(0, 48) ||
+    session.lessonTitle ||
+    "Lesson";
+
   return (
     <Layout section="Learn">
-      <main className="page">
-        <div className="eyebrow">
-          <b>{PROFILE_LABELS[session.profile]}</b>
-          <span>
-            {completedSections.length}/{sections.length} completed · {session.wordCount} words
-          </span>
-        </div>
+      <main className="page learn-page">
 
-        <div className="lesson-heading">
-          <div>
-            <h1 className="page-title" style={{ margin: "4px 0" }}>Your adapted lesson</h1>
-            <p className="lesson-subtitle">
-              One section at a time · {sections.length} readable sections
-            </p>
-          </div>
-          <button
-            className="icon-action"
-            onClick={() =>
-              readAloud(sections.map((s) => s.paragraph).join("\n\n"))
-            }
-          >
-            <I.Volume2 size={16} />
-            {playing ? "Stop reading" : "Read all"}
-          </button>
-        </div>
-
-        {/* Real-Time SCALE Cognitive Telemetry Bar */}
-        <div className="telemetry-bar">
-          <div className="telemetry-gauge">
-            <span
-              className={`gauge-dot ${struggleScore >= 0.6
-                ? "critical"
-                : struggleScore >= 0.4
-                  ? "warning"
-                  : "normal"
-                }`}
-            />
-            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <I.Activity size={14} style={{ color: "var(--primary)" }} />
-              SCALE Cognitive Monitor: <b>{(struggleScore * 100).toFixed(0)}% struggle score</b>
-              {struggleScore >= 0.6 ? " (REWIRE Active)" : " (Optimal Comprehension)"}
-            </span>
-          </div>
-        </div>
-
-        {/* REWIRE Restructuring Banner */}
+        {/* ── REWIRE Banner ──────────────────────────────────────────── */}
         {session.rewireState.active && (
           <div className="rewire-banner">
             <div className="rewire-header">
@@ -1671,33 +1527,22 @@ function Learn() {
                 <I.Zap size={13} style={{ marginRight: 4 }} /> REWIRE ACTIVATED
               </span>
               <button
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "#94a3b8",
-                  cursor: "pointer",
-                  padding: 4,
-                }}
+                style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: 4 }}
                 onClick={dismissRewire}
               >
                 <I.X size={16} />
               </button>
             </div>
-            <div className="rewire-title">
-              Cognitive Adaptation Applied
-            </div>
+            <div className="rewire-title">Cognitive Adaptation Applied</div>
             <p className="rewire-explanation">
               {session.rewireState.adaptedContent?.explanation ||
                 session.rewireState.evaluation?.explanation ||
                 "Increased comprehension struggle was detected. The material has been automatically restructured into clearer terms."}
             </p>
             <div className="rewire-actions-pills">
-              {(
-                session.rewireState.adaptedContent?.actions_applied || [
-                  "increase_simplification",
-                  "add_visual_description",
-                ]
-              ).map((act) => (
+              {(session.rewireState.adaptedContent?.actions_applied || [
+                "increase_simplification", "add_visual_description",
+              ]).map((act) => (
                 <span key={act} className="rewire-action-pill">
                   <I.Check size={11} style={{ marginRight: 3 }} /> {act.replace(/_/g, " ")}
                 </span>
@@ -1705,13 +1550,7 @@ function Learn() {
             </div>
             <button
               className="primary-action"
-              style={{
-                marginTop: 14,
-                background: "var(--primary-gradient)",
-                color: "#ffffff",
-                fontWeight: 700,
-                width: "100%",
-              }}
+              style={{ marginTop: 14, width: "100%" }}
               onClick={() => navigate("/practice")}
             >
               Take Adapted Practice Quiz <I.ArrowRight size={16} />
@@ -1719,9 +1558,10 @@ function Learn() {
           </div>
         )}
 
+        {/* ── Empty state ─────────────────────────────────────────────── */}
         {!transformed ? (
-          <section className="card empty-state" style={{ marginTop: 20 }}>
-            <I.BookOpen size={36} style={{ color: "var(--muted)", margin: "0 auto 12px" }} />
+          <section className="card empty-state" style={{ marginTop: 20, textAlign: "center", padding: 40 }}>
+            <I.BookOpen size={36} style={{ color: "var(--muted)", margin: "0 auto 12px", display: "block" }} />
             <p style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)", marginBottom: 14 }}>
               This lesson has not been adapted yet.
             </p>
@@ -1731,165 +1571,213 @@ function Learn() {
           </section>
         ) : (
           <>
-            <div className="section-progress">
-              <div>
-                <b>
-                  Section {activeSection + 1} of {sections.length}
-                </b>
-                <span>{isComplete ? "Completed" : "In progress"}</span>
-              </div>
-              <div className="progressbar">
-                <div
-                  className="progressfill"
-                  style={{
-                    width: `${((activeSection + (isComplete ? 1 : 0)) / (sections.length || 1)) * 100}%`,
-                  }}
+            {/* ── Lesson Card ─────────────────────────────────────────── */}
+            <section className={`lesson-card ${lessonClass} ${isAdapted ? "adapted-chunk-card" : ""}`}>
+
+              {/* Card header row */}
+              <div className="lesson-card-header">
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span className="lesson-card-section-label">
+                    SECTION {activeSection + 1} OF {sections.length}
+                  </span>
+                  {sectionTopic && (
+                    <>
+                      <span style={{ color: "#c7d2fe", fontSize: 12 }}>›</span>
+                      <span className="lesson-card-topic">{sectionTopic}</span>
+                    </>
+                  )}
+                  {isAdapted && (
+                    <span className="adapted-badge" style={{ marginLeft: 4 }}>
+                      REWIRED
+                    </span>
+                  )}
+                </div>
+                <span className="lesson-card-readtime">
+                  Estimated read: {estReadMin} min
+                </span>
+                {/* Webcam status badge — shows current relevant state */}
+                <WebcamStatusBadge
+                  webcamStatus={webcamHook.webcamStatus}
+                  facePresent={facePresent}
+                  tabFocused={webcamHook.tabFocused}
+                  webcamSkipped={webcamHook.webcamSkipped}
+                  presenceRatio={webcamHook.presenceRatio}
                 />
               </div>
-            </div>
 
-            <section className={`lesson-sections active-section ${lessonClass}`}>
-              <div className="lesson-sections-header">
-                <span className="pill">
-                  {currentSection?.chunk > 1
-                    ? `Learning chunk ${currentSection.chunk}`
-                    : "Core idea"}
-                </span>
-                <span className="reading-note">Read at your own pace</span>
-              </div>
-
+              {/* Section body */}
               {currentSection && (
-                <article className={`lesson-section ${isAdapted ? "adapted-chunk-card" : ""}`}>
-                  <div className="section-number">
-                    {String(activeSection + 1).padStart(2, "0")}
-                  </div>
-                  <div className="section-content">
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div className="section-label">
-                        {isAdapted ? "REWIRED CONCEPT" : `Section ${activeSection + 1}`}
+                <div className="lesson-card-body">
+                  <p
+                    style={{
+                      fontSize: formatting.font_size_multiplier
+                        ? `${formatting.font_size_multiplier}em`
+                        : undefined,
+                      lineHeight: formatting.line_height || 1.75,
+                      letterSpacing: formatting.letter_spacing,
+                      whiteSpace: "pre-line",
+                      color: "#1e293b",
+                      margin: 0,
+                    }}
+                  >
+                    {displayText}
+                  </p>
+
+                  {isAdapted && session.rewireState.adaptedContent?.visual_description && (
+                    <div className="visual-description-box" style={{ marginTop: 16 }}>
+                      <div className="visual-description-label">
+                        <I.Image size={14} /> Visual Mental Model
                       </div>
-                      {isAdapted && (
-                        <span className="adapted-badge">
-                          Level {session.rewireState.adaptedContent?.variant_level || 2} Simplification
-                        </span>
-                      )}
+                      <p className="visual-description-text">
+                        {session.rewireState.adaptedContent.visual_description}
+                      </p>
                     </div>
+                  )}
 
-                    <p
-                      style={{
-                        fontSize: formatting.font_size_multiplier
-                          ? `${formatting.font_size_multiplier}em`
-                          : undefined,
-                        lineHeight: formatting.line_height,
-                        letterSpacing: formatting.letter_spacing,
-                        whiteSpace: "pre-line",
-                      }}
-                    >
-                      {displayText}
-                    </p>
-
-                    {isAdapted && session.rewireState.adaptedContent?.visual_description && (
-                      <div className="visual-description-box">
-                        <div className="visual-description-label">
-                          <I.Image size={14} /> Visual Mental Model
-                        </div>
-                        <p className="visual-description-text">
-                          {session.rewireState.adaptedContent.visual_description}
-                        </p>
-                      </div>
-                    )}
-
-                    <div style={{ display: "flex", gap: 12, marginTop: 14, alignItems: "center", flexWrap: "wrap" }}>
-                      <button
-                        className="text-action"
-                        onClick={() => readAloud(displayText)}
-                      >
-                        <I.Volume2 size={14} /> Read section
-                      </button>
-                      <span style={{ color: "#cbd5e1" }}>•</span>
-                      <button
-                        className="text-action"
-                        onClick={() => recordRereadAction(activeSection, currentSection.paragraph)}
-                      >
-                        <I.RotateCcw size={13} /> Re-read section
-                      </button>
-                      <span style={{ color: "#cbd5e1" }}>•</span>
-                      <button
-                        className="text-action"
-                        onClick={() => recordHelpAction(activeSection, currentSection.paragraph)}
-                      >
-                        <I.HelpCircle size={13} /> Request explanation
-                      </button>
-                    </div>
+                  {/* Section micro-actions */}
+                  <div className="lesson-card-actions">
+                    <button className="text-action" onClick={() => readAloud(displayText)}>
+                      <I.Volume2 size={13} /> Read section
+                    </button>
+                    <span style={{ color: "#e2e8f0" }}>•</span>
+                    <button className="text-action" onClick={() => recordRereadAction(activeSection, currentSection.paragraph)}>
+                      <I.RotateCcw size={13} /> Re-read section
+                    </button>
+                    <span style={{ color: "#e2e8f0" }}>•</span>
+                    <button className="text-action" onClick={() => recordHelpAction(activeSection, currentSection.paragraph)}>
+                      <I.HelpCircle size={13} /> Request explanation
+                    </button>
                   </div>
-                </article>
+                </div>
               )}
             </section>
 
-            <div className="section-actions">
+            {/* ── Bottom navigation row ───────────────────────────────── */}
+            <div className="lesson-nav-row">
+              {/* Previous */}
               <button
-                className="secondary-action"
+                className="lesson-nav-prev"
                 disabled={activeSection === 0}
-                onClick={() => setActiveSection((index) => index - 1)}
+                onClick={() => setActiveSection((i) => i - 1)}
               >
-                <I.ArrowLeft size={16} /> Previous
+                <I.ChevronLeft size={15} /> Previous
               </button>
-              <button className="primary-action" onClick={markSectionComplete}>
+
+              {/* Section dots */}
+              <div className="lesson-nav-dots">
+                {sections.map((section, index) => (
+                  <button
+                    key={section.id}
+                    className={`lesson-dot ${index === activeSection ? "current" : ""} ${completedSections.includes(index) ? "done" : ""}`}
+                    onClick={() => setActiveSection(index)}
+                    title={`Section ${index + 1}`}
+                  >
+                    {completedSections.includes(index) ? <I.Check size={10} /> : index + 1}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Primary + Visual row ────────────────────────────────── */}
+            <div className="lesson-cta-row">
+              <button className="primary-action" style={{ flex: 1 }} onClick={markSectionComplete}>
                 {isComplete
                   ? activeSection === sections.length - 1
                     ? "All sections complete"
                     : "Next section"
-                  : "Mark section complete"}
+                  : "Mark section complete"}{" "}
                 <I.Check size={18} />
+              </button>
+              <button
+                className="secondary-action"
+                style={{ flex: 1 }}
+                disabled={Boolean(busy)}
+                onClick={getVisual}
+              >
+                <I.PieChart size={15} />
+                {busy === "visual" ? "Building infographic…" : "Generate Visual Infographic"}
               </button>
             </div>
 
-            <div className="section-jump">
-              {sections.map((section, index) => (
-                <button
-                  key={section.id}
-                  className={`${index === activeSection ? "current" : ""} ${completedSections.includes(index) ? "done" : ""}`}
-                  onClick={() => setActiveSection(index)}
-                >
-                  {completedSections.includes(index) ? (
-                    <I.Check size={14} />
-                  ) : (
-                    index + 1
-                  )}
-                </button>
-              ))}
-            </div>
-
-            <button
-              className="secondary-action"
-              disabled={Boolean(busy)}
-              onClick={getVisual}
-              style={{ width: "100%", marginTop: 14 }}
-            >
-              <I.PieChart size={16} />
-              {busy === "visual"
-                ? "Building infographic visual..."
-                : "Generate Visual Infographic"}
-            </button>
-
+            {/* Visual result */}
             {session.visual && (
-              <VisualCard
-                visual={session.visual}
-                onReadAloud={(text) => readAloud(text)}
-              />
+              <VisualCard visual={session.visual} onReadAloud={(text) => readAloud(text)} />
             )}
 
-            <VoiceAssistant
-              currentSection={currentSection}
-              onAsk={ask}
-              busy={busy}
-              onVoiceHelp={recordVoiceHelpAction}
-              onReadSection={() => readAloud(displayText)}
-            />
-
             <ErrorNotice />
+
+            {/* ── SCALE dot (collapsed telemetry) ─────────────────────── */}            <div
+              className="scale-dot-bar"
+              title={`SCALE: ${(struggleScore * 100).toFixed(0)}% struggle`}
+            >
+              <span
+                className={`gauge-dot ${
+                  struggleScore >= 0.6 ? "critical" : struggleScore >= 0.4 ? "warning" : "normal"
+                }`}
+              />
+              <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600 }}>
+                SCALE {(struggleScore * 100).toFixed(0)}%
+                {struggleScore >= 0.6 && (
+                  <span style={{ color: "#7c3aed", marginLeft: 4 }}>· REWIRE Active</span>
+                )}
+              </span>
+            </div>
+
+            {/* ── Floating Voice Bubble ───────────────────────────────── */}
+            <button
+              className="voice-fab"
+              onClick={() => setVoiceOpen((o) => !o)}
+              aria-label="Open voice assistant"
+              title="Voice & In-Context Assistant"
+            >
+              {voiceOpen ? <I.X size={22} /> : <I.MessageCircle size={22} />}
+              <span
+                className="voice-fab-dot"
+                style={{ background: voiceOpen ? "#ef4444" : "#10b981" }}
+              />
+            </button>
+
+            {/* ── Floating Voice Panel ────────────────────────────────── */}
+            {voiceOpen && (
+              <div className="voice-float-panel">
+                <div className="voice-float-header">
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div className="voice-float-icon">
+                      <I.Mic size={16} />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: 14, color: "var(--ink)" }}>
+                        Voice &amp; In-Context Assistant
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                        Speech-to-Text · Lesson Grounded
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <button
+                      onClick={() => setVoiceOpen(false)}
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: 2 }}
+                    >
+                      <I.X size={16} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="voice-float-body">
+                  <VoiceAssistant
+                    currentSection={currentSection}
+                    onAsk={ask}
+                    busy={busy}
+                    onVoiceHelp={recordVoiceHelpAction}
+                    onReadSection={() => readAloud(displayText)}
+                  />
+                </div>
+              </div>
+            )}
           </>
         )}
+
       </main>
     </Layout>
   );
@@ -1950,7 +1838,7 @@ function Practice() {
     if (!adaptiveSelected || adaptiveSubmitted) return;
     setAdaptiveSubmitted(true);
     const isCorrect = adaptiveSelected === adaptiveQuiz.answer;
-    recordQuizAnswerAction(isCorrect, adaptiveQuiz.question || "Adaptive Question", 0);
+    recordQuizAnswerAction(isCorrect);
     if (isCorrect) {
       completeChunk();
       completeSection(0);
@@ -1994,24 +1882,16 @@ function Practice() {
   async function submitTestAnswer() {
     if (!session.wholeTest?.[testIndex] || !selected) return;
     const currentQ = session.wholeTest[testIndex];
-    const isCorrect = selected === currentQ.answer;
     const nextAnswers = [
       ...testAnswers,
       {
         question: currentQ.question,
         selected,
-        correct: isCorrect,
+        correct: selected === currentQ.answer,
       },
     ];
     setTestAnswers(nextAnswers);
     setSelected("");
-
-    // Record into global session signals and practice report
-    recordQuizAnswerAction(isCorrect, currentQ.question, testIndex);
-    if (isCorrect) {
-      completeSection(testIndex);
-    }
-
     if (testIndex < session.wholeTest.length - 1) {
       setTestIndex((index) => index + 1);
     } else {
@@ -2300,665 +2180,19 @@ function Practice() {
   );
 }
 
-/* ── XP system ── pure function, retune the multipliers here ─────────────── */
-function computeXP({ questionsAnswered, chunksCompleted, sectionsMastered }) {
-  return (questionsAnswered * 10) + (chunksCompleted * 15) + (sectionsMastered * 50);
-}
-
-// Triangular level scale: level N costs N×100 XP (so L2=100, L3=300, L4=600…)
-function xpToLevel(totalXP) {
-  let xp = totalXP;
-  let level = 1;
-  while (xp >= level * 100) { xp -= level * 100; level++; }
-  return { level, xpInLevel: xp, xpForNext: level * 100 };
-}
-
-/* ── Expressive Mascot Face Icons for Struggle Tiers ─────────── */
-function StruggleFaceIcon({ tierKey, color, size = 16 }) {
-  if (tierKey === "smooth_sailing") {
-    // Calm, half-closed-eyes "chill" face (zen smile)
-    return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-        <circle cx="12" cy="12" r="10" stroke={color} strokeWidth="2" fill={`${color}18`} />
-        {/* Zen happy curved eyes */}
-        <path d="M 6.5 10.5 Q 8.5 8, 10.5 10.5" stroke={color} strokeWidth="2" strokeLinecap="round" />
-        <path d="M 13.5 10.5 Q 15.5 8, 17.5 10.5" stroke={color} strokeWidth="2" strokeLinecap="round" />
-        {/* Chill smile */}
-        <path d="M 8.5 14.5 Q 12 17.5, 15.5 14.5" stroke={color} strokeWidth="2" strokeLinecap="round" />
-      </svg>
-    );
-  }
-
-  if (tierKey === "some_friction") {
-    // Furrowed brow, thinking face
-    return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-        <circle cx="12" cy="12" r="10" stroke={color} strokeWidth="2" fill={`${color}18`} />
-        {/* Thinking brows: one raised, one furrowed */}
-        <path d="M 6.5 7.5 L 10.5 8.5" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M 13.5 8.5 L 17.5 6.5" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
-        {/* Curious dot eyes */}
-        <circle cx="8.5" cy="11" r="1.5" fill={color} />
-        <circle cx="15.5" cy="11" r="1.5" fill={color} />
-        {/* Thoughtful line mouth */}
-        <path d="M 9 15.5 Q 12 14, 15 15.5" stroke={color} strokeWidth="2" strokeLinecap="round" />
-      </svg>
-    );
-  }
-
-  if (tierKey === "struggling") {
-    // Sweating / strained face
-    return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-        <circle cx="12" cy="12" r="10" stroke={color} strokeWidth="2" fill={`${color}18`} />
-        {/* Strained squinting eyes */}
-        <path d="M 7 12 L 10 10 L 7 8" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M 17 12 L 14 10 L 17 8" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-        {/* Sweat drop on brow */}
-        <path d="M 19 3.5 C 19 3.5, 17 6, 17 7.5 C 17 8.6, 17.9 9.5, 19 9.5 C 20.1 9.5, 21 8.6, 21 7.5 C 21 6, 19 3.5, 19 3.5 Z" fill="#0284c7" stroke="#0284c7" strokeWidth="0.8" />
-        {/* Wavy nervous mouth */}
-        <path d="M 8.5 15.5 Q 10.5 17.5, 12 15.5 Q 13.5 13.5, 15.5 15.5" stroke={color} strokeWidth="2" strokeLinecap="round" />
-      </svg>
-    );
-  }
-
-  if (tierKey === "high_strain") {
-    // Wide-eyed overwhelmed face
-    return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-        <circle cx="12" cy="12" r="10" stroke={color} strokeWidth="2" fill={`${color}18`} />
-        {/* Wide overwhelmed eyes */}
-        <circle cx="8" cy="9.5" r="3" stroke={color} strokeWidth="1.6" fill="#ffffff" />
-        <circle cx="8" cy="9.5" r="1.2" fill={color} />
-        <circle cx="16" cy="9.5" r="3" stroke={color} strokeWidth="1.6" fill="#ffffff" />
-        <circle cx="16" cy="9.5" r="1.2" fill={color} />
-        {/* Open 'o' overwhelmed mouth */}
-        <ellipse cx="12" cy="16" rx="2.8" ry="2.4" stroke={color} strokeWidth="2" fill={`${color}25`} />
-        {/* Stress sparks */}
-        <path d="M 6 4 L 7.5 5.5" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
-        <path d="M 18 4 L 16.5 5.5" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
-      </svg>
-    );
-  }
-
-  // "not_started" / default: sleepy neutral dot-eyed face
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-      <circle cx="12" cy="12" r="10" stroke={color} strokeWidth="2" fill={`${color}18`} />
-      {/* Sleepy resting horizontal eyes */}
-      <path d="M 6.5 10.5 L 10.5 10.5" stroke={color} strokeWidth="2" strokeLinecap="round" />
-      <path d="M 13.5 10.5 L 17.5 10.5" stroke={color} strokeWidth="2" strokeLinecap="round" />
-      {/* Calm neutral line mouth */}
-      <path d="M 9.5 15 L 14.5 15" stroke={color} strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-/* ── Struggle Score Tier Helper ───────────────────────────────────────────── */
-function getStruggleTier(score, isTransformed = true) {
-  if (!isTransformed) {
-    return {
-      key: "not_started",
-      name: "Not started",
-      color: "#6b7280",
-      bg: "#f3f4f6",
-      border: "#e5e7eb",
-    };
-  }
-
-  const pct = (score || 0) * 100;
-  if (pct >= 80) {
-    return {
-      key: "high_strain",
-      name: "High Strain",
-      color: "#dc2626",
-      bg: "#fef2f2",
-      border: "#fecaca",
-    };
-  } else if (pct >= 60) {
-    return {
-      key: "struggling",
-      name: "Struggling",
-      color: "#ea580c",
-      bg: "#fff7ed",
-      border: "#fed7aa",
-    };
-  } else if (pct >= 30) {
-    return {
-      key: "some_friction",
-      name: "Some Friction",
-      color: "#d97706",
-      bg: "#fffbeb",
-      border: "#fde68a",
-    };
-  } else {
-    return {
-      key: "smooth_sailing",
-      name: "Smooth Sailing",
-      color: "#16a34a",
-      bg: "#f0fdf4",
-      border: "#bbf7d0",
-    };
-  }
-}
-
-/* ── Reactive Mascot Orb ─────────────────────────────────────── */
-function ReactiveOrb({ struggleScore = 0 }) {
-  const isHighStruggle = struggleScore >= 0.7;
-  const isMediumStruggle = struggleScore >= 0.35 && struggleScore < 0.7;
-  const mood = isHighStruggle ? "tense" : isMediumStruggle ? "alert" : "calm";
-
-  return (
-    <div
-      className={`reactive-orb-container reactive-orb--${mood}`}
-      title={`Cognitive State: ${mood === "tense" ? "High Strain" : mood === "alert" ? "Focusing" : "Calm & In the Zone"}`}
-    >
-      <svg className="reactive-orb-svg" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <radialGradient id="orb-grad-calm" cx="35%" cy="35%" r="65%">
-            <stop offset="0%" stopColor="#c084fc" />
-            <stop offset="50%" stopColor="#818cf8" />
-            <stop offset="100%" stopColor="#fbbf24" />
-          </radialGradient>
-          <radialGradient id="orb-grad-alert" cx="35%" cy="35%" r="65%">
-            <stop offset="0%" stopColor="#fde047" />
-            <stop offset="50%" stopColor="#fb923c" />
-            <stop offset="100%" stopColor="#ea580c" />
-          </radialGradient>
-          <radialGradient id="orb-grad-tense" cx="35%" cy="35%" r="65%">
-            <stop offset="0%" stopColor="#fca5a5" />
-            <stop offset="50%" stopColor="#ef4444" />
-            <stop offset="100%" stopColor="#991b1b" />
-          </radialGradient>
-        </defs>
-
-        {/* Ambient aura */}
-        <circle cx="50" cy="50" r="32" className="orb-aura" />
-
-        {/* Dynamic morphing blob */}
-        {isHighStruggle ? (
-          <path
-            d="M 50 16 C 68 14, 82 26, 84 44 C 86 60, 74 76, 58 82 C 42 88, 24 82, 18 64 C 12 48, 20 28, 34 20 Z"
-            fill="url(#orb-grad-tense)"
-            className="orb-blob"
-          />
-        ) : isMediumStruggle ? (
-          <path
-            d="M 50 18 C 66 18, 78 30, 78 48 C 78 66, 64 78, 48 78 C 32 78, 22 66, 22 48 C 22 30, 34 18, 50 18 Z"
-            fill="url(#orb-grad-alert)"
-            className="orb-blob"
-          />
-        ) : (
-          <path
-            d="M 50 20 C 66 20, 78 32, 78 50 C 78 68, 64 80, 50 80 C 34 80, 22 68, 22 50 C 22 32, 34 20, 50 20 Z"
-            fill="url(#orb-grad-calm)"
-            className="orb-blob"
-          />
-        )}
-
-        {/* Mascot eye sparkles */}
-        <circle cx="43" cy="47" r="2.5" fill="#ffffff" opacity="0.9" />
-        <circle cx="57" cy="47" r="2.5" fill="#ffffff" opacity="0.9" />
-      </svg>
-      <span className="orb-mood-pill">
-        {mood === "tense" ? "Strain" : mood === "alert" ? "Focus" : "Calm"}
-      </span>
-    </div>
-  );
-}
-
-/* ── Struggle Slider Face SVGs ────────────────────────────── */
-function SliderFace({ tierKey, size = 44 }) {
-  // All faces: soft round head, increasingly sad/discouraged expression
-  // Never angry — droopy eyes/mouth, not furrowed brows
-  const s = size;
-  const half = s / 2;
-  const eyeY = half - 3;
-  const mouthY = half + 7;
-
-  if (tierKey === "smooth_sailing") {
-    // 😊 Content calm smiling face
-    return (
-      <svg width={s} height={s} viewBox="0 0 44 44" fill="none">
-        <circle cx="22" cy="22" r="20" fill="#dcfce7" stroke="#16a34a" strokeWidth="2" />
-        {/* Happy eyes - slight upward curve */}
-        <path d="M13 18 Q15 15, 17 18" stroke="#15803d" strokeWidth="2" strokeLinecap="round" fill="none" />
-        <path d="M27 18 Q29 15, 31 18" stroke="#15803d" strokeWidth="2" strokeLinecap="round" fill="none" />
-        {/* Eye sparkles */}
-        <circle cx="15" cy="17" r="1" fill="#15803d" />
-        <circle cx="29" cy="17" r="1" fill="#15803d" />
-        {/* Cheerful smile */}
-        <path d="M15 27 Q22 34, 29 27" stroke="#15803d" strokeWidth="2" strokeLinecap="round" fill="none" />
-        {/* Rosy cheeks */}
-        <circle cx="12" cy="25" r="3" fill="#bbf7d0" opacity="0.7" />
-        <circle cx="32" cy="25" r="3" fill="#bbf7d0" opacity="0.7" />
-      </svg>
-    );
-  }
-
-  if (tierKey === "some_friction") {
-    // 🙂 Slightly neutral/content — mild concern creeping in
-    return (
-      <svg width={s} height={s} viewBox="0 0 44 44" fill="none">
-        <circle cx="22" cy="22" r="20" fill="#fef9c3" stroke="#d97706" strokeWidth="2" />
-        {/* Neutral round eyes */}
-        <circle cx="15" cy="19" r="2.5" fill="#92400e" />
-        <circle cx="29" cy="19" r="2.5" fill="#92400e" />
-        {/* Inner eye highlight */}
-        <circle cx="16" cy="18" r="0.8" fill="#ffffff" />
-        <circle cx="30" cy="18" r="0.8" fill="#ffffff" />
-        {/* Flat/slightly upturned mouth */}
-        <path d="M16 28 Q22 30, 28 28" stroke="#92400e" strokeWidth="1.8" strokeLinecap="round" fill="none" />
-        {/* Mild brow furrow (gentle, not angry) */}
-        <path d="M12 14 Q15 13, 18 14.5" stroke="#b45309" strokeWidth="1.2" strokeLinecap="round" fill="none" />
-        <path d="M26 14.5 Q29 13, 32 14" stroke="#b45309" strokeWidth="1.2" strokeLinecap="round" fill="none" />
-      </svg>
-    );
-  }
-
-  if (tierKey === "struggling") {
-    // 🙁 Worried/downturned — subtle sadness, droopy
-    return (
-      <svg width={s} height={s} viewBox="0 0 44 44" fill="none">
-        <circle cx="22" cy="22" r="20" fill="#ffedd5" stroke="#ea580c" strokeWidth="2" />
-        {/* Worried round eyes — slightly larger, looking down */}
-        <ellipse cx="15" cy="19" rx="2.8" ry="3" fill="#9a3412" />
-        <ellipse cx="29" cy="19" rx="2.8" ry="3" fill="#9a3412" />
-        <circle cx="16" cy="18.5" r="0.9" fill="#ffffff" />
-        <circle cx="30" cy="18.5" r="0.9" fill="#ffffff" />
-        {/* Worried brows — inner ends raised */}
-        <path d="M11 14 Q14.5 11.5, 18 13.5" stroke="#c2410c" strokeWidth="1.5" strokeLinecap="round" fill="none" />
-        <path d="M26 13.5 Q29.5 11.5, 33 14" stroke="#c2410c" strokeWidth="1.5" strokeLinecap="round" fill="none" />
-        {/* Subtle frown — turned down at edges */}
-        <path d="M15 29 Q22 25, 29 29" stroke="#9a3412" strokeWidth="2" strokeLinecap="round" fill="none" />
-        {/* Sweat drop */}
-        <ellipse cx="34" cy="14" rx="1.5" ry="2.2" fill="#93c5fd" opacity="0.7" />
-      </svg>
-    );
-  }
-
-  // high_strain or default: 😔 Sad, droopy-eyed, downcast
-  return (
-    <svg width={s} height={s} viewBox="0 0 44 44" fill="none">
-      <circle cx="22" cy="22" r="20" fill="#fef2f2" stroke="#991b1b" strokeWidth="2" />
-      {/* Sad droopy eyes — half-lidded, looking down */}
-      <ellipse cx="15" cy="20" rx="3" ry="2.5" fill="#7f1d1d" />
-      <ellipse cx="29" cy="20" rx="3" ry="2.5" fill="#7f1d1d" />
-      {/* Heavy eyelids drooping over top of eyes */}
-      <path d="M11.5 19 Q15 17, 18.5 19" stroke="#991b1b" strokeWidth="1.8" strokeLinecap="round" fill="#fef2f2" />
-      <path d="M25.5 19 Q29 17, 32.5 19" stroke="#991b1b" strokeWidth="1.8" strokeLinecap="round" fill="#fef2f2" />
-      <circle cx="14" cy="19.5" r="0.7" fill="#ffffff" opacity="0.6" />
-      <circle cx="28" cy="19.5" r="0.7" fill="#ffffff" opacity="0.6" />
-      {/* Sad eyebrows — drooping at outer edges */}
-      <path d="M11 15 Q14 13.5, 18 15.5" stroke="#991b1b" strokeWidth="1.5" strokeLinecap="round" fill="none" />
-      <path d="M26 15.5 Q30 13.5, 33 15" stroke="#991b1b" strokeWidth="1.5" strokeLinecap="round" fill="none" />
-      {/* Deep frown — downcast sadness */}
-      <path d="M14 31 Q22 26, 30 31" stroke="#7f1d1d" strokeWidth="2" strokeLinecap="round" fill="none" />
-      {/* Tear drop */}
-      <ellipse cx="12" cy="25" rx="1.3" ry="2" fill="#93c5fd" opacity="0.65" />
-    </svg>
-  );
-}
-
-/* ── Struggle Slider (replaces HeartbeatLine) ───────────────── */
-function HeartbeatLine({ struggleScore = 0, isTransformed = false }) {
-  const [animPct, setAnimPct] = React.useState(0);
-
-  const pct = Math.round((struggleScore || 0) * 100);
-  const targetPct = Math.max(3, Math.min(97, pct));
-
-  // Animate slider from 0 → target on every mount (~1.8s ease-in-out for gradual feel)
-  React.useEffect(() => {
-    if (!isTransformed) return;
-
-    let animId = null;
-    let start = null;
-    const duration = 1800;
-
-    setAnimPct(0);
-
-    const step = (ts) => {
-      if (!start) start = ts;
-      const t = Math.min(1, (ts - start) / duration);
-      // Ease-in-out cubic: smooth acceleration and deceleration
-      const eased = t < 0.5
-        ? 4 * t * t * t
-        : 1 - Math.pow(-2 * t + 2, 3) / 2;
-      setAnimPct(eased * targetPct);
-      if (t < 1) animId = requestAnimationFrame(step);
-    };
-
-    animId = requestAnimationFrame(step);
-    return () => { if (animId) cancelAnimationFrame(animId); };
-  }, [isTransformed, targetPct]);
-
-  if (!isTransformed) {
-    return (
-      <div className="slider-track-card slider-track-card--idle">
-        <div className="slider-track-rail">
-          <div className="slider-track-empty" />
-        </div>
-        <span className="slider-idle-label">Waiting for lesson telemetry…</span>
-      </div>
-    );
-  }
-
-  const tier = getStruggleTier(struggleScore);
-  const color = tier.color;
-
-  return (
-    <div
-      className={`slider-track-card ${struggleScore >= 0.8 ? "slider-track-card--strained" : ""}`}
-      style={{
-        borderColor: struggleScore >= 0.8 ? "#fca5a5" : undefined,
-        backgroundColor: struggleScore >= 0.8 ? "#fff5f5" : undefined,
-      }}
-    >
-      {/* Track rail */}
-      <div className="slider-track-rail">
-        {/* Filled portion behind marker */}
-        <div
-          className="slider-track-filled"
-          style={{
-            width: `${animPct}%`,
-            background: `linear-gradient(90deg, ${color}50, ${color})`,
-          }}
-        />
-        {/* Empty portion ahead */}
-        <div
-          className="slider-track-empty"
-          style={{ left: `${animPct}%`, width: `${100 - animPct}%` }}
-        />
-      </div>
-
-      {/* Emoji face marker */}
-      <div
-        className="slider-face-marker"
-        style={{ left: `${animPct}%` }}
-      >
-        {/* % label above the face */}
-        <div
-          className="slider-face-label"
-          style={{
-            color: color,
-            background: `${color}14`,
-            borderColor: `${color}35`,
-          }}
-        >
-          {pct}%
-        </div>
-        {/* The actual face */}
-        <div className="slider-face-circle">
-          <SliderFace tierKey={tier.key} size={44} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
-/* ── Mastery Ring ─────────────────────────────────────────────────────────── */
-const MASTERY_LEGEND = [
-  { color: "#818CF8", bg: "#ede9fe", label: "Getting Started" },
-  { color: "#60A5FA", bg: "#dbeafe", label: "Building Momentum" },
-  { color: "#34D399", bg: "#d1fae5", label: "Almost Mastered" },
-  { color: "#FBBF24", bg: "#fef3c7", label: "Mastered" },
-];
-
-function MasteryRing({ masteryPct = 0, xpTotal = 0, struggleScore = 0 }) {
-  const SIZE = 160;
-  const STROKE = 14;
-  const R = (SIZE - STROKE) / 2;
-  const CIRC = 2 * Math.PI * R;
-
-  // Local animation progress (0 -> 1) resetting on every mount
-  const [animFraction, setAnimFraction] = React.useState(0);
-
-  React.useEffect(() => {
-    let animId = null;
-    let startTime = null;
-    const duration = 1000; // ~1000ms ease-out fill on mount
-
-    const step = (timestamp) => {
-      if (!startTime) startTime = timestamp;
-      const elapsed = timestamp - startTime;
-      const t = Math.min(1, elapsed / duration);
-      // Ease-out cubic: 1 - (1 - t)^3
-      const eased = 1 - Math.pow(1 - t, 3);
-      setAnimFraction(eased);
-
-      if (t < 1) {
-        animId = requestAnimationFrame(step);
-      }
-    };
-
-    setAnimFraction(0);
-    animId = requestAnimationFrame(step);
-
-    return () => {
-      if (animId) cancelAnimationFrame(animId);
-    };
-  }, [masteryPct, xpTotal]);
-
-  const currentMastery = (masteryPct || 0) * animFraction;
-  const filled = (currentMastery / 100) * CIRC;
-
-  const tier =
-    masteryPct >= 100 ? MASTERY_LEGEND[3] :
-      masteryPct >= 70 ? MASTERY_LEGEND[2] :
-        masteryPct >= 40 ? MASTERY_LEGEND[1] :
-          MASTERY_LEGEND[0];
-
-  const { level, xpInLevel, xpForNext } = xpToLevel(xpTotal);
-  const xpBarPct = Math.min(100, Math.round((xpInLevel / xpForNext) * 100));
-  const currentXpBarPct = xpBarPct * animFraction;
-
-  // +XP toast: compare to localStorage-cached previous value (frontend-only)
-  const [toast, setToast] = React.useState(null);
-  React.useEffect(() => {
-    const CACHE_KEY = "adaptlearn_last_xp";
-    const prev = parseInt(localStorage.getItem(CACHE_KEY) || "0", 10);
-    const diff = xpTotal - prev;
-    if (diff > 0) setToast(`+${diff} XP`);
-    localStorage.setItem(CACHE_KEY, String(xpTotal));
-    const t = setTimeout(() => setToast(null), 2800);
-    return () => clearTimeout(t);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return (
-    <div className="mastery-ring-wrap">
-      {toast && <div className="mastery-xp-toast">{toast}</div>}
-
-      {/* Reactive Mascot Orb */}
-      <ReactiveOrb struggleScore={struggleScore} />
-
-      <div className={`mastery-ring-svg-wrap${masteryPct >= 100 && animFraction >= 0.9 ? " mastery-ring--gold" : ""}`}>
-        <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
-          {/* Track */}
-          <circle cx={SIZE / 2} cy={SIZE / 2} r={R}
-            fill="none" stroke="#E5E7EB" strokeWidth={STROKE} />
-          {/* Filled arc */}
-          <circle cx={SIZE / 2} cy={SIZE / 2} r={R}
-            fill="none"
-            stroke={tier.color}
-            strokeWidth={STROKE}
-            strokeLinecap="round"
-            strokeDasharray={`${CIRC} ${CIRC}`}
-            strokeDashoffset={CIRC - filled}
-            transform={`rotate(-90 ${SIZE / 2} ${SIZE / 2})`}
-            className="mastery-ring-arc"
-          />
-        </svg>
-        <div className="mastery-ring-center">
-          <span className="mastery-ring-level">Lvl {level}</span>
-          <span className="mastery-ring-xp">{xpTotal.toLocaleString()} XP</span>
-          <span className="mastery-ring-pct">{Math.round(currentMastery)}%</span>
-        </div>
-      </div>
-
-      {/* XP progress bar to next level */}
-      <div className="mastery-xp-bar-wrap">
-        <div className="mastery-xp-bar-label">
-          <span>{xpInLevel.toLocaleString()} / {xpForNext.toLocaleString()} XP</span>
-          <span>to Level {level + 1}</span>
-        </div>
-        <div className="progressbar mastery-xp-bar-track">
-          <div className="progressfill mastery-xp-bar-fill"
-            style={{ width: `${currentXpBarPct}%` }} />
-        </div>
-      </div>
-
-      {/* Tier legend */}
-      <div className="mastery-legend">
-        {MASTERY_LEGEND.map((l) => (
-          <span key={l.label} className="mastery-legend-pill"
-            style={{ background: l.bg, color: l.color }}>
-            <span className="mastery-legend-dot" style={{ background: l.color }} />
-            {l.label}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ProgressStats({ chunks, qAnswered, mastered }) {
-  const stats = [
-    {
-      id: "chunks",
-      title: "Learning Chunks",
-      value: chunks,
-      icon: I.Layers,
-      color: "#6366f1",
-      bgColor: "#eef2ff",
-      borderColor: "#c7d2fe",
-    },
-    {
-      id: "questions",
-      title: "Questions Answered",
-      value: qAnswered,
-      icon: I.HelpCircle,
-      color: "#0284c7",
-      bgColor: "#e0f2fe",
-      borderColor: "#bae6fd",
-    },
-    {
-      id: "mastered",
-      title: "Sections Mastered",
-      value: mastered,
-      icon: I.Trophy,
-      color: "#d97706",
-      bgColor: "#fef3c7",
-      borderColor: "#fde68a",
-    },
-  ];
-
-  return (
-    <div className="progress-stats-grid">
-      {stats.map((stat) => {
-        const Icon = stat.icon;
-        return (
-          <div key={stat.id} className="progress-stat-card">
-            <div
-              className="progress-stat-icon-wrap"
-              style={{
-                background: stat.bgColor,
-                color: stat.color,
-                borderColor: stat.borderColor,
-              }}
-            >
-              <Icon size={24} />
-            </div>
-            <div className="progress-stat-info">
-              <b className="progress-stat-value">{stat.value}</b>
-              <span className="progress-stat-label">{stat.title}</span>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 function Progress() {
   const { session } = useSession();
+
   const transformed = Boolean(session.transformed);
   const chunks =
     session.transformed?.profile === "cognitive_load"
-      ? session.transformed.chunks || []
-      : session.transformed?.text
-        ? [session.transformed.text]
-        : session.text
-          ? [session.text]
-          : [];
+      ? session.transformed.chunks.length
+      : transformed
+        ? 1
+        : 0;
 
-  const sections = chunks.filter(Boolean).flatMap((chunk, chunkIndex) =>
-    chunk
-      .split(/\n\s*\n|(?<=[.!?])\s+(?=[A-Z])/)
-      .map((part) => part.trim())
-      .filter(Boolean)
-  );
-
-  const totalSections = Math.max(1, sections.length || chunks.length || 1);
-  const completedSectionsCount = session.completedSections?.length || (session.completed || 0);
-  const completionRatio = Math.min(1, completedSectionsCount / totalSections);
-
-  // Current Score & Performance from all practice questions and tests
-  const answeredList = session.practiceReport?.answered || [];
-  const totalAnswered = answeredList.length;
-  const correctCount = answeredList.filter((a) => a.is_correct || a.correct).length;
-  const currentScoreRatio = totalAnswered > 0 ? correctCount / totalAnswered : null;
-  const currentScorePct = currentScoreRatio !== null ? Math.round(currentScoreRatio * 100) : null;
-
-  // Single source of truth for struggle score derived directly from session activity
-  const struggleScore = computeSessionStruggleScore(session);
-
-  // Dev-only sanity check log to verify telemetry and score responsiveness
-  if (process.env.NODE_ENV !== "production") {
-    console.log("[StruggleDebug / Telemetry Sanity Check]", {
-      completedSectionsCount,
-      totalSections,
-      totalAnswered,
-      correctCount,
-      accuracyPct: currentScorePct,
-      helpRequests: session.signals?.helpRequests || 0,
-      voiceHelpRequests: session.signals?.voiceHelpRequests || 0,
-      rereadCount: session.signals?.rereadCount || 0,
-      retryCount: session.signals?.retryCount || 0,
-      dwellTimeMs: session.signals?.dwellTime || 0,
-      totalAdaptations: session.sessionMeta?.totalAdaptations || 0,
-      isRewireActive: Boolean(session.rewireState?.active),
-      computedStruggleScore: struggleScore,
-      strugglePct: Math.round(struggleScore * 100),
-    });
-  }
-
-  // Accurate Progress (Mastery %):
-  // Correctly based on completion ratio, current score, and struggle score
-  const performanceRatio = currentScoreRatio !== null ? currentScoreRatio : (completionRatio > 0 ? 0.85 : 0);
-  const strugglePenalty = struggleScore * 0.25;
-
-  let rawProgress = 0;
-  if (totalAnswered > 0) {
-    // Blend completion (35%) and quiz performance (65%), adjusted by struggle
-    rawProgress = (completionRatio * 0.35 + performanceRatio * 0.65) * (1 - strugglePenalty);
-  } else if (completionRatio > 0) {
-    rawProgress = completionRatio * 0.7 * (1 - strugglePenalty);
-  } else {
-    rawProgress = 0;
-  }
-  const masteryPct = Math.min(100, Math.max(0, Math.round(rawProgress * 100)));
-
-  // Mastered sections count
-  const mastered = session.practiceReport?.masteredSections?.length || (masteryPct >= 70 ? completedSectionsCount : 0);
-
-  // XP derived from active metrics
-  const xpTotal = computeXP({
-    questionsAnswered: totalAnswered,
-    chunksCompleted: completedSectionsCount,
-    sectionsMastered: mastered,
-  });
-
+  const evaluation = evaluateSignals(session.signals, session.sessionMeta);
+  const struggleScore = evaluation.struggleScore;
   const history = session.sessionMeta.adaptationHistory || [];
   const latestOutcome = session.latestOutcome;
 
@@ -2971,26 +2205,27 @@ function Progress() {
         </div>
         <h1 className="page-title">Your learning session</h1>
 
-        {/* Section 1: Staggered Entrance */}
-        <div className="animate-stagger-1">
-          <MasteryRing
-            masteryPct={masteryPct}
-            xpTotal={xpTotal}
-            struggleScore={struggleScore}
-          />
+        <div className="stats-grid">
+          <div className="stat">
+            <b>{session.wordCount}</b>
+            <span>Source Words</span>
+          </div>
+          <div className="stat">
+            <b>{chunks}</b>
+            <span>Learning Chunks</span>
+          </div>
+          <div className="stat">
+            <b>{session.quizzes.length + session.practiceReport.answered.length}</b>
+            <span>Questions Answered</span>
+          </div>
+          <div className="stat">
+            <b>{session.practiceReport.masteredSections.length || session.completed}</b>
+            <span>Sections Mastered</span>
+          </div>
         </div>
 
-        {/* Section 2: Staggered Entrance */}
-        <div className="animate-stagger-2">
-          <ProgressStats
-            chunks={`${completedSectionsCount} / ${totalSections}`}
-            qAnswered={totalAnswered}
-            mastered={mastered}
-          />
-        </div>
-
-        {/* SCALE Engine Cognitive Telemetry Card: Section 3 Staggered */}
-        <section className="card scale-telemetry-card animate-stagger-3" style={{ marginTop: 18, padding: 20 }}>
+        {/* SCALE Engine Cognitive Telemetry Card */}
+        <section className="card" style={{ marginTop: 18, padding: 20 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span className="pill" style={{ background: "#f3e8ff", color: "#7e22ce" }}>
               <I.Activity size={13} /> SCALE Cognitive Telemetry
@@ -3000,94 +2235,42 @@ function Progress() {
             </span>
           </div>
 
-          {/* Current Struggle Score Section */}
           <div style={{ marginTop: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <span style={{ fontSize: 13, fontWeight: 700 }}>Current Struggle Score</span>
-              {/* Status Pill */}
-              {(() => {
-                const tier = getStruggleTier(struggleScore, transformed);
-                const isStrained = transformed && struggleScore >= 0.8;
-                return (
-                  <span
-                    className={`struggle-status-pill ${isStrained ? "struggle-status-pulse" : ""}`}
-                    style={{
-                      background: tier.bg,
-                      color: tier.color,
-                      border: `1px solid ${tier.border}`,
-                      fontSize: 11,
-                      fontWeight: 700,
-                      padding: "4px 10px 4px 7px",
-                      borderRadius: 20,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 6,
-                      transition: "all 0.2s ease",
-                    }}
-                  >
-                    <StruggleFaceIcon tierKey={tier.key} color={tier.color} size={17} />
-                    {tier.name}
-                  </span>
-                );
-              })()}
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 700 }}>
+              <span>Current Struggle Score</span>
+              <span>{(struggleScore * 100).toFixed(0)}% / 100%</span>
             </div>
-
-            {/* Heartbeat EKG Telemetry Line */}
-            <HeartbeatLine struggleScore={struggleScore} isTransformed={transformed} />
-
-            {/* Score Readout with Tier Color & Current Score */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, fontSize: 12, fontWeight: 700 }}>
-              <span style={{ color: getStruggleTier(struggleScore, transformed).color }}>
-                {transformed ? `Struggle: ${(struggleScore * 100).toFixed(0)}% / 100%` : "Not started"}
-              </span>
-              {transformed && currentScorePct !== null && (
-                <span style={{ color: "var(--muted)", fontSize: 12, fontWeight: 700 }}>
-                  Current Score:{" "}
-                  <b style={{ color: currentScorePct >= 70 ? "#16a34a" : currentScorePct >= 50 ? "#d97706" : "#dc2626" }}>
-                    {currentScorePct}%
-                  </b>{" "}
-                  ({correctCount}/{totalAnswered} correct)
-                </span>
-              )}
+            <div className="progressbar" style={{ marginTop: 8, height: 12 }}>
+              <div
+                className="progressfill"
+                style={{
+                  width: `${Math.min(100, struggleScore * 100)}%`,
+                  background:
+                    struggleScore >= 0.6
+                      ? "linear-gradient(90deg, #7c3aed 0%, #a855f7 100%)"
+                      : struggleScore >= 0.4
+                      ? "linear-gradient(90deg, #f59e0b 0%, #d97706 100%)"
+                      : "linear-gradient(90deg, #10b981 0%, #059669 100%)",
+                }}
+              />
             </div>
           </div>
 
-          {/* Total Adaptations & Latest Outcome Delta */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 16 }}>
-            {/* Total Adaptations */}
             <div style={{ background: "#f8fafc", padding: 14, borderRadius: 12, border: "1px solid var(--border-color)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                <span style={{ fontSize: 18 }}>🛡️</span>
-                <div style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", fontWeight: 800 }}>
-                  Total Adaptations
-                </div>
+              <div style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", fontWeight: 800 }}>
+                Total Adaptations
               </div>
               <div style={{ fontSize: 20, fontWeight: 800, color: "var(--ink)", marginTop: 2, fontFamily: "var(--font-heading)" }}>
                 {session.sessionMeta.totalAdaptations}
               </div>
-              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, lineHeight: 1.4 }}>
-                Times the lesson adjusted to help you.
-              </div>
             </div>
-
-            {/* Latest Outcome Delta */}
             <div style={{ background: "#f8fafc", padding: 14, borderRadius: 12, border: "1px solid var(--border-color)" }}>
-              <div style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", fontWeight: 800, marginBottom: 6 }}>
+              <div style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", fontWeight: 800 }}>
                 Latest Outcome Delta
               </div>
-              <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "var(--font-heading)", marginTop: 2, display: "flex", alignItems: "baseline", gap: 4 }}>
-                {latestOutcome ? (
-                  <>
-                    <span style={{ color: latestOutcome.outcomeDelta > 0 ? "#16a34a" : "#dc2626" }}>
-                      {latestOutcome.outcomeDelta > 0 ? "▲" : "▼"}
-                    </span>
-                    <span style={{ color: latestOutcome.outcomeDelta > 0 ? "#16a34a" : "#dc2626" }}>
-                      {latestOutcome.outcomeDelta > 0 ? "+" : ""}{((latestOutcome.outcomeDelta || 1) * 100).toFixed(0)}%
-                    </span>
-                  </>
-                ) : (
-                  <span style={{ color: "var(--muted)", fontSize: 14 }}>N/A</span>
-                )}
+              <div style={{ fontSize: 20, fontWeight: 800, color: "var(--emerald)", marginTop: 2, fontFamily: "var(--font-heading)" }}>
+                {latestOutcome ? `+${((latestOutcome.outcomeDelta || 1) * 100).toFixed(0)}%` : "N/A"}
               </div>
             </div>
           </div>
@@ -3159,14 +2342,19 @@ function Progress() {
 function App() {
   return (
     <SessionProvider>
-      <Routes>
-        <Route path="/" element={<Progress />} />
-        <Route path="/upload" element={<Upload />} />
-        <Route path="/profile" element={<Profile />} />
-        <Route path="/learn" element={<Learn />} />
-        <Route path="/practice" element={<Practice />} />
-        <Route path="/progress" element={<Progress />} />
-      </Routes>
+      <WebcamProvider>
+        <ToastProvider>
+          <Routes>
+            <Route path="/" element={<Progress />} />
+            <Route path="/upload" element={<Upload />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/learn" element={<Learn />} />
+            <Route path="/practice" element={<Practice />} />
+            <Route path="/progress" element={<Progress />} />
+          </Routes>
+          <ToastContainer />
+        </ToastProvider>
+      </WebcamProvider>
     </SessionProvider>
   );
 }

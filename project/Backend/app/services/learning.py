@@ -11,7 +11,8 @@ DYSLEXIA_PROMPT = """Rewrite the text below for a reader with dyslexia. Use shor
 TEXT:
 {text}"""
 
-COGNITIVE_LOAD_PROMPT = """Split the text below into an ordered JSON object with one key, chunks. Each chunk must contain 2 to 4 complete sentences. Preserve all original content and facts, do not summarize, and do not add facts. Return only valid JSON. Include the marker CHUNK_JSON nowhere except in this instruction context.
+COGNITIVE_LOAD_PROMPT = """Split the text below into an ordered JSON object with one key, chunks.
+Aim for 8 to 20 total chunks regardless of document length — each chunk should represent one complete idea or concept (roughly one paragraph or 3–6 sentences). Do NOT create a separate chunk per sentence. Preserve all original content and facts verbatim, do not summarize, and do not add facts. Return only valid JSON.
 
 TEXT:
 {text}"""
@@ -139,11 +140,35 @@ def transform_text(text: str, profile: str) -> Dict[str, Any]:
         parsed = parse_json_response(call_llm(COGNITIVE_LOAD_PROMPT.format(text=text))) if (GROQ_API_KEY or VOICE_GROQ_API_KEY) else None
         chunks = parsed.get("chunks") if isinstance(parsed, dict) else (parsed if isinstance(parsed, list) else None)
         if not isinstance(chunks, list) or not all(isinstance(chunk, str) and chunk.strip() for chunk in chunks):
-            # Fallback chunking by double newlines or sentences
-            chunks = [part.strip() for part in text.split("\n\n") if part.strip()]
-            if len(chunks) <= 1:
+            # Fallback: group paragraphs into ~100-200 word chunks (max 20 chunks)
+            paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+            if len(paragraphs) <= 1:
                 sentences = [s.strip() + "." for s in text.split(".") if s.strip()]
-                chunks = [" ".join(sentences[i:i+3]) for i in range(0, len(sentences), 3)]
+                paragraphs = [" ".join(sentences[i:i+4]) for i in range(0, len(sentences), 4)]
+            # Merge small paragraphs until each chunk is ~120+ words or max 20 chunks
+            merged, buf, buf_words = [], [], 0
+            for para in paragraphs:
+                words = len(para.split())
+                buf.append(para)
+                buf_words += words
+                if buf_words >= 120 or len(merged) + 1 + (len(buf) > 0) >= 20:
+                    merged.append("\n\n".join(buf))
+                    buf, buf_words = [], 0
+            if buf:
+                if merged:
+                    merged[-1] += "\n\n" + "\n\n".join(buf)
+                else:
+                    merged.append("\n\n".join(buf))
+            chunks = merged if merged else [text]
+
+        # Hard cap: if LLM still returned too many tiny chunks, merge them down to 20
+        if len(chunks) > 20:
+            target = 20
+            group_size = max(1, len(chunks) // target)
+            merged = []
+            for i in range(0, len(chunks), group_size):
+                merged.append("\n\n".join(chunks[i:i+group_size]))
+            chunks = merged[:target]
         return {"profile": profile, "chunks": chunks if chunks else [text]}
     raise ValueError("profile must be dyslexia, low_vision, or cognitive_load")
 

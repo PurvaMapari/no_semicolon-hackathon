@@ -2212,6 +2212,11 @@ input:focus {
   }
 }
 
+@keyframes prism-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
 @media (min-width: 900px) {
   .phone {
     max-width: 100%;
@@ -2312,3 +2317,1170 @@ input:focus {
   transform: translateY(-1px);
 }
 
+
+/* ── Learn Page Redesign ─────────────────────────────────────────────────── */
+
+.learn-page {
+  padding-bottom: 100px; /* space for FAB */
+}
+
+/* ── Lesson Card ──────────────────────────────────────────────────────────── */
+.lesson-card {
+  background: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: 18px;
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  margin-bottom: 0;
+}
+
+.lesson-card.adapted-chunk-card {
+  border: 2px solid #c084fc;
+  background: linear-gradient(135deg, rgba(250,245,255,0.6) 0%, #ffffff 100%);
+}
+
+.lesson-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid #f1f5f9;
+  background: #fafbff;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.lesson-card-section-label {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--primary);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.lesson-card-topic {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.lesson-card-readtime {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.lesson-card-body {
+  padding: 24px 24px 20px;
+}
+
+.lesson-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+
+/* ── Navigation row: Previous + dots ─────────────────────────────────────── */
+.lesson-nav-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.lesson-nav-prev {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 6px 4px;
+  border-radius: 8px;
+  white-space: nowrap;
+  transition: color 0.15s;
+}
+
+.lesson-nav-prev:hover:not(:disabled) {
+  color: var(--primary);
+}
+
+.lesson-nav-prev:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.lesson-nav-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+}
+
+.lesson-dot {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.lesson-dot:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.lesson-dot.current {
+  border: 2px solid var(--primary);
+  color: var(--primary);
+  background: var(--primary-light);
+  transform: scale(1.12);
+}
+
+.lesson-dot.done {
+  background: var(--emerald);
+  border-color: var(--emerald);
+  color: #ffffff;
+}
+
+/* ── CTA row: Mark complete + Visual side by side ────────────────────────── */
+.lesson-cta-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.lesson-cta-row .primary-action,
+.lesson-cta-row .secondary-action {
+  flex: 1;
+  justify-content: center;
+}
+
+/* ── Collapsed SCALE dot bar ─────────────────────────────────────────────── */
+.scale-dot-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 5px 10px;
+  border-radius: 99px;
+  background: rgba(255,255,255,0.7);
+  border: 1px solid var(--border-color);
+  cursor: default;
+  font-size: 11px;
+}
+
+/* ── Floating Voice FAB ───────────────────────────────────────────────────── */
+.voice-fab {
+  position: fixed;
+  bottom: 90px; /* above bottom-nav on mobile */
+  right: 20px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--primary-gradient);
+  border: none;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(79,70,229,0.4);
+  z-index: 200;
+  transition: transform 0.2s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.2s;
+  position: fixed; /* keep fixed even inside scroll */
+}
+
+.voice-fab:hover {
+  transform: scale(1.08);
+  box-shadow: 0 8px 26px rgba(79,70,229,0.5);
+}
+
+.voice-fab-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+}
+
+/* ── Floating Voice Panel ─────────────────────────────────────────────────── */
+.voice-float-panel {
+  position: fixed;
+  bottom: 154px;
+  right: 20px;
+  width: min(420px, calc(100vw - 32px));
+  max-height: 72vh;
+  background: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  box-shadow: 0 20px 50px rgba(15,23,42,0.18), 0 0 0 1px rgba(226,232,240,0.6);
+  z-index: 199;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: fadeInUp 0.22s cubic-bezier(0.16,1,0.3,1);
+}
+
+.voice-float-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  background: #fafbff;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.voice-float-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--primary-gradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  flex-shrink: 0;
+}
+
+.voice-float-body {
+  overflow-y: auto;
+  flex: 1;
+  padding: 0 4px 4px;
+}
+
+/* Strip the card margin from VoiceAssistant when inside the float panel */
+.voice-float-body .voice-assistant-card {
+  margin-top: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+/* Webcam toggle inline inside float header — compact mode */
+.voice-float-header .webcam-toggle-wrap {
+  padding: 0;
+  border-top: none;
+  margin-top: 0;
+  background: transparent;
+}
+
+@media (min-width: 900px) {
+  .voice-fab {
+    bottom: 32px;
+    right: 32px;
+  }
+  .voice-float-panel {
+    bottom: 96px;
+    right: 32px;
+  }
+}
+
+/* ── Camera Gate Card (Step 2 / Profile) ─────────────────────────────────── */
+
+.camera-gate-card {
+  margin-top: 20px;
+  border: 1.5px solid #c7d2fe;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%);
+  overflow: hidden;
+}
+
+.camera-gate-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border-bottom: 1px solid rgba(199,210,254,0.5);
+}
+
+.camera-gate-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--primary-gradient);
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.camera-gate-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #312e81;
+  letter-spacing: -0.01em;
+}
+
+.camera-gate-body {
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.camera-gate-desc {
+  font-size: 13px;
+  color: #4338ca;
+  line-height: 1.55;
+  margin: 0;
+  width: 100%;
+}
+
+.camera-gate-desc strong {
+  color: #312e81;
+}
+
+.camera-gate-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #4338ca;
+}
+
+.camera-gate-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #c7d2fe;
+  border-top-color: #4f46e5;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.camera-gate-ready {
+  background: rgba(236, 253, 245, 0.7);
+}
+
+.camera-gate-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 3px rgba(16,185,129,0.2);
+  animation: pulseGlow 2s infinite;
+  flex-shrink: 0;
+}
+
+.camera-gate-error {
+  font-size: 13px;
+  color: #92400e;
+  line-height: 1.5;
+  margin: 0;
+  width: 100%;
+}
+
+.camera-gate-skip-link {
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  padding: 0;
+  margin-top: 2px;
+}
+
+.camera-gate-skip-link:hover {
+  color: var(--primary);
+}
+
+/* ── Continue hint (inline, no modal) ────────────────────────────────────── */
+
+.continue-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #92400e;
+  background: #fefce8;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 7px 12px;
+  text-align: center;
+  animation: fadeInUp 0.18s ease;
+}
+
+/* ── Camera preview in Step 2 ─────────────────────────────────────────── */
+.camera-preview-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 6px 0;
+}
+
+.camera-preview-box {
+  position: relative;
+  width: 260px;
+  height: 175px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #0f172a;
+  border: 2px solid #c7d2fe;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.12);
+}
+
+.camera-preview-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+.camera-preview-overlay-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 700;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  z-index: 10;
+}
+
+.camera-preview-overlay-badge.detected {
+  background: rgba(16, 185, 129, 0.9);
+  color: #ffffff;
+}
+
+.camera-preview-overlay-badge.absent {
+  background: rgba(245, 158, 11, 0.92);
+  color: #ffffff;
+}
+
+.camera-preview-overlay-badge.loading {
+  background: rgba(30, 41, 59, 0.85);
+  color: #f1f5f9;
+}
+
+.camera-preview-status-text {
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* ── Static camera-on badge in Learn lesson-card header ──────────────────── */
+
+.camera-on-badge-static {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px 3px 6px;
+  border-radius: 99px;
+  border: 1px solid #a7f3d0;
+  background: #ecfdf5;
+  color: #065f46;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  line-height: 1;
+  pointer-events: none; /* not a button — purely informational */
+  user-select: none;
+}
+
+.camera-on-badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 2px rgba(16,185,129,0.25);
+  animation: pulseGlow 2s infinite;
+  flex-shrink: 0;
+}
+
+/* ── PrismToast animations ───────────────────────────────────────────────── */
+
+@keyframes toastSlideIn {
+  from { opacity: 0; transform: translateX(32px) scale(0.96); }
+  to   { opacity: 1; transform: translateX(0)   scale(1);    }
+}
+
+@keyframes toastSlideOut {
+  from { opacity: 1; transform: translateX(0)   scale(1);    }
+  to   { opacity: 0; transform: translateX(32px) scale(0.94); }
+}
+
+/* New top-center alert animations */
+@keyframes prismToastIn {
+  from { opacity: 0; transform: translateY(-14px) scale(0.95); }
+  to   { opacity: 1; transform: translateY(0)     scale(1);    }
+}
+
+@keyframes prismToastOut {
+  from { opacity: 1; transform: translateY(0)      scale(1);    }
+  to   { opacity: 0; transform: translateY(-10px)  scale(0.96); }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Step 2 Redesign: Profile, Calibration & Verification HUD
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+.step2-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 9999px;
+  padding: 4px 14px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #4338ca;
+  letter-spacing: 0.05em;
+  margin-bottom: 12px;
+}
+
+.step2-badge-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: #4f46e5;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.step2-title {
+  font-size: 28px;
+  font-weight: 800;
+  color: #1e1b4b;
+  margin: 0 0 8px 0;
+  letter-spacing: -0.02em;
+}
+
+.step2-subtitle {
+  font-size: 13.5px;
+  color: #64748b;
+  margin: 0 0 24px 0;
+  line-height: 1.55;
+  max-width: 820px;
+}
+
+/* Format section */
+.format-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.format-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #4338ca;
+}
+
+.format-auto-detected {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6366f1;
+}
+
+.format-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.format-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  border: 1.5px solid #e2e8f0;
+  background: #ffffff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  width: 100%;
+}
+
+.format-card:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.format-card.active {
+  border-color: #6366f1;
+  background: rgba(238, 242, 255, 0.45);
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.08);
+}
+
+.format-radio {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid #cbd5e1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.format-card.active .format-radio {
+  border-color: #4f46e5;
+}
+
+.format-radio-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #4f46e5;
+}
+
+.format-icon-box {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.format-card.active .format-icon-box {
+  background: #e0e7ff;
+  color: #4f46e5;
+}
+
+.format-info {
+  flex: 1;
+}
+
+.format-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.format-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.format-recommended-pill {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  background: #e0e7ff;
+  color: #3730a3;
+  border-radius: 9999px;
+  padding: 2px 8px;
+  display: inline-block;
+}
+
+.format-desc {
+  font-size: 12.5px;
+  color: #64748b;
+  line-height: 1.45;
+  margin: 0;
+}
+
+/* Describe learning needs card */
+.describe-card {
+  padding: 16px 20px;
+  border-radius: 16px;
+  border: 1.5px solid #e2e8f0;
+  background: #ffffff;
+  margin-bottom: 22px;
+}
+
+.describe-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e1b4b;
+  margin-bottom: 3px;
+}
+
+.describe-subtext {
+  font-size: 12.5px;
+  color: #64748b;
+  margin: 0 0 12px 0;
+}
+
+.describe-input-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.describe-input {
+  flex: 1;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  font-size: 13px;
+  background: #f8fafc;
+  color: #1e293b;
+  outline: none;
+  transition: all 0.15s;
+}
+
+.describe-input:focus {
+  border-color: #6366f1;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.describe-btn {
+  padding: 9px 16px;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #334155;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.describe-btn:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+}
+
+/* Camera Presence Verification Card */
+.camera-verification-card {
+  border-radius: 18px;
+  border: 1.5px solid #e2e8f0;
+  background: #ffffff;
+  padding: 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.03);
+}
+
+.camera-verification-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.camera-verif-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.camera-verif-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.camera-verif-icon-box {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: #eef2ff;
+  color: #4f46e5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.camera-verif-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: #1e1b4b;
+}
+
+.camera-verif-private-pill {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #15803d;
+  background: #dcfce7;
+  border: 1px solid #bbf7d0;
+  border-radius: 9999px;
+  padding: 1px 8px;
+}
+
+.camera-verif-subtitle {
+  font-size: 12px;
+  color: #64748b;
+  margin: 0;
+}
+
+/* Simulation Controls in Header */
+.camera-sim-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 600;
+  background: #f8fafc;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.camera-sim-btn {
+  background: none;
+  border: none;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.camera-sim-btn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.camera-sim-btn.active {
+  background: #4f46e5;
+  color: #ffffff;
+  font-weight: 700;
+}
+
+/* HUD Viewport */
+.camera-hud-viewport {
+  position: relative;
+  width: 100%;
+  height: 260px;
+  background: #090d16;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1.5px solid #1e293b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 2px 10px rgba(0,0,0,0.6);
+}
+
+.camera-hud-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+.camera-hud-top-left {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  font-family: monospace;
+  font-weight: 800;
+  color: #10b981;
+  letter-spacing: 0.06em;
+  background: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(6px);
+  padding: 4px 9px;
+  border-radius: 6px;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  z-index: 5;
+}
+
+.camera-hud-top-right {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  font-size: 10.5px;
+  font-family: monospace;
+  font-weight: 700;
+  color: #94a3b8;
+  background: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(6px);
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  z-index: 5;
+}
+
+/* Biometric Calibration Reticle Overlay */
+.camera-hud-reticle-wrap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.camera-hud-reticle {
+  position: relative;
+  width: 140px;
+  height: 165px;
+  border-radius: 50% / 45%;
+  border: 2px dashed rgba(16, 185, 129, 0.6);
+  box-shadow: 0 0 24px rgba(16, 185, 129, 0.15);
+  transition: all 0.3s ease;
+}
+
+.camera-hud-reticle.absent {
+  border-color: rgba(245, 158, 11, 0.65);
+  box-shadow: 0 0 24px rgba(245, 158, 11, 0.15);
+}
+
+.camera-hud-reticle.loading {
+  border-color: rgba(148, 163, 184, 0.5);
+  box-shadow: none;
+}
+
+.camera-hud-reticle-tag {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 8.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #0f172a;
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.camera-hud-reticle.absent .camera-hud-reticle-tag {
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+/* Bottom HUD Status Pill */
+.camera-hud-bottom-banner {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 20px;
+  border-radius: 9999px;
+  font-size: 12.5px;
+  font-weight: 800;
+  white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  z-index: 6;
+  backdrop-filter: blur(8px);
+}
+
+.camera-hud-bottom-banner.detected {
+  background: #10b981;
+  color: #ffffff;
+}
+
+.camera-hud-bottom-banner.absent {
+  background: #f59e0b;
+  color: #ffffff;
+}
+
+.camera-hud-bottom-banner.loading {
+  background: rgba(30, 41, 59, 0.95);
+  color: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.camera-hud-bottom-banner.off {
+  background: #4f46e5;
+  color: #ffffff;
+  cursor: pointer;
+  border: none;
+}
+
+/* 3 Telemetry Status Chips below HUD */
+.camera-telemetry-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.camera-telemetry-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-align: center;
+  border: 1px solid;
+  transition: all 0.2s ease;
+}
+
+.camera-telemetry-chip.success {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+
+.camera-telemetry-chip.warn {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #854d0e;
+}
+
+.camera-telemetry-chip.neutral {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #64748b;
+}
+
+/* Bottom Launch Session Bar */
+.launch-session-bar {
+  background: linear-gradient(135deg, #090d16 0%, #0f172a 45%, #1e1b4b 100%);
+  border-radius: 18px;
+  padding: 18px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.25);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  margin-top: 26px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.launch-bar-left {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.launch-bar-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #93c5fd;
+}
+
+.launch-bar-title {
+  font-size: 17px;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.launch-bar-subtitle {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #818cf8;
+  margin: 0;
+}
+
+.launch-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.launch-back-btn {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.launch-back-btn:hover {
+  color: #ffffff;
+}
+
+.launch-transform-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+  transition: all 0.2s ease;
+}
+
+.launch-transform-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+}
+
+.launch-transform-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
