@@ -17,6 +17,9 @@ export default function VoiceAssistant({
   busy,
   onVoiceHelp,
   onReadSection,
+  hideHeader = true,
+  autoPrompt = null,
+  showQuickPrompts = false,
 }) {
   const [question, setQuestion] = useState("");
   const [askedQuestion, setAskedQuestion] = useState("");
@@ -171,6 +174,16 @@ export default function VoiceAssistant({
     }
   }
 
+  // Automatically trigger question generation when an external quick-prompt is clicked
+  const lastAutoPromptRef = useRef(null);
+  useEffect(() => {
+    if (autoPrompt && autoPrompt.query && autoPrompt.timestamp !== lastAutoPromptRef.current) {
+      lastAutoPromptRef.current = autoPrompt.timestamp;
+      setQuestion(autoPrompt.query);
+      executeAsk(autoPrompt.query);
+    }
+  }, [autoPrompt, currentSection]);
+
   function speakText(textToSpeak) {
     if (!("speechSynthesis" in window)) return;
 
@@ -202,10 +215,10 @@ export default function VoiceAssistant({
   ];
 
   return (
-    <section className="card voice-assistant-card" style={{ marginTop: 20, padding: 22 }}>
-      {/* Header with Title and Mode Indicator */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+    <section className="card voice-assistant-card" style={{ marginTop: 0, padding: "16px 18px 20px" }}>
+      {/* Optional Header (hidden by default when inside float panel) */}
+      {!hideHeader && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
           <div
             style={{
               width: 36,
@@ -230,8 +243,11 @@ export default function VoiceAssistant({
             </div>
           </div>
         </div>
+      )}
 
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      {/* Mode Indicator & Quick Actions */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span
             style={{
               display: "inline-flex",
@@ -465,46 +481,48 @@ export default function VoiceAssistant({
         </button>
       </form>
 
-      {/* Quick Voice Prompt Chips */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-          Quick prompts:
-        </span>
-        {quickPrompts.map((item, idx) => (
-          <button
-            key={idx}
-            type="button"
-            onClick={() => {
-              setQuestion(item.query);
-              executeAsk(item.query);
-            }}
-            disabled={Boolean(busy)}
-            style={{
-              background: "rgba(241, 245, 249, 0.8)",
-              border: "1px solid rgba(203, 213, 225, 0.8)",
-              borderRadius: 20,
-              padding: "4px 12px",
-              fontSize: 12,
-              fontWeight: 600,
-              color: "var(--secondary-ink)",
-              cursor: "pointer",
-              transition: "all 0.15s ease",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "var(--primary-light)";
-              e.currentTarget.style.color = "var(--primary)";
-              e.currentTarget.style.borderColor = "rgba(199, 210, 254, 0.8)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "rgba(241, 245, 249, 0.8)";
-              e.currentTarget.style.color = "var(--secondary-ink)";
-              e.currentTarget.style.borderColor = "rgba(203, 213, 225, 0.8)";
-            }}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+      {/* Quick Voice Prompt Chips (only if showQuickPrompts is true; prompts moved to lesson page) */}
+      {showQuickPrompts && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            Quick prompts:
+          </span>
+          {quickPrompts.map((item, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => {
+                setQuestion(item.query);
+                executeAsk(item.query);
+              }}
+              disabled={Boolean(busy)}
+              style={{
+                background: "rgba(241, 245, 249, 0.8)",
+                border: "1px solid rgba(203, 213, 225, 0.8)",
+                borderRadius: 20,
+                padding: "4px 12px",
+                fontSize: 12,
+                fontWeight: 600,
+                color: "var(--secondary-ink)",
+                cursor: "pointer",
+                transition: "all 0.15s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "var(--primary-light)";
+                e.currentTarget.style.color = "var(--primary)";
+                e.currentTarget.style.borderColor = "rgba(199, 210, 254, 0.8)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "rgba(241, 245, 249, 0.8)";
+                e.currentTarget.style.color = "var(--secondary-ink)";
+                e.currentTarget.style.borderColor = "rgba(203, 213, 225, 0.8)";
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Answer Box with Text-to-Speech Read Aloud */}
       {askedQuestion && (

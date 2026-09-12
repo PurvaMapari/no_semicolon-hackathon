@@ -210,58 +210,99 @@ def _clean_section_text(text: str) -> str:
     return text.strip()
 
 
+def _classify_chunk_difficulty(text: str, chunk_idx: int, total_chunks: int) -> str:
+    """Classify chunk difficulty into foundational, intermediate, or advanced."""
+    lower = text.lower()
+    
+    foundational_keywords = [
+        "what is", "introduction", "intro", "overview", "basics", "foundation",
+        "blueprint", "definition", "defining", "elementary", "first step",
+        "terminology", "starting with", "simple example", "syntax", "purpose", "core concept"
+    ]
+    advanced_keywords = [
+        "polymorphism", "dynamic dispatch", "runtime polymorphism", "concurrency",
+        "threading", "optimization", "abstract class", "interface segregation",
+        "dependency inversion", "liskov", "solid", "architecture", "design pattern",
+        "asynchronous", "coupling and cohesion", "invariants", "memory allocation",
+        "composition over inheritance", "substitutability", "trade-off"
+    ]
+    intermediate_keywords = [
+        "encapsulation", "inheritance", "subclass", "superclass", "overriding",
+        "attributes", "parameters", "lifecycle", "instantiation", "access modifier",
+        "private", "protected", "public", "aggregation", "association", "composition",
+        "getter", "setter", "constructor", "validation"
+    ]
+    
+    adv_score = sum(2 for k in advanced_keywords if k in lower)
+    found_score = sum(2 for k in foundational_keywords if k in lower)
+    inter_score = sum(1 for k in intermediate_keywords if k in lower)
+    
+    rel_pos = chunk_idx / max(total_chunks - 1, 1)
+    if rel_pos < 0.28:
+        found_score += 3
+    elif rel_pos > 0.68:
+        adv_score += 3
+    else:
+        inter_score += 2
+        
+    if adv_score >= 4 or (adv_score > found_score and adv_score >= 2 and rel_pos > 0.4):
+        return "advanced"
+    if found_score >= 3 and adv_score < 3:
+        return "foundational"
+    if rel_pos < 0.22 and adv_score < 2:
+        return "foundational"
+    if rel_pos > 0.78 and found_score < 2:
+        return "advanced"
+    return "intermediate"
+
+
 def _build_chunk_meta(chunks: List[str], full_text: str) -> List[Dict[str, Any]]:
     """
-    Match each chunk to LLM-tagged difficulty sections via text overlap.
-    Returns metadata list (same length as chunks) with difficulty_tier, estimated_seconds, word_count.
-    Difficulty comes from LLM content analysis (via tag_section_difficulty), NOT from word count.
+    Produce difficulty tiers and reading estimations for each lesson chunk.
+    Combines LLM content analysis with curriculum progression and technical vocabulary density.
     """
-    from app.services.scale import tag_section_difficulty
-    
-    # Tag the full text once — LLM analyzes content complexity
-    # tag_section_difficulty returns a LIST of section dicts
-    sections = tag_section_difficulty(full_text)
-    
-    # If no sections were tagged, fall back to single difficulty for all chunks
-    if not sections:
-        return [
-            {
-                "difficulty_tier": "intermediate",
-                "estimated_seconds": 60,
-                "word_count": len(chunk.split()),
-            }
-            for chunk in chunks
-        ]
-    
-    # Match each chunk to the best-matching tagged section via word overlap
+    from app.services.scale import tag_section_difficulty, compute_section_read_time, DIFFICULTY_MULTIPLIERS
+
+    total_chunks = len(chunks)
     chunk_meta = []
-    for chunk in chunks:
-        chunk_words = set(chunk.lower().split())
+    
+    # Try LLM section tagging first
+    sections = []
+    try:
+        sections = tag_section_difficulty(full_text)
+    except Exception:
+        sections = []
+        
+    has_diverse_llm_tiers = bool(sections and len(set(s.get("difficulty_tier") for s in sections)) > 1)
+
+    for idx, chunk in enumerate(chunks):
         word_count = len(chunk.split())
+        chunk_words = set(chunk.lower().split())
         
-        # Find section with highest word overlap
-        best_section = None
-        best_overlap = 0
-        for section in sections:
-            section_words = set(section.get("text", "").lower().split())
-            overlap = len(chunk_words & section_words)
-            if overlap > best_overlap:
-                best_overlap = overlap
-                best_section = section
-        
-        # Use matched section's metadata, or fall back to intermediate
-        if best_section:
-            chunk_meta.append({
-                "difficulty_tier": best_section.get("difficulty_tier", "intermediate"),
-                "estimated_seconds": best_section.get("expected_baseline_seconds", 60),
-                "word_count": word_count,
-            })
-        else:
-            chunk_meta.append({
-                "difficulty_tier": "intermediate",
-                "estimated_seconds": 60,
-                "word_count": word_count,
-            })
+        # Determine tier
+        tier = None
+        if has_diverse_llm_tiers:
+            best_section = None
+            best_overlap = 0
+            for section in sections:
+                section_words = set(section.get("text", "").lower().split())
+                overlap = len(chunk_words & section_words)
+                if overlap > best_overlap:
+                    best_overlap = overlap
+                    best_section = section
+            if best_section and best_section.get("difficulty_tier") in ("foundational", "intermediate", "advanced"):
+                tier = best_section.get("difficulty_tier")
+
+        if not tier:
+            tier = _classify_chunk_difficulty(chunk, idx, total_chunks)
+
+        baseline_sec = compute_section_read_time(word_count, tier)
+        chunk_meta.append({
+            "difficulty_tier": tier,
+            "expected_time_multiplier": DIFFICULTY_MULTIPLIERS.get(tier, 1.6),
+            "estimated_seconds": baseline_sec,
+            "word_count": word_count,
+        })
     
     return chunk_meta
 
@@ -288,6 +329,63 @@ def parse_user_preference(user_text: str) -> Dict[str, Any]:
     return {"profile": fallback_profile, "reason": "Detected preference based on keyword analysis."}
 
 
+def _extract_section_heading(chunk: str) -> str:
+    """Extract a meaningful, human-readable section heading from a chunk, never a solitary number."""
+    if not chunk:
+        return "Key Concepts"
+
+    lines = [line.strip() for line in chunk.split("\n") if line.strip()]
+    for line in lines[:5]:
+        # Strip markdown headings, bullet points, and numbered prefixes like "9.", "9)", "Section 9:"
+        cleaned_line = re.sub(
+            r"^(?:#{1,6}\s*|\d+[\.\)]\s*|(?:Section|Chapter|Part)\s*\d+[:\.]?\s*|[-•*]\s*)",
+            "",
+            line,
+            flags=re.IGNORECASE,
+        ).strip()
+        cleaned_line = _clean_section_text(cleaned_line)
+
+        # Check if this line has letters/words (at least 3 alphabet characters)
+        letters = re.findall(r"[a-zA-Z]", cleaned_line)
+        if len(letters) >= 3:
+            # Split only at real sentence ends (letter followed by period and space or end of string)
+            sentence_match = re.split(r"(?<=[a-zA-Z0-9])\.\s+", cleaned_line)
+            candidate = sentence_match[0].strip() if sentence_match else cleaned_line
+            candidate = candidate.rstrip(".:")
+            if len(candidate) > 55:
+                candidate = candidate[:52].rstrip() + "…"
+            return candidate
+
+    # Fallback to chunk sentences
+    sentences = re.split(r"(?<=[.!?])\s+", chunk)
+    for s in sentences:
+        cleaned_s = re.sub(r"^(?:\d+[\.\)]\s*|[-•*]\s*)", "", s.strip())
+        cleaned_s = _clean_section_text(cleaned_s)
+        letters = re.findall(r"[a-zA-Z]", cleaned_s)
+        if len(letters) >= 3:
+            cand = cleaned_s.rstrip(".:")
+            if len(cand) > 55:
+                cand = cand[:52].rstrip() + "…"
+            return cand
+
+    return "Key Concepts"
+
+
+def _sanitize_heading(heading: str, content: str = "") -> str:
+    """Ensure heading is never just a solitary number, symbol, or empty string."""
+    cleaned = (heading or "").strip()
+    cleaned = re.sub(
+        r"^(?:#{1,6}\s*|\d+[\.\)]\s*|(?:Section|Chapter|Part)\s*\d+[:\.]?\s*)",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    ).strip()
+    letters = re.findall(r"[a-zA-Z]", cleaned)
+    if len(letters) < 3:
+        return _extract_section_heading(content)
+    return cleaned
+
+
 def _parse_sections_response(raw_response: str) -> Optional[List[Dict[str, str]]]:
     """Parse an LLM response that should contain a 'sections' JSON array of {heading, content}."""
     try:
@@ -307,7 +405,7 @@ def _parse_sections_response(raw_response: str) -> Optional[List[Dict[str, str]]
         ):
             return [
                 {
-                    "heading": _clean_section_text(s["heading"]),
+                    "heading": _sanitize_heading(_clean_section_text(s["heading"]), s.get("content", "")),
                     "content": _clean_section_text(s["content"]),
                 }
                 for s in candidate
@@ -329,8 +427,8 @@ def _enforce_section_constraints(sections: List[Dict[str, str]], max_words: int)
     enforced: List[Dict[str, str]] = []
 
     for sec in sections:
-        heading = (sec.get("heading") or "Section").strip()
         content = (sec.get("content") or "").strip()
+        heading = _sanitize_heading(sec.get("heading") or "", content)
         words = content.split()
 
         if len(words) <= max_words:
@@ -339,6 +437,7 @@ def _enforce_section_constraints(sections: List[Dict[str, str]], max_words: int)
 
         # Strip existing '(Part X)' if present to obtain base heading
         base_heading = re.sub(r"\s*\(Part\s*\d+\)$", "", heading, flags=re.IGNORECASE).strip()
+        base_heading = _sanitize_heading(base_heading, content)
 
         # Split content into sentences at sentence boundaries (never mid-sentence)
         sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", content) if s.strip()]
@@ -422,9 +521,7 @@ def _fallback_sections(text: str, max_words: int = 100) -> List[Dict[str, str]]:
 
     sections_list = []
     for chunk in fallback_chunks:
-        first_line = chunk.split("\n")[0].strip()
-        first_sentence = first_line.split(".")[0].strip()[:60]
-        heading = _clean_section_text(first_sentence) or "Section"
+        heading = _extract_section_heading(chunk)
         sections_list.append({
             "heading": heading,
             "content": _clean_section_text(chunk),

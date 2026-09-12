@@ -1318,7 +1318,11 @@ function VisualCard({ visual, cluster = null, sections = [], onReadAloud }) {
               </span>
             )}
           </div>
-          {title && <h2 style={{ fontFamily: "var(--font-heading)", fontSize: 19, margin: "6px 0 2px", color: "var(--ink)" }}>{title}</h2>}
+          {title && (
+            <h2 style={{ fontFamily: "var(--font-heading)", fontSize: 19, margin: "6px 0 2px", color: "var(--ink)" }}>
+              {cleanHeading(title, subtitle || cluster?.title, 1)}
+            </h2>
+          )}
           {subtitle && <p style={{ fontSize: 13, color: "var(--muted)", margin: "2px 0 0" }}>{subtitle}</p>}
         </div>
       </div>
@@ -1567,6 +1571,111 @@ function splitIntoLessonSections(text) {
   return groupedSections.length > 0 ? groupedSections : [clean];
 }
 
+/**
+ * Sanitizes headings to ensure they are never solitary numbers (e.g. "6", "9", "10")
+ * which occur when split on numbered prefixes or unmapped PDF subheadings.
+ */
+export function cleanHeading(heading, paragraph = "", fallbackNum = 1) {
+  let h = (heading || "").trim();
+  // Strip leading numbering "9. ", "9) ", "Section 9: ", "## "
+  h = h.replace(/^(?:#{1,6}\s*|\d+[\.\)]\s*|(?:Section|Chapter|Part)\s*\d+[:\.]?\s*)/i, "").trim();
+
+  // If h is empty, purely digits, or has fewer than 3 alphabet characters (e.g. "6", "9", "10", "4")
+  const letters = h.match(/[a-zA-Z]/g);
+  if (!letters || letters.length < 3) {
+    if (paragraph && typeof paragraph === "string") {
+      const lines = paragraph.split("\n").map((l) => l.trim()).filter(Boolean);
+      for (const line of lines) {
+        const cleanedLine = line.replace(/^(?:#{1,6}\s*|\d+[\.\)]\s*|(?:Section|Chapter|Part)\s*\d+[:\.]?\s*|[-•*]\s*)/i, "").trim();
+        const lMatch = cleanedLine.match(/[a-zA-Z]/g);
+        if (lMatch && lMatch.length >= 3) {
+          const sentenceParts = cleanedLine.split(/(?<=[a-zA-Z0-9])\.\s+/);
+          const firstSentence = (sentenceParts[0] || cleanedLine).replace(/[.:]+$/, "").trim();
+          return firstSentence.length > 50 ? firstSentence.slice(0, 48) + "…" : firstSentence;
+        }
+      }
+    }
+    return `Section ${fallbackNum}`;
+  }
+  return h;
+}
+
+/**
+ * Robust section difficulty resolver:
+ * Ensures realistic progression (foundational -> intermediate -> advanced)
+ * based on pedagogical keywords and position in the curriculum,
+ * even when backend metadata defaulted all items to intermediate.
+ */
+export function resolveSectionDifficulty(section, index = 0, totalSections = 1) {
+  const explicitTier = section?.meta?.difficulty_tier;
+  if (explicitTier === "foundational" || explicitTier === "advanced") {
+    return explicitTier;
+  }
+
+  const text = (
+    (section?.heading || "") + " " +
+    (section?.paragraph || section?.content || "")
+  ).toLowerCase();
+
+  const foundationalKeywords = [
+    "what is", "introduction", "intro", "overview", "basics", "foundation",
+    "blueprint", "definition", "defining", "elementary", "first step",
+    "terminology", "starting with", "simple example", "syntax", "purpose", "core concept",
+    "mental model", "thinking in", "state and behavior", "physical entity"
+  ];
+  const advancedKeywords = [
+    "polymorphism", "dynamic dispatch", "concurrency", "solid", "architecture",
+    "design pattern", "interface segregation", "dependency inversion", "liskov",
+    "composition over inheritance", "substitutability", "trade-off", "coupling", "cohesion",
+    "architectural", "invariants", "common interface", "extensibility", "flexible design",
+    "loosely coupled"
+  ];
+  const intermediateKeywords = [
+    "encapsulation", "inheritance", "subclass", "superclass", "overriding",
+    "attributes", "parameters", "lifecycle", "instantiation", "access modifier",
+    "private", "protected", "public", "aggregation", "association", "composition",
+    "getter", "setter", "constructor", "validation", "methods"
+  ];
+
+  let advScore = 0;
+  let foundScore = 0;
+  let interScore = 0;
+
+  for (const k of advancedKeywords) {
+    if (text.includes(k)) advScore += 2;
+  }
+  for (const k of foundationalKeywords) {
+    if (text.includes(k)) foundScore += 2;
+  }
+  for (const k of intermediateKeywords) {
+    if (text.includes(k)) interScore += 1;
+  }
+
+  const relPos = totalSections > 1 ? index / (totalSections - 1) : 0;
+  if (relPos < 0.28) {
+    foundScore += 3;
+  } else if (relPos > 0.68) {
+    advScore += 3;
+  } else {
+    interScore += 2;
+  }
+
+  if (advScore >= 4 || (advScore > foundScore && advScore >= 2 && relPos > 0.45)) {
+    return "advanced";
+  }
+  if (foundScore >= 3 && advScore < 3) {
+    return "foundational";
+  }
+  if (relPos < 0.25 && advScore < 2) {
+    return "foundational";
+  }
+  if (relPos > 0.75 && foundScore < 2) {
+    return "advanced";
+  }
+
+  return "intermediate";
+}
+
 function Learn() {
   const {
     session,
@@ -1608,6 +1717,24 @@ function Learn() {
 
   const [activeSection, setActiveSection] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [showVisualPanel, setShowVisualPanel] = useState(false);
+  const [sectionMenuOpen, setSectionMenuOpen] = useState(false);
+  const sectionPickerRef = useRef(null);
+
+  // Close section dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (sectionPickerRef.current && !sectionPickerRef.current.contains(event.target)) {
+        setSectionMenuOpen(false);
+      }
+    }
+    if (sectionMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [sectionMenuOpen]);
 
   // ── Active Dwell Timer ──────────────────────────────────────────────────────
   // Tracks ONLY active learning time. Pauses during:
@@ -1713,42 +1840,70 @@ function Learn() {
 
   let globalIndex = 0;
   const sections = hasStructuredSections
-    ? transformed.sections.map((sec, idx) => ({
-        id: `section-${idx}`,
-        heading: sec.heading || null,
-        paragraph: sec.content,
-        chunk: idx + 1,
-        chunkIndex: idx,
-        sectionIndex: idx,
-        meta: chunkMeta[idx] || null,
-      }))
+    ? transformed.sections.map((sec, idx) => {
+        const rawMeta = chunkMeta[idx] || null;
+        const totalCount = transformed.sections.length;
+        const sanitizedHeading = cleanHeading(sec.heading, sec.content, idx + 1);
+        const resolvedTier = resolveSectionDifficulty(
+          { heading: sanitizedHeading, paragraph: sec.content, meta: rawMeta },
+          idx,
+          totalCount
+        );
+        const sectionWordCount = (sec.content || "").split(/\s+/).filter(Boolean).length;
+        const wpmByDifficulty = { foundational: 220, intermediate: 180, advanced: 140 };
+        const wpm = wpmByDifficulty[resolvedTier] || 180;
+        const estimatedSec = Math.round((sectionWordCount / wpm) * 60);
+
+        return {
+          id: `section-${idx}`,
+          heading: sanitizedHeading,
+          paragraph: sec.content,
+          chunk: idx + 1,
+          chunkIndex: idx,
+          sectionIndex: idx,
+          meta: {
+            difficulty_tier: resolvedTier,
+            expected_time_multiplier: resolvedTier === "foundational" ? 1.0 : resolvedTier === "advanced" ? 2.5 : 1.6,
+            estimated_seconds: rawMeta?.estimated_seconds && rawMeta?.difficulty_tier === resolvedTier
+              ? rawMeta.estimated_seconds
+              : estimatedSec,
+            word_count: rawMeta?.word_count || sectionWordCount,
+          },
+        };
+      })
     : chunks.filter(Boolean).flatMap((chunk, chunkIndex) => {
         // For cognitive_load without structured sections: each chunk IS one section.
         const parts = isCognitiveLoad ? [chunk] : splitIntoLessonSections(chunk);
+        const totalEstChunks = Math.max(chunks.length, parts.length * chunks.length);
         return parts.map((paragraph, paragraphIndex) => {
           const idx = globalIndex++;
-
-          // Attach metadata: for cognitive_load use chunk_meta[chunkIndex], otherwise use sectionMeta
-          let meta = null;
-          if (isCognitiveLoad && chunkMeta[chunkIndex]) {
-            meta = chunkMeta[chunkIndex];
-          } else if (sectionMeta) {
-            const sectionWordCount = paragraph.split(/\s+/).filter(Boolean).length;
-            const difficulty = sectionMeta.difficulty_tier || "intermediate";
-            const wpmByDifficulty = { foundational: 220, intermediate: 180, advanced: 140 };
-            const wpm = wpmByDifficulty[difficulty] || 180;
-            const estimatedSec = Math.round((sectionWordCount / wpm) * 60);
-            meta = { difficulty_tier: difficulty, estimated_seconds: estimatedSec, word_count: sectionWordCount };
-          }
+          const rawMeta = chunkMeta[chunkIndex] || null;
+          const sanitizedHeading = cleanHeading(null, paragraph, idx + 1);
+          const resolvedTier = resolveSectionDifficulty(
+            { heading: sanitizedHeading, paragraph, meta: rawMeta },
+            idx,
+            totalEstChunks
+          );
+          const sectionWordCount = paragraph.split(/\s+/).filter(Boolean).length;
+          const wpmByDifficulty = { foundational: 220, intermediate: 180, advanced: 140 };
+          const wpm = wpmByDifficulty[resolvedTier] || 180;
+          const estimatedSec = Math.round((sectionWordCount / wpm) * 60);
 
           return {
             id: `${chunkIndex}-${paragraphIndex}`,
-            heading: null,
+            heading: sanitizedHeading,
             paragraph,
             chunk: chunkIndex + 1,
             chunkIndex,
             sectionIndex: idx,
-            meta,
+            meta: {
+              difficulty_tier: resolvedTier,
+              expected_time_multiplier: resolvedTier === "foundational" ? 1.0 : resolvedTier === "advanced" ? 2.5 : 1.6,
+              estimated_seconds: rawMeta?.estimated_seconds && rawMeta?.difficulty_tier === resolvedTier
+                ? rawMeta.estimated_seconds
+                : estimatedSec,
+              word_count: sectionWordCount,
+            },
           };
         });
       });
@@ -1784,7 +1939,7 @@ function Learn() {
   }, [activeSection]);
 
   // Get difficulty and estimated time from section metadata (needed for SCALE evaluation)
-  const sectionDifficulty = currentSection?.meta?.difficulty_tier || "intermediate";
+  const sectionDifficulty = currentSection?.meta?.difficulty_tier || resolveSectionDifficulty(currentSection, activeSection, sections.length);
   const estimatedSeconds = currentSection?.meta?.estimated_seconds || 60;
 
   const evaluation = evaluateSignals(
@@ -1878,6 +2033,16 @@ function Learn() {
 
   // Floating voice assistant panel state
   const [voiceOpen, setVoiceOpen] = useState(false);
+  const [voiceAutoPrompt, setVoiceAutoPrompt] = useState(null);
+
+  function handleTriggerVoicePrompt(promptQuery) {
+    if (currentSection) {
+      recordHelpAction(activeSection, currentSection.paragraph);
+      recordVoiceHelpAction();
+    }
+    setVoiceAutoPrompt({ query: promptQuery, timestamp: Date.now() });
+    setVoiceOpen(true);
+  }
 
   // Format difficulty for display (sectionDifficulty and estimatedSeconds already defined above)
   const difficultyLabel = sectionDifficulty.toUpperCase();
@@ -1888,8 +2053,7 @@ function Learn() {
 
   // Topic title: use structured heading if available, otherwise first line
   const sectionTopic =
-    currentSection?.heading ||
-    currentSection?.paragraph?.split("\n").find((l) => l.trim().length > 0)?.slice(0, 48) ||
+    cleanHeading(currentSection?.heading, currentSection?.paragraph, activeSection + 1) ||
     session.lessonTitle ||
     "Lesson";
 
@@ -2001,18 +2165,7 @@ function Learn() {
               {currentSection && (
                 <div className="lesson-card-body">
                   {currentSection?.heading && (
-                    <h2
-                      style={{
-                        fontSize: "1.35em",
-                        fontWeight: 700,
-                        color: "#0f172a",
-                        margin: "0 0 14px 0",
-                        lineHeight: 1.3,
-                        letterSpacing: "-0.01em",
-                        borderBottom: "2px solid #e0e7ff",
-                        paddingBottom: 10,
-                      }}
-                    >
+                    <h2 className="lesson-section-title">
                       {currentSection.heading}
                     </h2>
                   )}
@@ -2043,120 +2196,247 @@ function Learn() {
                   )}
 
                   {/* Section micro-actions */}
-                  <div className="lesson-card-actions">
-                    <button className="text-action" onClick={() => readAloud(displayText)}>
-                      <I.Volume2 size={13} /> Read section
+                  <div className="lesson-audio-ribbon">
+                    <button
+                      type="button"
+                      className="audio-tool-btn"
+                      onClick={() => readAloud(displayText)}
+                      title="Read section text aloud"
+                    >
+                      <I.Volume2 size={13} />
+                      <span>Read aloud</span>
                     </button>
-                    <span style={{ color: "#e2e8f0" }}>•</span>
-                    <button className="text-action" onClick={() => recordRereadAction(activeSection, currentSection.paragraph)}>
-                      <I.RotateCcw size={13} /> Re-read section
+                    <button
+                      type="button"
+                      className="audio-tool-btn"
+                      onClick={() => recordRereadAction(activeSection, currentSection?.paragraph)}
+                      title="Re-read this section"
+                    >
+                      <I.RotateCcw size={13} />
+                      <span>Re-read</span>
                     </button>
-                    <span style={{ color: "#e2e8f0" }}>•</span>
-                    <button className="text-action" onClick={() => recordHelpAction(activeSection, currentSection.paragraph)}>
-                      <I.HelpCircle size={13} /> Request explanation
+
+                    <span className="audio-ribbon-divider" />
+
+                    <button
+                      type="button"
+                      className="audio-tool-btn prompt-tool-btn"
+                      onClick={() => handleTriggerVoicePrompt("Explain this section in very simple terms.")}
+                      title="Ask AI Assistant to explain this section simply"
+                    >
+                      <I.HelpCircle size={13} />
+                      <span>Explain simply</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="audio-tool-btn prompt-tool-btn"
+                      onClick={() => handleTriggerVoicePrompt("Give me an intuitive, real-world example of this concept.")}
+                      title="Ask AI Assistant for an intuitive real-world example"
+                    >
+                      <I.Compass size={13} />
+                      <span>Real-world example</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="audio-tool-btn prompt-tool-btn"
+                      onClick={() => handleTriggerVoicePrompt("What is the single most important point in this section?")}
+                      title="Ask AI Assistant for the key takeaway"
+                    >
+                      <I.Key size={13} />
+                      <span>Key takeaway</span>
                     </button>
                   </div>
                 </div>
               )}
             </section>
 
-            {/* ── Bottom navigation row ───────────────────────────────── */}
-            <div className="lesson-nav-row">
-              {/* Previous */}
-              <button
-                className="lesson-nav-prev"
-                disabled={activeSection === 0}
-                onClick={() => setActiveSection((i) => i - 1)}
-                aria-label="Previous section"
-              >
-                <I.ChevronLeft size={15} /> Previous
-              </button>
+            {/* ── Unified Lesson Navigation & Action Toolbar ── */}
+            <div className="lesson-unified-toolbar">
+              <div className="lesson-nav-cluster">
+                {/* Previous */}
+                <button
+                  className="lesson-tool-btn"
+                  disabled={activeSection === 0}
+                  onClick={() => setActiveSection((i) => i - 1)}
+                  aria-label="Previous section"
+                >
+                  <I.ChevronLeft size={15} />
+                  <span>Prev</span>
+                </button>
 
-              {/* Section dots (<= 12) or Scalable Jump Selector (> 12) */}
-              {sections.length <= 12 ? (
-                <div className="lesson-nav-dots">
-                  {sections.map((section, index) => (
-                    <button
-                      key={section.id}
-                      className={`lesson-dot ${index === activeSection ? "current" : ""} ${completedSections.includes(index) ? "done" : ""}`}
-                      onClick={() => setActiveSection(index)}
-                      title={`Section ${index + 1}: ${section.heading || ""}`}
-                    >
-                      {completedSections.includes(index) ? <I.Check size={10} /> : index + 1}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="lesson-nav-jump-group">
-                  <span className="lesson-nav-counter">
-                    Section {activeSection + 1} of {sections.length}
-                  </span>
-                  <div className="lesson-jump-select-wrap">
-                    <I.List size={14} className="lesson-jump-icon" />
-                    <select
-                      className="lesson-jump-select"
-                      value={activeSection}
-                      onChange={(e) => setActiveSection(Number(e.target.value))}
-                      aria-label="Jump to section"
-                    >
-                      {sections.map((section, index) => {
-                        const headingText = section.heading || `Section ${index + 1}`;
-                        const isDone = completedSections.includes(index);
-                        return (
-                          <option key={section.id} value={index}>
-                            {isDone ? "✓ " : ""}{index + 1}. {headingText.length > 46 ? headingText.slice(0, 46) + "…" : headingText}
-                          </option>
-                        );
-                      })}
-                    </select>
+                {/* Section dots (<= 10) or Scalable Jump Selector (> 10) */}
+                {sections.length <= 10 ? (
+                  <div className="lesson-nav-dots">
+                    {sections.map((section, index) => (
+                      <button
+                        key={section.id}
+                        className={`lesson-dot ${index === activeSection ? "current" : ""} ${completedSections.includes(index) ? "done" : ""}`}
+                        onClick={() => setActiveSection(index)}
+                        title={`Section ${index + 1}: ${section.heading || ""}`}
+                      >
+                        {completedSections.includes(index) ? <I.Check size={10} /> : index + 1}
+                      </button>
+                    ))}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="lesson-jump-compact" ref={sectionPickerRef}>
+                    <span className="lesson-counter-tag">
+                      {activeSection + 1} / {sections.length}
+                    </span>
+                    <div className="lesson-jump-popover-anchor">
+                      <button
+                        type="button"
+                        className={`lesson-popover-trigger-btn ${sectionMenuOpen ? "active" : ""}`}
+                        onClick={() => setSectionMenuOpen((prev) => !prev)}
+                        aria-label="Choose section"
+                        aria-expanded={sectionMenuOpen}
+                      >
+                        <span className="lesson-popover-trigger-text">
+                          {completedSections.includes(activeSection) ? "✓ " : ""}
+                          {activeSection + 1}. {cleanHeading(sections[activeSection]?.heading, sections[activeSection]?.paragraph, activeSection + 1)}
+                        </span>
+                        <I.ChevronUp size={13} className={`lesson-popover-chevron ${sectionMenuOpen ? "open" : ""}`} />
+                      </button>
 
-              {/* Next */}
-              <button
-                className="lesson-nav-prev lesson-nav-next"
-                disabled={activeSection === sections.length - 1}
-                onClick={() => setActiveSection((i) => i + 1)}
-                aria-label="Next section"
-              >
-                Next <I.ChevronRight size={15} />
-              </button>
-            </div>
+                      {sectionMenuOpen && (
+                        <div className="lesson-section-popover-menu" role="menu">
+                          <div className="lesson-popover-header">
+                            <span className="lesson-popover-header-title">SECTIONS ({sections.length})</span>
+                            <span className="lesson-popover-header-progress">
+                              {completedSections.length}/{sections.length} completed
+                            </span>
+                          </div>
+                          <div className="lesson-popover-scroll">
+                            {sections.map((section, index) => {
+                              const headingText = cleanHeading(section.heading, section.paragraph, index + 1);
+                              const isDone = completedSections.includes(index);
+                              const isCurrent = index === activeSection;
+                              const tier = section.meta?.difficulty_tier || resolveSectionDifficulty(section, index, sections.length);
+                              const tierColor =
+                                tier === "foundational" ? "#10b981" :
+                                tier === "advanced" ? "#f59e0b" : "#3b82f6";
 
-            {/* ── Primary + Visual row ────────────────────────────────── */}
-            <div className="lesson-cta-row">
-              <button className="primary-action" style={{ flex: 1 }} onClick={markSectionComplete}>
-                {isComplete
-                  ? activeSection === sections.length - 1
-                    ? "All sections complete"
-                    : "Next section"
-                  : "Mark section complete"}{" "}
-                <I.Check size={18} />
-              </button>
-              <button
-                className="secondary-action"
-                style={{ flex: 1 }}
-                disabled={Boolean(busy)}
-                onClick={() => {
-                  if (activeCluster) {
-                    loadClusterVisual(activeCluster, sections);
-                  } else {
-                    getVisual(sections, activeSection);
+                              return (
+                                <button
+                                  key={section.id}
+                                  type="button"
+                                  role="menuitem"
+                                  className={`lesson-popover-item ${isCurrent ? "current" : ""} ${isDone ? "done" : ""}`}
+                                  onClick={() => {
+                                    setActiveSection(index);
+                                    setSectionMenuOpen(false);
+                                  }}
+                                >
+                                  <div className="popover-item-left">
+                                    <span className={`popover-num-badge ${isDone ? "done" : ""} ${isCurrent ? "current" : ""}`}>
+                                      {isDone ? <I.Check size={11} /> : index + 1}
+                                    </span>
+                                    <span className="popover-item-text" title={headingText}>
+                                      {headingText}
+                                    </span>
+                                  </div>
+                                  <span
+                                    className="popover-diff-chip"
+                                    style={{
+                                      color: tierColor,
+                                      backgroundColor: `${tierColor}15`,
+                                      borderColor: `${tierColor}35`,
+                                    }}
+                                  >
+                                    {tier.toUpperCase()}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Next */}
+                <button
+                  className="lesson-tool-btn"
+                  disabled={activeSection === sections.length - 1}
+                  onClick={() => setActiveSection((i) => i + 1)}
+                  aria-label="Next section"
+                >
+                  <span>Next</span>
+                  <I.ChevronRight size={15} />
+                </button>
+              </div>
+
+              {/* Action Cluster: Concept Visual + Mark Complete */}
+              <div className="lesson-actions-cluster">
+                <button
+                  type="button"
+                  className={`lesson-action-pill ${session.clusterVisuals?.[activeCluster?.cluster_id] ? "ready" : ""} ${showVisualPanel ? "panel-active" : ""}`}
+                  disabled={Boolean(busy)}
+                  onClick={() => {
+                    if (!showVisualPanel) {
+                      setShowVisualPanel(true);
+                      if (session.clusterVisuals?.[activeCluster?.cluster_id]) {
+                        setTimeout(() => {
+                          const el = document.querySelector(".visual-understanding-panel");
+                          if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+                        }, 60);
+                      } else if (activeCluster) {
+                        loadClusterVisual(activeCluster, sections);
+                        setTimeout(() => {
+                          const el = document.querySelector(".visual-understanding-panel");
+                          if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+                        }, 80);
+                      } else {
+                        getVisual(sections, activeSection);
+                        setTimeout(() => {
+                          const el = document.querySelector(".visual-understanding-panel");
+                          if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+                        }, 80);
+                      }
+                    } else {
+                      const el = document.querySelector(".visual-understanding-panel");
+                      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }
+                  }}
+                  title={
+                    showVisualPanel
+                      ? "Visual concept maps are open below"
+                      : "Generate and open visual concept maps"
                   }
-                }}
-              >
-                <I.PieChart size={15} />
-                {busy && busy.startsWith("visual")
-                  ? "Synthesizing visual…"
-                  : session.clusterVisuals?.[activeCluster?.cluster_id]
-                    ? "Visual Ready Below"
-                    : `Generate Visual for ${activeCluster?.title || "Current Concept"}`}
-              </button>
+                >
+                  <I.Sparkles size={13} />
+                  <span>
+                    {busy && busy.startsWith("visual")
+                      ? "Generating visual…"
+                      : showVisualPanel
+                      ? "Visuals Active ↓"
+                      : session.clusterVisuals?.[activeCluster?.cluster_id]
+                      ? "View Concept Visual ↓"
+                      : "Generate Visual"}
+                  </span>
+                </button>
+
+                <button
+                  className="lesson-complete-btn"
+                  onClick={markSectionComplete}
+                >
+                  <span>
+                    {isComplete
+                      ? activeSection === sections.length - 1
+                        ? "Completed"
+                        : "Next Section"
+                      : "Mark Complete"}
+                  </span>
+                  <I.Check size={14} />
+                </button>
+              </div>
             </div>
 
-            {/* ── Persistent Visual Understanding Panel ──────────────────────────────── */}
-            {(clusters.length > 0 || session.visual || busy === "clusters") && (
+            {/* ── Visual Understanding Panel (Opens ONLY when learner clicks Generate Visual) ── */}
+            {showVisualPanel && (clusters.length > 0 || session.visual || busy === "clusters") && (
               <section className="visual-understanding-panel card" style={{ marginTop: 22, padding: 22 }}>
                 <div className="visual-panel-header">
                   <div className="visual-panel-header-left">
@@ -2175,17 +2455,29 @@ function Learn() {
                     </div>
                   </div>
 
-                  {activeCluster && currentSectionCluster && activeCluster.cluster_id !== currentSectionCluster.cluster_id && (
+                  <div className="visual-panel-header-actions" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    {activeCluster && currentSectionCluster && activeCluster.cluster_id !== currentSectionCluster.cluster_id && (
+                      <button
+                        type="button"
+                        className="text-action visual-sync-btn"
+                        onClick={() => setSelectedClusterId(null)}
+                        title={`Sync back to current reading section ${activeSection + 1}`}
+                      >
+                        <I.Crosshair size={14} />
+                        <span>Back to Section {activeSection + 1} Visual ({currentSectionCluster.covers_label})</span>
+                      </button>
+                    )}
+
                     <button
                       type="button"
-                      className="text-action visual-sync-btn"
-                      onClick={() => setSelectedClusterId(null)}
-                      title={`Sync back to current reading section ${activeSection + 1}`}
+                      className="visual-hide-panel-btn"
+                      onClick={() => setShowVisualPanel(false)}
+                      title="Hide Visual Concept Maps"
                     >
-                      <I.Crosshair size={14} />
-                      <span>Back to Section {activeSection + 1} Visual ({currentSectionCluster.covers_label})</span>
+                      <I.EyeOff size={13} style={{ marginRight: 4 }} />
+                      <span>Hide Visuals</span>
                     </button>
-                  )}
+                  </div>
                 </div>
 
                 {/* Horizontal Cluster Tabs */}
@@ -2218,8 +2510,8 @@ function Learn() {
                               </span>
                             )}
                           </div>
-                          <div className="cluster-tab-title" title={cluster.title}>
-                            {cluster.title}
+                          <div className="cluster-tab-title" title={cleanHeading(cluster.title, cluster.subtitle, cIdx + 1)}>
+                            {cleanHeading(cluster.title, cluster.subtitle, cIdx + 1)}
                           </div>
                           <div className="cluster-tab-coverage">
                             {cluster.covers_label}
@@ -2297,14 +2589,20 @@ function Learn() {
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        className="primary-action visual-generate-cluster-btn"
-                        disabled={Boolean(busy)}
-                        onClick={() => loadClusterVisual(activeCluster, sections)}
-                      >
-                        <I.Sparkles size={16} /> Generate Concept Visual for {activeCluster.title}
-                      </button>
+                      <div className="visual-preview-footer">
+                        <button
+                          type="button"
+                          className="visual-generate-cluster-btn"
+                          disabled={Boolean(busy)}
+                          onClick={() => loadClusterVisual(activeCluster, sections)}
+                        >
+                          <I.Sparkles size={14} />
+                          <span>Generate Concept Visual</span>
+                        </button>
+                        <span className="visual-preview-footer-note">
+                          Synthesizes {activeCluster.covers_label} into an interactive diagram
+                        </span>
+                      </div>
                     </div>
                   ) : session.visual ? (
                     <VisualCard
@@ -2379,6 +2677,9 @@ function Learn() {
 
                 <div className="voice-float-body">
                   <VoiceAssistant
+                    hideHeader={true}
+                    autoPrompt={voiceAutoPrompt}
+                    showQuickPrompts={false}
                     currentSection={currentSection}
                     onAsk={ask}
                     busy={busy}

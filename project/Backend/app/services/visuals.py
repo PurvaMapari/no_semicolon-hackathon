@@ -1269,9 +1269,16 @@ def _heuristic_cluster_sections(sections: List[Dict[str, Any]]) -> List[Dict[str
             end = n - 1
 
         chunk_secs = sections[start : end + 1]
-        first_heading = chunk_secs[0].get("heading") or f"Part {c_idx + 1}"
-        clean_title = re.sub(r"^\d+[\.\)]\s*", "", first_heading)
-        clean_title = re.sub(r"\s*\(Part\s*\d+\)$", "", clean_title, flags=re.IGNORECASE).strip() or f"Concept Phase {c_idx + 1}"
+        clean_title = ""
+        for s in chunk_secs:
+            h = (s.get("heading") or "").strip()
+            h = re.sub(r"^(?:#{1,6}\s*|\d+[\.\)]\s*|(?:Section|Chapter|Part)\s*\d+[:\.]?\s*)", "", h, flags=re.IGNORECASE)
+            h = re.sub(r"\s*\(Part\s*\d+\)$", "", h, flags=re.IGNORECASE).strip()
+            if len(re.findall(r"[a-zA-Z]", h)) >= 3:
+                clean_title = h
+                break
+        if not clean_title:
+            clean_title = f"Concept Cluster {c_idx + 1}"
 
         covers = f"Sections {start+1}–{end+1}" if end > start else f"Section {start+1}"
         clusters.append({
@@ -1412,9 +1419,17 @@ def generate_cluster_visual_card(
     # Resilient fallback: if LLM failed or returned no nodes, construct relational spec from cluster headings
     if not spec.get("nodes") or len(spec["nodes"]) < 2:
         c_title = cluster.get("title", "Core Concept")
-        headings = [s.get("heading") for s in cluster_sections if s.get("heading")]
+        if len(re.findall(r"[a-zA-Z]", str(c_title))) < 3:
+            c_title = f"Core Concepts ({cluster.get('covers_label', '')})"
+
+        headings = []
+        for s in cluster_sections:
+            h = (s.get("heading") or "").strip()
+            h = re.sub(r"^(?:#{1,6}\s*|\d+[\.\)]\s*|(?:Section|Chapter|Part)\s*\d+[:\.]?\s*)", "", h, flags=re.IGNORECASE).strip()
+            if len(re.findall(r"[a-zA-Z]", h)) >= 3 and h not in headings:
+                headings.append(h)
         if not headings:
-            headings = [f"Part {i+1}" for i in range(min(len(cluster_sections), 4))]
+            headings = [f"Concept Part {i+1}" for i in range(min(len(cluster_sections), 4))]
         
         fb_nodes = [{
             "id": "n0",

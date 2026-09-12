@@ -285,6 +285,22 @@ function DirectionalConnector({ label, direction = "down", highlight = false }) 
   );
 }
 
+function formatNodeLabel(node, isCoreHero = false) {
+  const labelStr = String(node?.label || "").trim();
+  const letters = labelStr.match(/[a-zA-Z]/g);
+  if (!letters || letters.length < 2) {
+    const desc = String(node?.description || "").trim();
+    const cleanedDesc = desc.replace(/^(?:Key component in|Dominant concept governing|Concept for)\s*[^:]*[:]?\s*/i, "").trim();
+    const sentenceParts = cleanedDesc.split(/(?<=[a-zA-Z0-9])\.\s+/);
+    const firstSentence = (sentenceParts[0] || cleanedDesc).replace(/[.:]+$/, "").trim();
+    if (firstSentence && firstSentence.match(/[a-zA-Z]/g)?.length >= 3) {
+      return firstSentence.length > 40 ? firstSentence.slice(0, 38) + "…" : firstSentence;
+    }
+    return isCoreHero ? "Core Concept" : "Key Component";
+  }
+  return labelStr;
+}
+
 /**
  * Diagram Node Card: adapts dynamically for Hero/Central, Mediator, Implementation, or Outcome
  */
@@ -396,7 +412,7 @@ function DiagramNodeCard({
             lineHeight: 1.25,
           }}
         >
-          {node.label}
+          {formatNodeLabel(node, isCoreHero)}
         </div>
 
         {/* Optional 1-line description */}
