@@ -1522,9 +1522,10 @@ function Learn() {
   }, []);
 
   const isCognitiveLoad = transformed?.profile === "cognitive_load";
+  const hasStructuredSections = Array.isArray(transformed?.sections) && transformed.sections.length > 0;
   const chunks =
-    isCognitiveLoad
-      ? (transformed?.chunks || [])
+    Array.isArray(transformed?.chunks)
+      ? transformed.chunks
       : [transformed?.text || session.text];
 
   // Extract metadata for each chunk/section
@@ -1532,49 +1533,46 @@ function Learn() {
   const sectionMeta = transformed?.section_meta || null;
 
   let globalIndex = 0;
-  const sections = chunks.filter(Boolean).flatMap((chunk, chunkIndex) => {
-    // For cognitive_load: each chunk IS one section — never sub-split it.
-    // The backend already chunked at the right granularity (8–20 chunks).
-    const parts = isCognitiveLoad ? [chunk] : splitIntoLessonSections(chunk);
-    return parts.map((paragraph, paragraphIndex) => {
-      const idx = globalIndex++;
-      
-      // Attach metadata: for cognitive_load use chunk_meta[chunkIndex], otherwise use sectionMeta
-      let meta = null;
-      if (isCognitiveLoad && chunkMeta[chunkIndex]) {
-        meta = chunkMeta[chunkIndex];
-      } else if (sectionMeta) {
-        // For non-cognitive_load profiles: backend returns meta for full text,
-        // but frontend splits into smaller sections. Recalculate time per section.
-        const sectionWordCount = paragraph.split(/\s+/).filter(Boolean).length;
-        const difficulty = sectionMeta.difficulty_tier || "intermediate";
-        
-        // Use same WPM constants as backend
-        const wpmByDifficulty = {
-          foundational: 220,
-          intermediate: 180,
-          advanced: 140
-        };
-        const wpm = wpmByDifficulty[difficulty] || 180;
-        const estimatedSec = Math.round((sectionWordCount / wpm) * 60);
-        
-        meta = {
-          difficulty_tier: difficulty,
-          estimated_seconds: estimatedSec,
-          word_count: sectionWordCount,
-        };
-      }
-      
-      return {
-        id: `${chunkIndex}-${paragraphIndex}`,
-        paragraph,
-        chunk: chunkIndex + 1,
-        chunkIndex,
+  const sections = hasStructuredSections
+    ? transformed.sections.map((sec, idx) => ({
+        id: `section-${idx}`,
+        heading: sec.heading || null,
+        paragraph: sec.content,
+        chunk: idx + 1,
+        chunkIndex: idx,
         sectionIndex: idx,
-        meta, // {difficulty_tier, estimated_seconds, word_count}
-      };
-    });
-  });
+        meta: chunkMeta[idx] || null,
+      }))
+    : chunks.filter(Boolean).flatMap((chunk, chunkIndex) => {
+        // For cognitive_load without structured sections: each chunk IS one section.
+        const parts = isCognitiveLoad ? [chunk] : splitIntoLessonSections(chunk);
+        return parts.map((paragraph, paragraphIndex) => {
+          const idx = globalIndex++;
+
+          // Attach metadata: for cognitive_load use chunk_meta[chunkIndex], otherwise use sectionMeta
+          let meta = null;
+          if (isCognitiveLoad && chunkMeta[chunkIndex]) {
+            meta = chunkMeta[chunkIndex];
+          } else if (sectionMeta) {
+            const sectionWordCount = paragraph.split(/\s+/).filter(Boolean).length;
+            const difficulty = sectionMeta.difficulty_tier || "intermediate";
+            const wpmByDifficulty = { foundational: 220, intermediate: 180, advanced: 140 };
+            const wpm = wpmByDifficulty[difficulty] || 180;
+            const estimatedSec = Math.round((sectionWordCount / wpm) * 60);
+            meta = { difficulty_tier: difficulty, estimated_seconds: estimatedSec, word_count: sectionWordCount };
+          }
+
+          return {
+            id: `${chunkIndex}-${paragraphIndex}`,
+            heading: null,
+            paragraph,
+            chunk: chunkIndex + 1,
+            chunkIndex,
+            sectionIndex: idx,
+            meta,
+          };
+        });
+      });
 
   const currentSection = sections[activeSection] || sections[0];
   const formatting = transformed?.formatting || {};
@@ -1684,8 +1682,9 @@ function Learn() {
     sectionDifficulty === "advanced" ? "#f59e0b" : 
     "#3b82f6";
 
-  // Topic title: first non-empty line of the current section
+  // Topic title: use structured heading if available, otherwise first line
   const sectionTopic =
+    currentSection?.heading ||
     currentSection?.paragraph?.split("\n").find((l) => l.trim().length > 0)?.slice(0, 48) ||
     session.lessonTitle ||
     "Lesson";
@@ -1797,6 +1796,22 @@ function Learn() {
               {/* Section body */}
               {currentSection && (
                 <div className="lesson-card-body">
+                  {currentSection?.heading && (
+                    <h2
+                      style={{
+                        fontSize: "1.35em",
+                        fontWeight: 700,
+                        color: "#0f172a",
+                        margin: "0 0 14px 0",
+                        lineHeight: 1.3,
+                        letterSpacing: "-0.01em",
+                        borderBottom: "2px solid #e0e7ff",
+                        paddingBottom: 10,
+                      }}
+                    >
+                      {currentSection.heading}
+                    </h2>
+                  )}
                   <p
                     style={{
                       fontSize: formatting.font_size_multiplier
@@ -1987,7 +2002,7 @@ function Practice() {
   const navigate = useNavigate();
 
   const chunks =
-    session.transformed?.profile === "cognitive_load"
+    Array.isArray(session.transformed?.chunks)
       ? session.transformed.chunks
       : [session.transformed?.text || session.text];
 
@@ -2374,7 +2389,7 @@ function Progress() {
 
   const transformed = Boolean(session.transformed);
   const chunks =
-    session.transformed?.profile === "cognitive_load"
+    Array.isArray(session.transformed?.chunks)
       ? session.transformed.chunks.length
       : transformed
         ? 1

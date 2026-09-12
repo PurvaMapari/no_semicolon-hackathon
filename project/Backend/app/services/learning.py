@@ -6,23 +6,77 @@ from app.config import GROQ_API_KEY, VOICE_GROQ_API_KEY
 from app.services.llm import call_llm, call_voice_llm, parse_json_response
 
 
-DYSLEXIA_PROMPT = """Rewrite the text below for a reader with dyslexia. Use short, simple sentences and clear wording. Preserve every fact, relationship, number, and cause-and-effect detail. Do not add facts. Return only the rewritten text.
+DYSLEXIA_PROMPT = """You are an expert educational content designer helping a learner with dyslexia. Words can appear to move or blur for this learner, so they need clear, simple text.
 
-TEXT:
+Your task: Rewrite the lesson below into logical, concept-based sections with dyslexia-friendly language.
+
+STRICT RULES:
+- Return a JSON object with a "sections" array
+- Each element: {{"heading": "Clear topic title", "content": "Dyslexia-friendly explanation"}}
+- Create 5 to 15 sections, each covering ONE complete concept
+- Headings must be clear, descriptive topic titles (e.g. "What Is Inheritance?" or "Classes and Objects")
+- Use short, simple sentences (maximum 15 words per sentence)
+- Break complex ideas into smaller parts
+- Use clear, straightforward wording
+- Content must contain ONLY factual study material the learner should read
+- REMOVE all: **bold markers**, ## markdown headings, bullet-point dashes, numbered-list prefixes, AI commentary, meta-text, prompt echoes, quiz questions/answers, separators like ---
+- Preserve every fact, number, name, relationship, and cause-effect detail from the original
+- Do NOT add new information not present in the original
+
+Include the marker SECTION_JSON.
+
+LESSON TEXT:
 {text}"""
 
-COGNITIVE_LOAD_PROMPT = """Split the text below into an ordered JSON object with one key, chunks.
-Aim for 8 to 20 total chunks regardless of document length — each chunk should represent one complete idea or concept (roughly one paragraph or 3–6 sentences). Do NOT create a separate chunk per sentence. Preserve all original content and facts verbatim, do not summarize, and do not add facts. Return only valid JSON.
 
-TEXT:
+STRUCTURED_SECTIONS_PROMPT = """You are an expert educational content designer. A learner with {profile} accessibility needs wants to study the lesson below.
+
+Your task: Break the lesson into logical, concept-based sections. Each section covers ONE coherent topic.
+
+STRICT RULES:
+- Return a JSON object with a "sections" array
+- Each element: {{"heading": "Learner-friendly topic title", "content": "Only the learner-facing explanation"}}
+- Create 5 to 15 sections, each covering a complete concept
+- Headings must be clear, descriptive questions or topic titles (e.g. "What Is Inheritance?" or "Classes and Objects")
+- Content must contain ONLY factual study material the learner should read
+- REMOVE all: **bold markers**, ## markdown headings, bullet-point dashes, numbered-list prefixes, AI commentary, meta-text like "Here is...", "Let me explain...", prompt echoes, quiz questions/answers
+- Preserve every fact, number, name, cause-effect relationship from the original
+- Do NOT add new information not present in the original
+- Adapt vocabulary and sentence complexity for the {profile} profile
+- Do NOT include quiz questions or answers in sections
+
+Include the marker SECTION_JSON.
+
+LESSON TEXT:
 {text}"""
 
-PREFERENCE_PARSE_PROMPT = """A user described their accessibility needs below. Map it to exactly one profile: dyslexia, cognitive_load, or low_vision. Return valid JSON only with profile and reason. Include the marker PREFERENCE_JSON.
 
-USER DESCRIPTION:
+PREFERENCE_PARSE_PROMPT = """A learner has described their accessibility needs below. Your job is to identify which learning profile best matches their needs.
+
+The three profiles are:
+1. **dyslexia** - For learners who have difficulty with reading, tracking text, or processing written words
+2. **cognitive_load** - For learners who get overwhelmed by too much information at once and need content broken into small chunks
+3. **low_vision** - For learners who have visual impairments and need larger text, high contrast, or better spacing
+
+Analyze the learner's description and return valid JSON with these fields:
+- "profile": one of "dyslexia", "cognitive_load", or "low_vision"
+- "reason": a brief explanation of why this profile was chosen
+
+Include the marker PREFERENCE_JSON.
+
+LEARNER'S DESCRIPTION:
 {text}"""
 
-VOICE_HELP_PROMPT = """You are an educational assistant. Answer the learner's request using only the supplied lesson content. Do not invent facts. Explain clearly and simply. Keep the response concise. If the answer cannot be determined from the lesson, say: The lesson does not provide enough information to answer that.
+VOICE_HELP_PROMPT = """You are an educational assistant helping a learner with accessibility needs (Profile: {profile}).
+
+The learner has asked for help understanding part of their lesson. Answer their request using only the lesson content provided below:
+- Be clear and simple in your explanation
+- Use short sentences
+- Avoid jargon unless it's in the original lesson
+- Do not invent facts or use information outside the lesson
+- Keep your response concise (2-4 sentences)
+
+If the lesson doesn't contain enough information to answer the question, say: "The lesson does not provide enough information to answer that."
 
 LESSON CONTENT:
 {lesson}
@@ -30,42 +84,73 @@ LESSON CONTENT:
 LEARNER REQUEST:
 {request}"""
 
-LESSON_QUESTION_PROMPT = """You are the question-answering assistant inside an adaptive learning platform.
-Answer the learner's question using only the supplied lesson and active section.
-Treat the active section as the primary context and use the full lesson only to clarify it.
-Do not invent facts or use outside knowledge.
-Answer clearly in 2 to 5 sentences and match the learner profile: {profile}.
-If the answer is not supported by the lesson, say: The lesson does not provide enough information to answer that.
+LESSON_QUESTION_PROMPT = """You are a helpful learning assistant supporting a learner with {profile} accessibility needs.
 
-FULL EXTRACTED LESSON:
+The learner is studying a lesson and has a question about it. Answer their question using only the information in the lesson provided below:
+- Focus primarily on the ACTIVE SECTION (what they're currently reading)
+- Use the FULL LESSON for additional context if needed
+- Be clear and simple in your explanation (2-5 sentences)
+- Match your language complexity to the learner's profile
+- Do not invent facts or use outside knowledge
+
+If the lesson doesn't support an answer, say: "The lesson does not provide enough information to answer that."
+
+FULL LESSON:
 {lesson}
 
-ACTIVE LESSON SECTION:
+CURRENT SECTION (what the learner is reading now):
 {section}
 
-LEARNER QUESTION:
+LEARNER'S QUESTION:
 {question}"""
 
-QUIZ_PROMPT = """Create one practice question based only on the chunk below. Adjust phrasing complexity to the learner profile: {profile}. Return valid JSON only with exactly these keys: question, options, answer, explanation. The options value must contain exactly four strings. The answer must exactly match one option. Do not use information outside the chunk. Include the marker QUIZ_JSON.
+QUIZ_PROMPT = """You are creating a practice question for a learner with {profile} accessibility needs.
 
-CHUNK:
+Based on the lesson chunk below, create ONE multiple-choice question that tests understanding:
+- Adjust question complexity to match the learner's profile
+- For dyslexia: use simple, clear wording
+- For cognitive_load: focus on one concept at a time
+- For low_vision: ensure the question is straightforward
+- Base the question ONLY on information in the chunk (no outside knowledge)
+
+Return valid JSON with exactly these fields:
+- "question": the question text
+- "options": array of exactly 4 possible answers
+- "answer": the correct answer (must exactly match one of the options)
+- "explanation": brief explanation of why the answer is correct
+
+Include the marker QUIZ_JSON.
+
+LESSON CHUNK:
 {chunk}"""
 
 # ── REWIRE Prompts ────────────────────────────────────────────────────────────
 
-REWIRE_PROMPT = """You are an adaptive learning assistant. The learner is struggling with the text below. Rewrite it at simplification level {level} (1=original, 2=simpler vocabulary and shorter sentences, 3=very simple with concrete examples).
+REWIRE_PROMPT = """I am a learner with {profile} accessibility needs, and I'm having difficulty understanding the lesson content below.
 
-Rules:
-- Preserve ALL facts, numbers, names, and cause-effect relationships.
-- Do NOT add new facts or information.
-- Use shorter sentences and simpler vocabulary at higher levels.
-- At level 3, add a brief concrete analogy or example if helpful.
-- Return only the rewritten text, nothing else.
+The system detected that I'm struggling (struggle signals: {struggle_explanation}). Please help me by rewriting this content at simplification level {level}:
 
-ORIGINAL TEXT:
+**Level 1** (original): Keep the original complexity
+**Level 2** (simpler): Use simpler vocabulary and shorter sentences
+**Level 3** (very simple): Very simple language with concrete examples or analogies
+
+IMPORTANT RULES:
+- Preserve ALL facts, numbers, names, and cause-effect relationships exactly as given
+- Do NOT add new information or facts that weren't in the original
+- Use shorter sentences and clearer vocabulary at higher levels
+- At level 3, you may add a brief concrete analogy or example to aid understanding
+- Return only the rewritten text, nothing else
+
+ORIGINAL CONTENT I'M STRUGGLING WITH:
 {text}"""
 
-REWIRE_VISUAL_PROMPT = """Describe a simple visual that would help a struggling learner understand this concept. Write 2-3 sentences describing what to picture. Be concrete and specific. Do not use technical language.
+REWIRE_VISUAL_PROMPT = """I am a learner who learns better with visual aids and concrete examples.
+
+I'm struggling to understand the concept explained in the text below. Please help me by describing a simple visual or mental picture that would make this concept clearer:
+- Write 2-3 sentences describing what I should picture or imagine
+- Be concrete and specific (not abstract)
+- Use everyday language, avoid technical jargon
+- Make it relatable to common experiences
 
 TEXT:
 {text}"""
@@ -84,6 +169,31 @@ def _dyslexia_fallback(text: str) -> str:
     """Keep facts intact while making fallback text easier to scan."""
     sentences = [sentence.strip() for sentence in text.replace("\n", " ").split(".") if sentence.strip()]
     return "\n\n".join(f"{sentence}." for sentence in sentences)
+
+
+def _clean_section_text(text: str) -> str:
+    """Strip residual markdown / AI artefacts from a section's text."""
+    if not text:
+        return text
+    # Remove bold markers  **text** → text
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+    # Remove italic markers  *text* → text  (single asterisks only)
+    text = re.sub(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", r"\1", text)
+    # Remove markdown heading prefixes  ## Heading → Heading
+    text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
+    # Remove leading bullet dashes  - item → item
+    text = re.sub(r"^\s*[-•]\s+", "", text, flags=re.MULTILINE)
+    # Remove numbered-list prefixes  1. item → item  /  1) item → item
+    text = re.sub(r"^\s*\d+[.)]\s+", "", text, flags=re.MULTILINE)
+    # Strip AI boilerplate openers
+    text = re.sub(
+        r"^(Here is|Here are|Let me|Below is|The following|In this section)[^.]*\.\s*",
+        "",
+        text,
+        count=1,
+        flags=re.IGNORECASE,
+    )
+    return text.strip()
 
 
 def _build_chunk_meta(chunks: List[str], full_text: str) -> List[Dict[str, Any]]:
@@ -164,29 +274,95 @@ def parse_user_preference(user_text: str) -> Dict[str, Any]:
     return {"profile": fallback_profile, "reason": "Detected preference based on keyword analysis."}
 
 
+def _parse_sections_response(raw_response: str) -> Optional[List[Dict[str, str]]]:
+    """Parse an LLM response that should contain a 'sections' JSON array of {heading, content}."""
+    try:
+        parsed = parse_json_response(raw_response)
+        candidate = None
+        if isinstance(parsed, dict):
+            candidate = parsed.get("sections")
+        elif isinstance(parsed, list):
+            candidate = parsed
+        if (
+            isinstance(candidate, list)
+            and len(candidate) >= 2
+            and all(
+                isinstance(s, dict) and s.get("heading") and s.get("content")
+                for s in candidate
+            )
+        ):
+            return [
+                {
+                    "heading": _clean_section_text(s["heading"]),
+                    "content": _clean_section_text(s["content"]),
+                }
+                for s in candidate
+            ]
+    except Exception:
+        pass
+    return None
+
+
+def _fallback_sections(text: str) -> List[Dict[str, str]]:
+    """Build sections from paragraph splitting when LLM fails."""
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    if len(paragraphs) <= 1:
+        sentences = [s.strip() + "." for s in text.split(".") if s.strip()]
+        paragraphs = [" ".join(sentences[i:i+4]) for i in range(0, len(sentences), 4)]
+    # Merge small paragraphs until each chunk is ~120+ words or max 20 chunks
+    merged, buf, buf_words = [], [], 0
+    for para in paragraphs:
+        words = len(para.split())
+        buf.append(para)
+        buf_words += words
+        if buf_words >= 120 or len(merged) + 1 + (len(buf) > 0) >= 20:
+            merged.append("\n\n".join(buf))
+            buf, buf_words = [], 0
+    if buf:
+        if merged:
+            merged[-1] += "\n\n" + "\n\n".join(buf)
+        else:
+            merged.append("\n\n".join(buf))
+    fallback_chunks = merged if merged else [text]
+
+    sections_list = []
+    for chunk in fallback_chunks:
+        first_line = chunk.split("\n")[0].strip()
+        first_sentence = first_line.split(".")[0].strip()[:60]
+        heading = _clean_section_text(first_sentence) or "Section"
+        sections_list.append({
+            "heading": heading,
+            "content": _clean_section_text(chunk),
+        })
+    return sections_list
+
+
 def transform_text(text: str, profile: str) -> Dict[str, Any]:
     """Transform text according to an accessibility profile."""
     if profile == "low_vision":
-        # Tag difficulty + compute estimated reading time for the full section
-        from app.services.scale import tag_section_difficulty
-        sections = tag_section_difficulty(text)
-        # Use first section's metadata, or fallback
-        if sections:
-            section_meta = {
-                "difficulty_tier": sections[0].get("difficulty_tier", "intermediate"),
-                "estimated_seconds": sections[0].get("expected_baseline_seconds", 60),
-                "word_count": sections[0].get("word_count", len(text.split())),
-            }
-        else:
-            section_meta = {
-                "difficulty_tier": "intermediate",
-                "estimated_seconds": 60,
-                "word_count": len(text.split()),
-            }
+        # Use structured sections prompt for low_vision too
+        sections_list = None
+        if GROQ_API_KEY or VOICE_GROQ_API_KEY:
+            try:
+                raw = call_llm(STRUCTURED_SECTIONS_PROMPT.format(text=text, profile="low_vision"))
+                sections_list = _parse_sections_response(raw)
+            except Exception:
+                sections_list = None
+
+        if not sections_list:
+            sections_list = _fallback_sections(text)
+        if len(sections_list) > 20:
+            sections_list = sections_list[:20]
+
+        chunks = [s["content"] for s in sections_list]
+        chunk_meta = _build_chunk_meta(chunks, text)
+
         return {
             "profile": profile,
+            "sections": sections_list,
+            "chunks": chunks if chunks else [text],
+            "chunk_meta": chunk_meta,
             "text": text,
-            "section_meta": section_meta,
             "formatting": {
                 "font_size_multiplier": 1.5,
                 "line_height": 2.0,
@@ -196,29 +372,31 @@ def transform_text(text: str, profile: str) -> Dict[str, Any]:
             },
         }
     if profile == "dyslexia":
-        rewritten = _dyslexia_fallback(text) if not (GROQ_API_KEY or VOICE_GROQ_API_KEY) else call_llm(DYSLEXIA_PROMPT.format(text=text)).strip()
-        if not rewritten:
+        # Use dyslexia-specific structured sections prompt
+        sections_list = None
+        if GROQ_API_KEY or VOICE_GROQ_API_KEY:
+            try:
+                raw = call_llm(DYSLEXIA_PROMPT.format(text=text))
+                sections_list = _parse_sections_response(raw)
+            except Exception:
+                sections_list = None
+
+        if not sections_list:
+            # Fallback: dyslexia simplification then paragraph splitting
             rewritten = _dyslexia_fallback(text)
-        # Tag difficulty + compute estimated reading time for the rewritten text
-        from app.services.scale import tag_section_difficulty
-        sections = tag_section_difficulty(rewritten)
-        # Use first section's metadata, or fallback
-        if sections:
-            section_meta = {
-                "difficulty_tier": sections[0].get("difficulty_tier", "intermediate"),
-                "estimated_seconds": sections[0].get("expected_baseline_seconds", 60),
-                "word_count": sections[0].get("word_count", len(rewritten.split())),
-            }
-        else:
-            section_meta = {
-                "difficulty_tier": "intermediate",
-                "estimated_seconds": 60,
-                "word_count": len(rewritten.split()),
-            }
+            sections_list = _fallback_sections(rewritten)
+        if len(sections_list) > 20:
+            sections_list = sections_list[:20]
+
+        chunks = [s["content"] for s in sections_list]
+        chunk_meta = _build_chunk_meta(chunks, text)
+
         return {
             "profile": profile,
-            "text": rewritten,
-            "section_meta": section_meta,
+            "sections": sections_list,
+            "chunks": chunks if chunks else [text],
+            "chunk_meta": chunk_meta,
+            "text": "\n\n".join(chunks),
             "formatting": {
                 "font_family": "dyslexia-friendly",
                 "line_height": 1.9,
@@ -227,59 +405,51 @@ def transform_text(text: str, profile: str) -> Dict[str, Any]:
             },
         }
     if profile == "cognitive_load":
-        parsed = parse_json_response(call_llm(COGNITIVE_LOAD_PROMPT.format(text=text))) if (GROQ_API_KEY or VOICE_GROQ_API_KEY) else None
-        chunks = parsed.get("chunks") if isinstance(parsed, dict) else (parsed if isinstance(parsed, list) else None)
-        if not isinstance(chunks, list) or not all(isinstance(chunk, str) and chunk.strip() for chunk in chunks):
-            # Fallback: group paragraphs into ~100-200 word chunks (max 20 chunks)
-            paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
-            if len(paragraphs) <= 1:
-                sentences = [s.strip() + "." for s in text.split(".") if s.strip()]
-                paragraphs = [" ".join(sentences[i:i+4]) for i in range(0, len(sentences), 4)]
-            # Merge small paragraphs until each chunk is ~120+ words or max 20 chunks
-            merged, buf, buf_words = [], [], 0
-            for para in paragraphs:
-                words = len(para.split())
-                buf.append(para)
-                buf_words += words
-                if buf_words >= 120 or len(merged) + 1 + (len(buf) > 0) >= 20:
-                    merged.append("\n\n".join(buf))
-                    buf, buf_words = [], 0
-            if buf:
-                if merged:
-                    merged[-1] += "\n\n" + "\n\n".join(buf)
-                else:
-                    merged.append("\n\n".join(buf))
-            chunks = merged if merged else [text]
+        sections_list = None
 
-        # Hard cap: if LLM still returned too many tiny chunks, merge them down to 20
-        if len(chunks) > 20:
-            target = 20
-            group_size = max(1, len(chunks) // target)
-            merged = []
-            for i in range(0, len(chunks), group_size):
-                merged.append("\n\n".join(chunks[i:i+group_size]))
-            chunks = merged[:target]
+        # ── Try structured-sections LLM call ──────────────────────────────
+        if GROQ_API_KEY or VOICE_GROQ_API_KEY:
+            try:
+                raw = call_llm(STRUCTURED_SECTIONS_PROMPT.format(text=text, profile=profile))
+                sections_list = _parse_sections_response(raw)
+            except Exception:
+                sections_list = None
 
-        # ── Tag each chunk with difficulty + estimated reading time ────────────
-        # tag_section_difficulty analyses the FULL text with the LLM so difficulty
-        # reflects content complexity, NOT chunk size / word count.
+        # ── Fallback: auto-generate sections from paragraph splitting ─────
+        if not sections_list:
+            sections_list = _fallback_sections(text)
+
+        # Hard cap at 20 sections
+        if len(sections_list) > 20:
+            sections_list = sections_list[:20]
+
+        # Build backward-compatible chunks from section content
+        chunks = [s["content"] for s in sections_list]
+
+        # ── Tag each chunk with difficulty + estimated reading time ────────
         chunk_meta = _build_chunk_meta(chunks, text)
+
 
         return {
             "profile": profile,
+            "sections": sections_list,
             "chunks": chunks if chunks else [text],
             "chunk_meta": chunk_meta,
         }
     raise ValueError("profile must be dyslexia, low_vision, or cognitive_load")
 
 
-def voice_ask(user_request: str, lesson_text: str = "") -> str:
+def voice_ask(user_request: str, lesson_text: str = "", profile: str = "cognitive_load") -> str:
     """Answer a learner question using only the current lesson."""
     lesson = lesson_text.strip()
     if not lesson:
         raise ValueError("lesson_text is required for voice questions")
     try:
-        return call_voice_llm(VOICE_HELP_PROMPT.format(lesson=lesson, request=user_request.strip())).strip()
+        return call_voice_llm(VOICE_HELP_PROMPT.format(
+            lesson=lesson, 
+            request=user_request.strip(),
+            profile=profile
+        )).strip()
     except Exception as error:
         return f"Based on your lesson, {lesson[:120]}..."
 
@@ -439,9 +609,14 @@ def rewire_content(
     """
     actions = actions or ["increase_simplification"]
 
-    # Generate simplified text
+    # Generate simplified text with persona context
     adapted_text = call_llm(
-        REWIRE_PROMPT.format(text=chunk_text, level=variant_level)
+        REWIRE_PROMPT.format(
+            text=chunk_text, 
+            level=variant_level,
+            profile=profile,
+            struggle_explanation=struggle_explanation or "spending more time than expected on this section"
+        )
     ).strip()
 
     if not adapted_text:
