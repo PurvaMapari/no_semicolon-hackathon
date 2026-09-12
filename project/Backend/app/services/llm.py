@@ -141,6 +141,15 @@ def call_visual_llm(prompt: str) -> str:
 
 
 def parse_json_response(response: str) -> Any:
-    """Parse plain JSON or JSON wrapped in Markdown fences."""
+    """Parse plain JSON, JSON wrapped in Markdown fences, or JSON preceded by markers."""
     cleaned = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", response.strip(), flags=re.IGNORECASE)
-    return json.loads(cleaned)
+    cleaned = re.sub(r"^\s*(?:SECTION_JSON|QUIZ_JSON|PREFERENCE_JSON|SCALE_JSON)\s*", "", cleaned).strip()
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        # Extract the outermost JSON object {...} or array [...]
+        match = re.search(r"(\{.*\}|\[.*\])", cleaned, re.DOTALL)
+        if match:
+            return json.loads(match.group(1))
+        raise
+

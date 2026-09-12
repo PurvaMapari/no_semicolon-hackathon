@@ -1863,23 +1863,61 @@ function Learn() {
                 className="lesson-nav-prev"
                 disabled={activeSection === 0}
                 onClick={() => setActiveSection((i) => i - 1)}
+                aria-label="Previous section"
               >
                 <I.ChevronLeft size={15} /> Previous
               </button>
 
-              {/* Section dots */}
-              <div className="lesson-nav-dots">
-                {sections.map((section, index) => (
-                  <button
-                    key={section.id}
-                    className={`lesson-dot ${index === activeSection ? "current" : ""} ${completedSections.includes(index) ? "done" : ""}`}
-                    onClick={() => setActiveSection(index)}
-                    title={`Section ${index + 1}`}
-                  >
-                    {completedSections.includes(index) ? <I.Check size={10} /> : index + 1}
-                  </button>
-                ))}
-              </div>
+              {/* Section dots (<= 12) or Scalable Jump Selector (> 12) */}
+              {sections.length <= 12 ? (
+                <div className="lesson-nav-dots">
+                  {sections.map((section, index) => (
+                    <button
+                      key={section.id}
+                      className={`lesson-dot ${index === activeSection ? "current" : ""} ${completedSections.includes(index) ? "done" : ""}`}
+                      onClick={() => setActiveSection(index)}
+                      title={`Section ${index + 1}: ${section.heading || ""}`}
+                    >
+                      {completedSections.includes(index) ? <I.Check size={10} /> : index + 1}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="lesson-nav-jump-group">
+                  <span className="lesson-nav-counter">
+                    Section {activeSection + 1} of {sections.length}
+                  </span>
+                  <div className="lesson-jump-select-wrap">
+                    <I.List size={14} className="lesson-jump-icon" />
+                    <select
+                      className="lesson-jump-select"
+                      value={activeSection}
+                      onChange={(e) => setActiveSection(Number(e.target.value))}
+                      aria-label="Jump to section"
+                    >
+                      {sections.map((section, index) => {
+                        const headingText = section.heading || `Section ${index + 1}`;
+                        const isDone = completedSections.includes(index);
+                        return (
+                          <option key={section.id} value={index}>
+                            {isDone ? "✓ " : ""}{index + 1}. {headingText.length > 46 ? headingText.slice(0, 46) + "…" : headingText}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {/* Next */}
+              <button
+                className="lesson-nav-prev lesson-nav-next"
+                disabled={activeSection === sections.length - 1}
+                onClick={() => setActiveSection((i) => i + 1)}
+                aria-label="Next section"
+              >
+                Next <I.ChevronRight size={15} />
+              </button>
             </div>
 
             {/* ── Primary + Visual row ────────────────────────────────── */}

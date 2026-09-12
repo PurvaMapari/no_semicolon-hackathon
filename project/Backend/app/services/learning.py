@@ -13,7 +13,9 @@ Your task: Rewrite the lesson below into logical, concept-based sections with dy
 STRICT RULES:
 - Return a JSON object with a "sections" array
 - Each element: {{"heading": "Clear topic title", "content": "Dyslexia-friendly explanation"}}
-- Create 5 to 15 sections, each covering ONE complete concept
+- If the source text contains its own numbered or titled subsections (e.g., '7.1', '7.2', 'Section 3:'), each one is a MANDATORY section boundary. Never merge two source subsections into one output section, regardless of combined length.
+- Each section's content must not exceed {max_words} words. This is a hard limit, not a target — if a single source subsection is longer, split it into multiple sequential sections (e.g., 'The Two Main Stages (Part 1)', '(Part 2)').
+- Do not try to limit the total number of sections. A long document producing many sections is correct and expected.
 - Headings must be clear, descriptive topic titles (e.g. "What Is Inheritance?" or "Classes and Objects")
 - Use short, simple sentences (maximum 15 words per sentence)
 - Break complex ideas into smaller parts
@@ -36,7 +38,9 @@ Your task: Break the lesson into logical, concept-based sections. Each section c
 STRICT RULES:
 - Return a JSON object with a "sections" array
 - Each element: {{"heading": "Learner-friendly topic title", "content": "Only the learner-facing explanation"}}
-- Create 5 to 15 sections, each covering a complete concept
+- If the source text contains its own numbered or titled subsections (e.g., '7.1', '7.2', 'Section 3:'), each one is a MANDATORY section boundary. Never merge two source subsections into one output section, regardless of combined length.
+- Each section's content must not exceed {max_words} words. This is a hard limit, not a target — if a single source subsection is longer, split it into multiple sequential sections (e.g., 'The Two Main Stages (Part 1)', '(Part 2)').
+- Do not try to limit the total number of sections. A long document producing many sections is correct and expected.
 - Headings must be clear, descriptive questions or topic titles (e.g. "What Is Inheritance?" or "Classes and Objects")
 - Content must contain ONLY factual study material the learner should read
 - REMOVE all: **bold markers**, ## markdown headings, bullet-point dashes, numbered-list prefixes, AI commentary, meta-text like "Here is...", "Let me explain...", prompt echoes, quiz questions/answers
@@ -164,6 +168,12 @@ CHUNK:
 
 VALID_PROFILES = {"dyslexia", "low_vision", "cognitive_load"}
 
+PROFILE_MAX_WORDS = {
+    "dyslexia": 100,
+    "cognitive_load": 100,
+    "low_vision": 140,
+}
+
 
 def _dyslexia_fallback(text: str) -> str:
     """Keep facts intact while making fallback text easier to scan."""
@@ -172,9 +182,11 @@ def _dyslexia_fallback(text: str) -> str:
 
 
 def _clean_section_text(text: str) -> str:
-    """Strip residual markdown / AI artefacts from a section's text."""
+    """Strip residual markdown / AI artefacts / CID artifacts from a section's text."""
     if not text:
         return text
+    # Remove PDF font-encoding artifacts like (cid:127) -> space
+    text = re.sub(r"\(cid:\d+\)", " ", text)
     # Remove bold markers  **text** → text
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
     # Remove italic markers  *text* → text  (single asterisks only)
@@ -193,6 +205,8 @@ def _clean_section_text(text: str) -> str:
         count=1,
         flags=re.IGNORECASE,
     )
+    # Clean multiple whitespace characters
+    text = re.sub(r"[ \t]+", " ", text)
     return text.strip()
 
 
@@ -303,26 +317,107 @@ def _parse_sections_response(raw_response: str) -> Optional[List[Dict[str, str]]
     return None
 
 
-def _fallback_sections(text: str) -> List[Dict[str, str]]:
-    """Build sections from paragraph splitting when LLM fails."""
+def _enforce_section_constraints(sections: List[Dict[str, str]], max_words: int) -> List[Dict[str, str]]:
+    """
+    Deterministic enforcement pass:
+    - Ensures each section's word count does not exceed max_words.
+    - If a section exceeds max_words, splits it at sentence boundaries (never mid-sentence).
+    - Appends '(Part 1)', '(Part 2)', etc., to the headings for split sections.
+    - Does NOT merge short sections together.
+    - Does NOT cap total section count.
+    """
+    enforced: List[Dict[str, str]] = []
+
+    for sec in sections:
+        heading = (sec.get("heading") or "Section").strip()
+        content = (sec.get("content") or "").strip()
+        words = content.split()
+
+        if len(words) <= max_words:
+            enforced.append({"heading": heading, "content": content})
+            continue
+
+        # Strip existing '(Part X)' if present to obtain base heading
+        base_heading = re.sub(r"\s*\(Part\s*\d+\)$", "", heading, flags=re.IGNORECASE).strip()
+
+        # Split content into sentences at sentence boundaries (never mid-sentence)
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", content) if s.strip()]
+        if not sentences:
+            sentences = [content]
+
+        parts: List[str] = []
+        current_sentences: List[str] = []
+        current_count = 0
+
+        for sentence in sentences:
+            s_words = len(sentence.split())
+            if current_count + s_words > max_words and current_sentences:
+                parts.append(" ".join(current_sentences))
+                current_sentences = [sentence]
+                current_count = s_words
+            else:
+                current_sentences.append(sentence)
+                current_count += s_words
+
+        if current_sentences:
+            parts.append(" ".join(current_sentences))
+
+        if len(parts) <= 1:
+            enforced.append({"heading": heading, "content": content})
+        else:
+            for idx, part in enumerate(parts, 1):
+                part_heading = f"{base_heading} (Part {idx})"
+                enforced.append({"heading": part_heading, "content": part})
+
+    import logging
+    logging.getLogger("adaptlearn").info(
+        f"Deterministic constraint pass: {len(enforced)} sections (max_words={max_words})"
+    )
+    return enforced
+
+
+def _fallback_sections(text: str, max_words: int = 100) -> List[Dict[str, str]]:
+    """Build sections from paragraph splitting when LLM fails, respecting max_words."""
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
     if len(paragraphs) <= 1:
         sentences = [s.strip() + "." for s in text.split(".") if s.strip()]
-        paragraphs = [" ".join(sentences[i:i+4]) for i in range(0, len(sentences), 4)]
-    # Merge small paragraphs until each chunk is ~120+ words or max 20 chunks
-    merged, buf, buf_words = [], [], 0
+        paragraphs = [" ".join(sentences[i:i+3]) for i in range(0, len(sentences), 3)]
+
+    merged: List[str] = []
+    buf: List[str] = []
+    buf_words = 0
+
     for para in paragraphs:
-        words = len(para.split())
-        buf.append(para)
-        buf_words += words
-        if buf_words >= 120 or len(merged) + 1 + (len(buf) > 0) >= 20:
+        para_words = len(para.split())
+        # If single paragraph exceeds max_words, split it at sentence boundaries
+        if para_words > max_words:
+            if buf:
+                merged.append("\n\n".join(buf))
+                buf, buf_words = [], 0
+            para_sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", para) if s.strip()]
+            sub_buf, sub_count = [], 0
+            for sent in para_sentences:
+                sent_words = len(sent.split())
+                if sub_count + sent_words > max_words and sub_buf:
+                    merged.append(" ".join(sub_buf))
+                    sub_buf, sub_count = [sent], sent_words
+                else:
+                    sub_buf.append(sent)
+                    sub_count += sent_words
+            if sub_buf:
+                merged.append(" ".join(sub_buf))
+            continue
+
+        if buf_words + para_words > max_words and buf:
             merged.append("\n\n".join(buf))
-            buf, buf_words = [], 0
-    if buf:
-        if merged:
-            merged[-1] += "\n\n" + "\n\n".join(buf)
+            buf, buf_words = [para], para_words
         else:
-            merged.append("\n\n".join(buf))
+            buf.append(para)
+            buf_words += para_words
+
+    if buf:
+        merged.append("\n\n".join(buf))
+
     fallback_chunks = merged if merged else [text]
 
     sections_list = []
@@ -339,20 +434,25 @@ def _fallback_sections(text: str) -> List[Dict[str, str]]:
 
 def transform_text(text: str, profile: str) -> Dict[str, Any]:
     """Transform text according to an accessibility profile."""
+    if profile not in PROFILE_MAX_WORDS:
+        raise ValueError("profile must be dyslexia, low_vision, or cognitive_load")
+
+    max_words = PROFILE_MAX_WORDS[profile]
+
     if profile == "low_vision":
-        # Use structured sections prompt for low_vision too
         sections_list = None
         if GROQ_API_KEY or VOICE_GROQ_API_KEY:
             try:
-                raw = call_llm(STRUCTURED_SECTIONS_PROMPT.format(text=text, profile="low_vision"))
+                raw = call_llm(STRUCTURED_SECTIONS_PROMPT.format(text=text, profile="low_vision", max_words=max_words))
                 sections_list = _parse_sections_response(raw)
             except Exception:
                 sections_list = None
 
         if not sections_list:
-            sections_list = _fallback_sections(text)
-        if len(sections_list) > 20:
-            sections_list = sections_list[:20]
+            sections_list = _fallback_sections(text, max_words=max_words)
+
+        # Deterministic enforcement pass
+        sections_list = _enforce_section_constraints(sections_list, max_words=max_words)
 
         chunks = [s["content"] for s in sections_list]
         chunk_meta = _build_chunk_meta(chunks, text)
@@ -371,22 +471,22 @@ def transform_text(text: str, profile: str) -> Dict[str, Any]:
                 "max_line_width": "42rem",
             },
         }
+
     if profile == "dyslexia":
-        # Use dyslexia-specific structured sections prompt
         sections_list = None
         if GROQ_API_KEY or VOICE_GROQ_API_KEY:
             try:
-                raw = call_llm(DYSLEXIA_PROMPT.format(text=text))
+                raw = call_llm(DYSLEXIA_PROMPT.format(text=text, max_words=max_words))
                 sections_list = _parse_sections_response(raw)
             except Exception:
                 sections_list = None
 
         if not sections_list:
-            # Fallback: dyslexia simplification then paragraph splitting
             rewritten = _dyslexia_fallback(text)
-            sections_list = _fallback_sections(rewritten)
-        if len(sections_list) > 20:
-            sections_list = sections_list[:20]
+            sections_list = _fallback_sections(rewritten, max_words=max_words)
+
+        # Deterministic enforcement pass
+        sections_list = _enforce_section_constraints(sections_list, max_words=max_words)
 
         chunks = [s["content"] for s in sections_list]
         chunk_meta = _build_chunk_meta(chunks, text)
@@ -404,31 +504,24 @@ def transform_text(text: str, profile: str) -> Dict[str, Any]:
                 "paragraph_spacing": "1.2rem",
             },
         }
+
     if profile == "cognitive_load":
         sections_list = None
-
-        # ── Try structured-sections LLM call ──────────────────────────────
         if GROQ_API_KEY or VOICE_GROQ_API_KEY:
             try:
-                raw = call_llm(STRUCTURED_SECTIONS_PROMPT.format(text=text, profile=profile))
+                raw = call_llm(STRUCTURED_SECTIONS_PROMPT.format(text=text, profile=profile, max_words=max_words))
                 sections_list = _parse_sections_response(raw)
             except Exception:
                 sections_list = None
 
-        # ── Fallback: auto-generate sections from paragraph splitting ─────
         if not sections_list:
-            sections_list = _fallback_sections(text)
+            sections_list = _fallback_sections(text, max_words=max_words)
 
-        # Hard cap at 20 sections
-        if len(sections_list) > 20:
-            sections_list = sections_list[:20]
+        # Deterministic enforcement pass
+        sections_list = _enforce_section_constraints(sections_list, max_words=max_words)
 
-        # Build backward-compatible chunks from section content
         chunks = [s["content"] for s in sections_list]
-
-        # ── Tag each chunk with difficulty + estimated reading time ────────
         chunk_meta = _build_chunk_meta(chunks, text)
-
 
         return {
             "profile": profile,
@@ -436,6 +529,7 @@ def transform_text(text: str, profile: str) -> Dict[str, Any]:
             "chunks": chunks if chunks else [text],
             "chunk_meta": chunk_meta,
         }
+
     raise ValueError("profile must be dyslexia, low_vision, or cognitive_load")
 
 
@@ -555,7 +649,11 @@ def generate_lesson_test(text: str, profile: str, question_count: int = 5) -> Li
 
 def chunks_for_quiz(transformed: Dict[str, Any]) -> List[str]:
     """Normalize a transformed result into quiz-ready chunks."""
-    return transformed["chunks"] if transformed["profile"] == "cognitive_load" else [transformed["text"]]
+    if transformed.get("chunks"):
+        return transformed["chunks"]
+    if transformed.get("sections"):
+        return [s["content"] for s in transformed["sections"]]
+    return [transformed.get("text", "")]
 
 
 def run_pipeline(text: str, profiles: List[str], quiz_limit: int = 3, tag_difficulty: bool = True) -> Dict[str, Any]:
