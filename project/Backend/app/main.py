@@ -14,6 +14,7 @@ from app.schemas import (
     PipelineRequest,
     LessonQuestionRequest,
     LessonTestRequest,
+    PracticeQuizRequest,
     PreferenceRequest,
     QuizRequest,
     RewireRequest,
@@ -35,6 +36,7 @@ from app.services.extraction import (
 from app.services.learning import (
     chunks_for_quiz,
     generate_adaptive_quiz,
+    generate_practice_quiz,
     generate_quiz,
     evaluate_quiz_answer,
     generate_lesson_test,
@@ -248,6 +250,16 @@ def evaluate_quiz(request: QuizEvaluationRequest) -> Dict[str, Any]:
 def lesson_test(request: LessonTestRequest) -> Dict[str, Any]:
     try:
         questions = generate_lesson_test(request.text, request.profile, request.question_count)
+        return {"questions": questions, "question_count": len(questions)}
+    except Exception as error:
+        _raise_http(error)
+
+
+@app.post("/api/practice-quiz")
+def practice_quiz(request: PracticeQuizRequest) -> Dict[str, Any]:
+    """Generate a full-lesson practice quiz to be taken after all sections are complete."""
+    try:
+        questions = generate_practice_quiz(request.text, request.profile, request.question_count)
         return {"questions": questions, "question_count": len(questions)}
     except Exception as error:
         _raise_http(error)

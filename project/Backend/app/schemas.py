@@ -164,3 +164,11 @@ class AdaptiveQuizResponse(BaseModel):
 class VisualResponse(BaseModel):
     spec: Dict[str, Any]
     image_base64: Optional[str] = None
+
+
+class PracticeQuizRequest(BaseModel):
+    """Request to generate a full-lesson practice quiz."""
+    text: str = Field(min_length=1, description="The full extracted lesson text")
+    profile: str = Field(default="cognitive_load", description="Learner profile")
+    question_count: int = Field(default=8, ge=3, le=15, description="Number of questions to generate")
+
