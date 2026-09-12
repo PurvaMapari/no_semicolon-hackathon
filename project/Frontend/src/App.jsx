@@ -15,6 +15,8 @@ import {
   generateQuiz,
   generateLessonTest,
   generateVisual,
+  getVisualClusters,
+  getClusterVisualCard,
   transformText,
   rewireContent,
   generateAdaptiveQuiz,
@@ -61,6 +63,9 @@ export function SessionProvider({ children }) {
     transformed: null,
     quizzes: [],
     visual: null,
+    visualClusters: [],
+    clusterVisuals: {},
+    selectedClusterId: null,
     completed: 0,
     completedSections: [],
     practiceReport: { answered: [], failed: [], masteredSections: [] },
@@ -100,6 +105,9 @@ export function SessionProvider({ children }) {
         transformed: null,
         quizzes: [],
         visual: null,
+        visualClusters: [],
+        clusterVisuals: {},
+        selectedClusterId: null,
         completed: 0,
         completedSections: [],
         practiceReport: { answered: [], failed: [], masteredSections: [] },
@@ -122,6 +130,9 @@ export function SessionProvider({ children }) {
       transformed: null,
       quizzes: [],
       visual: null,
+      visualClusters: [],
+      clusterVisuals: {},
+      selectedClusterId: null,
       completed: 0,
       completedSections: [],
       practiceReport: { answered: [], failed: [], masteredSections: [] },
@@ -140,6 +151,9 @@ export function SessionProvider({ children }) {
       transformed: null,
       quizzes: [],
       visual: null,
+      visualClusters: [],
+      clusterVisuals: {},
+      selectedClusterId: null,
     }));
   }
 
@@ -165,6 +179,9 @@ export function SessionProvider({ children }) {
         transformed: result,
         quizzes: [],
         visual: null,
+        visualClusters: [],
+        clusterVisuals: {},
+        selectedClusterId: null,
       }));
       return result;
     });
@@ -214,7 +231,71 @@ export function SessionProvider({ children }) {
     });
   }
 
-  async function getVisual() {
+  async function loadVisualClusters(sectionsList) {
+    if (!sectionsList || sectionsList.length === 0) return [];
+    return run("clusters", async () => {
+      const payload = sectionsList.map((sec, idx) => ({
+        index: idx,
+        heading: sec.heading || `Section ${idx + 1}`,
+        content: sec.paragraph || "",
+        word_count: (sec.paragraph || "").trim().split(/\s+/).length,
+      }));
+      const docId = session.fileName || "lesson";
+      const res = await getVisualClusters(payload, session.profile, docId);
+      const clusters = res?.clusters || [];
+      setSession((current) => ({
+        ...current,
+        visualClusters: clusters,
+      }));
+      return clusters;
+    });
+  }
+
+  async function loadClusterVisual(cluster, sectionsList) {
+    if (!cluster) return null;
+    if (session.clusterVisuals?.[cluster.cluster_id]) {
+      return session.clusterVisuals[cluster.cluster_id];
+    }
+    return run(`visual-${cluster.cluster_id}`, async () => {
+      const payload = (sectionsList || []).map((sec, idx) => ({
+        index: idx,
+        heading: sec.heading || `Section ${idx + 1}`,
+        content: sec.paragraph || "",
+        word_count: (sec.paragraph || "").trim().split(/\s+/).length,
+      }));
+      const docId = session.fileName || "lesson";
+      const card = await getClusterVisualCard(cluster, payload, session.profile, docId);
+      if (card) {
+        setSession((current) => ({
+          ...current,
+          clusterVisuals: {
+            ...current.clusterVisuals,
+            [cluster.cluster_id]: card,
+          },
+        }));
+      }
+      return card;
+    });
+  }
+
+  function setSelectedClusterId(clusterId) {
+    setSession((current) => ({
+      ...current,
+      selectedClusterId: clusterId,
+    }));
+  }
+
+  async function getVisual(sectionsList = null, activeSecIndex = 0) {
+    if (session.visualClusters && session.visualClusters.length > 0) {
+      const secIdx = typeof activeSecIndex === "number" ? activeSecIndex : 0;
+      const targetCluster =
+        session.visualClusters.find(
+          (c) => c.start_section_index <= secIdx && secIdx <= c.end_section_index
+        ) || session.visualClusters[0];
+      if (targetCluster) {
+        return await loadClusterVisual(targetCluster, sectionsList);
+      }
+    }
     return run("visual", async () => {
       const result = await generateVisual(session.text, session.profile);
       setSession((current) => ({ ...current, visual: result }));
@@ -444,6 +525,9 @@ export function SessionProvider({ children }) {
         evaluateAnswer,
         getWholeTest,
         getVisual,
+        loadVisualClusters,
+        loadClusterVisual,
+        setSelectedClusterId,
         ask,
         completeChunk,
         completeSection,
@@ -1166,7 +1250,7 @@ function Profile() {
   );
 }
 
-function VisualCard({ visual, onReadAloud }) {
+function VisualCard({ visual, cluster = null, sections = [], onReadAloud }) {
   if (!visual) return null;
 
   const {
@@ -1181,7 +1265,27 @@ function VisualCard({ visual, onReadAloud }) {
     source_images = [],
     spec          = {},
     error         = null,
+    covers_label  = "",
+    start_section_index = null,
+    end_section_index   = null,
   } = visual;
+
+  const [expandedSections, setExpandedSections] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
+
+  // Compute coverage label
+  const coverageText = covers_label || (
+    start_section_index !== null && end_section_index !== null
+      ? `Covers: Sections ${start_section_index + 1}–${end_section_index + 1}`
+      : ""
+  );
+
+  // Filter sections that this visual covers
+  const startIndex = start_section_index ?? cluster?.start_section_index ?? null;
+  const endIndex = end_section_index ?? cluster?.end_section_index ?? null;
+  const coveredSections = (Array.isArray(sections) && startIndex !== null && endIndex !== null)
+    ? sections.slice(startIndex, endIndex + 1)
+    : [];
 
   if (error) {
     return (
@@ -1195,16 +1299,58 @@ function VisualCard({ visual, onReadAloud }) {
   }
 
   return (
-    <section className="card" style={{ marginTop: 16, padding: 20 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
+    <section className="card prism-visual-card" style={{ marginTop: 16, padding: 22 }}>
+      <div className="prism-visual-card-header">
         <div style={{ flex: 1 }}>
-          <span className="pill" style={{ background: source === "pdf" ? "#fef3c7" : "var(--primary-light)", color: source === "pdf" ? "#92400e" : "var(--primary)", marginBottom: 6 }}>
-            {source === "pdf" ? "SOURCE VISUAL" : "EDUCATIONAL INFOGRAPHIC"}
-          </span>
-          {title && <h2 style={{ fontFamily: "var(--font-heading)", fontSize: 18, margin: "4px 0 0", color: "var(--ink)" }}>{title}</h2>}
-          {subtitle && <p style={{ fontSize: 13, color: "var(--muted)", margin: "4px 0 0" }}>{subtitle}</p>}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+            <span className="pill" style={{ background: source === "pdf" ? "#fef3c7" : "var(--primary-light)", color: source === "pdf" ? "#92400e" : "var(--primary)", fontWeight: 700 }}>
+              {source === "pdf" ? "SOURCE VISUAL" : "PRISM CONCEPT VISUAL"}
+            </span>
+            {coverageText && (
+              <span className="pill visual-coverage-pill">
+                <I.Layers size={12} style={{ marginRight: 4 }} />
+                {coverageText}
+              </span>
+            )}
+            {(cluster?.suggested_visual_type || visual_type) && visual_type !== "none" && (
+              <span className="pill" style={{ background: "#f1f5f9", color: "#475569", textTransform: "capitalize", fontWeight: 600 }}>
+                {(cluster?.suggested_visual_type || visual_type).replace(/_/g, " ")}
+              </span>
+            )}
+          </div>
+          {title && <h2 style={{ fontFamily: "var(--font-heading)", fontSize: 19, margin: "6px 0 2px", color: "var(--ink)" }}>{title}</h2>}
+          {subtitle && <p style={{ fontSize: 13, color: "var(--muted)", margin: "2px 0 0" }}>{subtitle}</p>}
         </div>
       </div>
+
+      {coveredSections.length > 0 && (
+        <div className="covered-sections-dropdown-container">
+          <button
+            type="button"
+            className="covered-sections-toggle-btn"
+            onClick={() => setExpandedSections(!expandedSections)}
+            aria-expanded={expandedSections}
+          >
+            <span>
+              <strong>{coveredSections.length}</strong> sections synthesized in this visual
+            </span>
+            {expandedSections ? <I.ChevronUp size={15} /> : <I.ChevronDown size={15} />}
+          </button>
+          {expandedSections && (
+            <ul className="covered-sections-list">
+              {coveredSections.map((sec, sIdx) => {
+                const secNum = (startIndex ?? 0) + sIdx + 1;
+                return (
+                  <li key={sIdx} className="covered-sections-item">
+                    <span className="covered-sec-badge">Section {secNum}</span>
+                    <span className="covered-sec-heading">{sec.heading || `Concept Part ${sIdx + 1}`}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
 
       <VisualInfographic
         spec={spec}
@@ -1213,41 +1359,71 @@ function VisualCard({ visual, onReadAloud }) {
         onReadAloud={onReadAloud}
       />
 
-      {explanation && (
-        <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border-color)" }}>
-          <b style={{ fontSize: 12, fontWeight: 800, color: "var(--primary)", textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: 6 }}>
-            <I.Lightbulb size={14} /> Understand It
-          </b>
-          <p style={{ fontSize: 14, lineHeight: 1.6, color: "#334155", marginTop: 4 }}>{explanation}</p>
-        </div>
-      )}
+      {/* Secondary Reference Notes: Understand It & Key Takeaways */}
+      {(explanation || (key_takeaways && key_takeaways.length > 0)) && (
+        <div className="visual-secondary-notes">
+          <button
+            type="button"
+            className="visual-secondary-notes-summary"
+            onClick={() => setShowNotes(!showNotes)}
+            style={{ width: "100%", border: "none", cursor: "pointer" }}
+            aria-expanded={showNotes}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <I.BookOpen size={15} color="#4f46e5" />
+              <span style={{ fontWeight: 700, color: "#1e293b", fontSize: 13 }}>
+                Detailed Concept Notes & Key Takeaways
+              </span>
+              <span style={{ fontSize: 11, color: "#64748b", fontWeight: 500 }}>
+                {showNotes ? "(click to collapse)" : "(click to view)"}
+              </span>
+            </div>
+            {showNotes ? <I.ChevronUp size={16} color="#64748b" /> : <I.ChevronDown size={16} color="#64748b" />}
+          </button>
 
-      {key_takeaways.length > 0 && (
-        <div style={{ marginTop: 12 }}>
-          <b style={{ fontSize: 12, fontWeight: 800, color: "var(--primary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Key Takeaways</b>
-          <ul style={{ marginTop: 6, paddingLeft: 20 }}>
-            {key_takeaways.map((t, i) => (
-              <li key={i} style={{ fontSize: 13, color: "#334155", marginBottom: 4, lineHeight: 1.5 }}>{t}</li>
-            ))}
-          </ul>
-        </div>
-      )}
+          {showNotes && (
+            <div className="visual-secondary-notes-body">
+              {explanation && (
+                <div>
+                  <b style={{ fontSize: 12, fontWeight: 800, color: "var(--primary)", textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: 6 }}>
+                    <I.Lightbulb size={14} /> Understand It
+                  </b>
+                  <p style={{ fontSize: 13.5, lineHeight: 1.6, color: "#334155", marginTop: 4 }}>{explanation}</p>
+                </div>
+              )}
 
-      {why_visual && (
-        <div className="visual-description-box" style={{ marginTop: 12 }}>
-          <span style={{ fontWeight: 700, color: "#854d0e" }}>Why this infographic? </span>
-          <span style={{ color: "#713f12" }}>{why_visual}</span>
-        </div>
-      )}
+              {key_takeaways && key_takeaways.length > 0 && (
+                <div style={{ marginTop: 14 }}>
+                  <b style={{ fontSize: 12, fontWeight: 800, color: "var(--primary)", textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: 6 }}>
+                    <I.CheckCircle2 size={14} /> Key Takeaways
+                  </b>
+                  <ul style={{ marginTop: 6, paddingLeft: 20 }}>
+                    {key_takeaways.map((t, i) => (
+                      <li key={i} style={{ fontSize: 13, color: "#334155", marginBottom: 4, lineHeight: 1.5 }}>{t}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
-      {explanation && (
-        <button
-          className="secondary-action"
-          style={{ marginTop: 14, fontSize: 12, padding: "8px 14px" }}
-          onClick={() => onReadAloud && onReadAloud(explanation + " " + key_takeaways.join(". "))}
-        >
-          <I.Volume2 size={14} /> Read explanation
-        </button>
+              {why_visual && (
+                <div className="visual-description-box" style={{ marginTop: 14 }}>
+                  <span style={{ fontWeight: 700, color: "#854d0e" }}>Why this infographic? </span>
+                  <span style={{ color: "#713f12" }}>{why_visual}</span>
+                </div>
+              )}
+
+              {explanation && (
+                <button
+                  className="secondary-action"
+                  style={{ marginTop: 14, fontSize: 12, padding: "8px 14px", display: "inline-flex", alignItems: "center", gap: 6 }}
+                  onClick={() => onReadAloud && onReadAloud(explanation + " " + (key_takeaways || []).join(". "))}
+                >
+                  <I.Volume2 size={14} /> Read explanation aloud
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       )}
     </section>
   );
@@ -1398,6 +1574,9 @@ function Learn() {
     adapt,
     ask,
     getVisual,
+    loadVisualClusters,
+    loadClusterVisual,
+    setSelectedClusterId,
     completeChunk,
     completeSection,
     recordRereadAction,
@@ -1578,6 +1757,31 @@ function Learn() {
   const formatting = transformed?.formatting || {};
   const completedSections = session.completedSections || [];
   const isComplete = completedSections.includes(activeSection);
+
+  // ── Visual Concept Clusters ────────────────────────────────────────────────
+  const clusters = session.visualClusters || [];
+
+  // Find cluster covering the active reading section
+  const currentSectionCluster = clusters.find(
+    (c) => c.start_section_index <= activeSection && activeSection <= c.end_section_index
+  ) || null;
+
+  // Selected cluster tab (if manually chosen by user, otherwise follows current reading section)
+  const activeCluster = (session.selectedClusterId
+    ? clusters.find((c) => c.cluster_id === session.selectedClusterId)
+    : null) || currentSectionCluster || clusters[0] || null;
+
+  // Auto-fetch clusters when sections become available
+  useEffect(() => {
+    if (sections.length > 0 && (!session.visualClusters || session.visualClusters.length === 0) && busy !== "clusters") {
+      loadVisualClusters(sections);
+    }
+  }, [sections.length, session.visualClusters?.length, busy]);
+
+  // When reading section changes, reset manual cluster override so visual follows learner's active section
+  useEffect(() => {
+    setSelectedClusterId(null);
+  }, [activeSection]);
 
   // Get difficulty and estimated time from section metadata (needed for SCALE evaluation)
   const sectionDifficulty = currentSection?.meta?.difficulty_tier || "intermediate";
@@ -1934,16 +2138,183 @@ function Learn() {
                 className="secondary-action"
                 style={{ flex: 1 }}
                 disabled={Boolean(busy)}
-                onClick={getVisual}
+                onClick={() => {
+                  if (activeCluster) {
+                    loadClusterVisual(activeCluster, sections);
+                  } else {
+                    getVisual(sections, activeSection);
+                  }
+                }}
               >
                 <I.PieChart size={15} />
-                {busy === "visual" ? "Building infographic…" : "Generate Visual Infographic"}
+                {busy && busy.startsWith("visual")
+                  ? "Synthesizing visual…"
+                  : session.clusterVisuals?.[activeCluster?.cluster_id]
+                    ? "Visual Ready Below"
+                    : `Generate Visual for ${activeCluster?.title || "Current Concept"}`}
               </button>
             </div>
 
-            {/* Visual result */}
-            {session.visual && (
-              <VisualCard visual={session.visual} onReadAloud={(text) => readAloud(text)} />
+            {/* ── Persistent Visual Understanding Panel ──────────────────────────────── */}
+            {(clusters.length > 0 || session.visual || busy === "clusters") && (
+              <section className="visual-understanding-panel card" style={{ marginTop: 22, padding: 22 }}>
+                <div className="visual-panel-header">
+                  <div className="visual-panel-header-left">
+                    <div className="visual-panel-icon-badge">
+                      <I.Eye size={20} />
+                    </div>
+                    <div>
+                      <h3 className="visual-panel-title">
+                        Visual Concept Maps
+                      </h3>
+                      <span className="visual-panel-subtitle">
+                        {clusters.length > 0
+                          ? `${clusters.length} visual cluster${clusters.length > 1 ? "s" : ""} synthesized for this lesson`
+                          : "Lesson Infographic"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {activeCluster && currentSectionCluster && activeCluster.cluster_id !== currentSectionCluster.cluster_id && (
+                    <button
+                      type="button"
+                      className="text-action visual-sync-btn"
+                      onClick={() => setSelectedClusterId(null)}
+                      title={`Sync back to current reading section ${activeSection + 1}`}
+                    >
+                      <I.Crosshair size={14} />
+                      <span>Back to Section {activeSection + 1} Visual ({currentSectionCluster.covers_label})</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Horizontal Cluster Tabs */}
+                {clusters.length > 0 && (
+                  <div className="visual-cluster-strip" role="tablist" aria-label="Visual Concept Clusters">
+                    {clusters.map((cluster, cIdx) => {
+                      const isCurrentMatch = currentSectionCluster?.cluster_id === cluster.cluster_id;
+                      const isSelected = activeCluster?.cluster_id === cluster.cluster_id;
+                      const isLoaded = Boolean(session.clusterVisuals?.[cluster.cluster_id]);
+
+                      return (
+                        <button
+                          key={cluster.cluster_id}
+                          type="button"
+                          role="tab"
+                          aria-selected={isSelected}
+                          className={`visual-cluster-tab ${isSelected ? "selected" : ""} ${isCurrentMatch ? "current-match" : ""}`}
+                          onClick={() => setSelectedClusterId(cluster.cluster_id)}
+                        >
+                          <div className="cluster-tab-top">
+                            <span className="cluster-number">Visual {cIdx + 1}</span>
+                            {isCurrentMatch && (
+                              <span className="cluster-current-tag">
+                                <span className="cluster-pulse-dot" /> Active
+                              </span>
+                            )}
+                            {isLoaded && !isCurrentMatch && (
+                              <span className="cluster-loaded-tag">
+                                <I.Check size={11} /> Ready
+                              </span>
+                            )}
+                          </div>
+                          <div className="cluster-tab-title" title={cluster.title}>
+                            {cluster.title}
+                          </div>
+                          <div className="cluster-tab-coverage">
+                            {cluster.covers_label}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Loading state for clusters discovery */}
+                {busy === "clusters" && clusters.length === 0 && (
+                  <div className="visual-loading-box">
+                    <I.Loader2 className="spinner" size={24} />
+                    <p style={{ marginTop: 10, fontWeight: 600, color: "var(--ink)" }}>
+                      Analyzing lesson concepts and creating visual clusters…
+                    </p>
+                  </div>
+                )}
+
+                {/* Visual Card / Loading / Preview for active cluster */}
+                <div className="visual-cluster-content">
+                  {busy === `visual-${activeCluster?.cluster_id}` ? (
+                    <div className="visual-loading-box">
+                      <I.Loader2 className="spinner" size={26} />
+                      <p style={{ marginTop: 12, fontWeight: 700, color: "var(--ink)" }}>
+                        Synthesizing concept visual for {activeCluster?.title}…
+                      </p>
+                      <span style={{ fontSize: 13, color: "var(--muted)" }}>
+                        Covering {activeCluster?.covers_label} ({activeCluster?.sections_count} sections) into a unified visual
+                      </span>
+                    </div>
+                  ) : activeCluster && session.clusterVisuals?.[activeCluster.cluster_id] ? (
+                    <VisualCard
+                      visual={session.clusterVisuals[activeCluster.cluster_id]}
+                      cluster={activeCluster}
+                      sections={sections}
+                      onReadAloud={(text) => readAloud(text)}
+                    />
+                  ) : activeCluster ? (
+                    <div className="visual-preview-card">
+                      <div className="visual-preview-header">
+                        <span className="pill visual-coverage-pill">
+                          <I.Layers size={12} style={{ marginRight: 4 }} />
+                          {activeCluster.covers_label}
+                        </span>
+                        <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>
+                          {activeCluster.sections_count} sections in this visual
+                        </span>
+                      </div>
+
+                      <h4 className="visual-preview-title">
+                        {activeCluster.title}
+                      </h4>
+                      <p className="visual-preview-subtitle">
+                        {activeCluster.subtitle}
+                      </p>
+
+                      <div className="covered-sections-preview">
+                        <span className="covered-sections-preview-label">
+                          Sections Synthesized in this Visual:
+                        </span>
+                        <div className="covered-sections-chips">
+                          {sections
+                            .slice(activeCluster.start_section_index, activeCluster.end_section_index + 1)
+                            .map((sec, sIdx) => {
+                              const secNum = activeCluster.start_section_index + sIdx + 1;
+                              return (
+                                <div key={sIdx} className="covered-section-chip">
+                                  <span className="chip-num">#{secNum}</span>
+                                  <span className="chip-text">{sec.heading || `Concept Part ${sIdx + 1}`}</span>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="primary-action visual-generate-cluster-btn"
+                        disabled={Boolean(busy)}
+                        onClick={() => loadClusterVisual(activeCluster, sections)}
+                      >
+                        <I.Sparkles size={16} /> Generate Concept Visual for {activeCluster.title}
+                      </button>
+                    </div>
+                  ) : session.visual ? (
+                    <VisualCard
+                      visual={session.visual}
+                      sections={sections}
+                      onReadAloud={(text) => readAloud(text)}
+                    />
+                  ) : null}
+                </div>
+              </section>
             )}
 
             <ErrorNotice />

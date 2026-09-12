@@ -23,6 +23,10 @@ from app.schemas import (
     StruggleScoreResponse,
     TransformRequest,
     VisualCardResponse,
+    VisualClustersRequest,
+    VisualClustersResponse,
+    ClusterVisualCardRequest,
+    ClusterVisualCardResponse,
     VisualRequest,
     VoiceRequest,
 )
@@ -45,7 +49,11 @@ from app.services.learning import (
     voice_ask,
     answer_lesson_question,
 )
-from app.services.visuals import render_full_visual_card
+from app.services.visuals import (
+    render_full_visual_card,
+    cluster_sections,
+    generate_cluster_visual_card,
+)
 
 
 app = FastAPI(
@@ -217,6 +225,31 @@ def visual(request: VisualRequest) -> VisualCardResponse:
             spec=card.get("spec", {}),
             error=card.get("error"),
         )
+    except Exception as error:
+        _raise_http(error)
+
+
+@app.post("/api/visual/clusters", response_model=VisualClustersResponse)
+def get_visual_clusters(request: VisualClustersRequest) -> VisualClustersResponse:
+    """Group structured sections into 2-8 logical concept clusters."""
+    try:
+        clusters = cluster_sections(request.sections, request.profile, request.doc_id or "")
+        return VisualClustersResponse(clusters=clusters)
+    except Exception as error:
+        _raise_http(error)
+
+
+@app.post("/api/visual/cluster-card", response_model=ClusterVisualCardResponse)
+def get_cluster_visual_card(request: ClusterVisualCardRequest) -> ClusterVisualCardResponse:
+    """Generate or retrieve cached visual card for a specific concept cluster."""
+    try:
+        card = generate_cluster_visual_card(
+            cluster=request.cluster.model_dump(),
+            all_sections=request.sections,
+            profile=request.profile,
+            doc_id=request.doc_id or "",
+        )
+        return ClusterVisualCardResponse(**card)
     except Exception as error:
         _raise_http(error)
 

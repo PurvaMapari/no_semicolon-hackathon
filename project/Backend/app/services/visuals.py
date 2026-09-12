@@ -979,19 +979,33 @@ def render_visual_spec(spec: Dict[str, Any], profile: str) -> Optional[str]:
 # ──────────────────────────────────────────────────────────────────────────────
 # SPEC GENERATION + VALIDATION
 # ──────────────────────────────────────────────────────────────────────────────
-def _coerce_nodes(raw_nodes: Any) -> List[Dict[str, str]]:
-    """Accept both old-style string nodes and new-style dict nodes."""
-    result: List[Dict[str, str]] = []
+def _coerce_nodes(raw_nodes: Any) -> List[Dict[str, Any]]:
+    """Accept both old-style string nodes and new-style dict nodes, preserving semantic metadata."""
+    result: List[Dict[str, Any]] = []
     if not isinstance(raw_nodes, list):
         return result
     for item in raw_nodes:
         if isinstance(item, str):
-            result.append({"id": f"n{len(result)}", "label": item, "description": ""})
+            result.append({
+                "id": f"n{len(result)}",
+                "label": item,
+                "description": "",
+                "semantic_type": "default",
+                "role": "concept",
+                "icon": "",
+                "group": "",
+                "items": [],
+            })
         elif isinstance(item, dict):
             result.append({
-                "id":          str(item.get("id", f"n{len(result)}")),
-                "label":       str(item.get("label", item.get("name", ""))),
-                "description": str(item.get("description", "")),
+                "id":            str(item.get("id", f"n{len(result)}")),
+                "label":         str(item.get("label", item.get("name", ""))),
+                "description":   str(item.get("description", "")),
+                "semantic_type": str(item.get("semantic_type", "default")),
+                "role":          str(item.get("role", "concept")),
+                "icon":          str(item.get("icon", "")),
+                "group":         str(item.get("group", "")),
+                "items":         item.get("items", []) if isinstance(item.get("items"), list) else [],
             })
     return result
 
@@ -1011,10 +1025,11 @@ def _coerce_connections(raw: Any, nodes: List[Dict]) -> List[Dict[str, str]]:
             except (ValueError, TypeError):
                 pass
         elif isinstance(item, dict):
+            lbl = str(item.get("label") or item.get("relationship") or item.get("verb") or "").strip()
             result.append({
                 "from":  str(item.get("from", "")),
                 "to":    str(item.get("to", "")),
-                "label": str(item.get("label", item.get("relationship", ""))),
+                "label": lbl,
             })
     return result
 
@@ -1115,3 +1130,365 @@ def render_full_visual_card(
         "visual_type":   spec.get("visual_type", "none"),
         "error":         spec.get("error"),
     }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CONCEPT CLUSTERING & CLUSTER-LEVEL VISUALS
+# ──────────────────────────────────────────────────────────────────────────────
+
+_VISUAL_CLUSTER_CACHE: Dict[str, Dict[str, Any]] = {}
+
+CLUSTER_SECTIONS_PROMPT = """\
+You are an expert educational curriculum architect.
+Analyze the sequential lesson sections below and group them into logical, contiguous concept clusters.
+
+RULES:
+- Every section must belong to exactly ONE cluster.
+- Clusters must cover contiguous section index ranges from 0 to {max_index} with NO gaps and NO overlaps.
+- Group based on semantic topic shifts, major subheadings, and prerequisite relationships.
+- Do NOT group by an arbitrary number like 'every 10 sections'. A cluster may contain 3, 5, 8, 15, or more sections depending on coherent content.
+- Typically 2 to 8 clusters total, matching the natural phases of the lesson.
+- Provide a clear, educational title for each cluster (e.g. "OOP Foundations", "Encapsulation & Abstraction", "Inheritance & Polymorphism").
+- Provide a short 1-sentence subtitle explaining what the cluster covers.
+
+Return STRICT JSON only matching this schema:
+{{
+  "clusters": [
+    {{
+      "cluster_id": "c1",
+      "title": "Topic Cluster Title",
+      "subtitle": "One sentence describing this concept cluster",
+      "start_index": 0,
+      "end_index": 3,
+      "rationale": "Brief reason for grouping"
+    }}
+  ]
+}}
+
+SECTIONS LIST:
+{sections_summary}
+"""
+
+CLUSTER_VISUAL_SPEC_PROMPT = """\
+You are PRISM, an expert educational visual architect embedded in an adaptive learning platform.
+
+Your goal: Design ONE high-impact educational infographic diagram where the DIAGRAM ITSELF DIRECTLY TEACHES THE RELATIONSHIPS at a glance within 3–5 seconds.
+
+Do NOT make a generic list or a uniform grid of cards. The visual must answer:
+- "What is the central / main concept?"
+- "How are the concepts connected?"
+- "What leads to what / what depends on what / what implements what?"
+
+CLUSTER: {cluster_title} ({covers_label})
+CLUSTER FOCUS: {cluster_subtitle}
+PROFILE: {profile}
+
+PROFILE CONSTRAINTS:
+  dyslexia       → concise node labels (≤4 words), clean visual spacing, max 6 nodes, high clarity
+  cognitive_load → single clear flow or hierarchy, max 5 nodes, step-by-step logic
+  low_vision     → bold high-contrast labels, strong directional indicators, max 6 nodes
+
+VISUAL GRAMMAR SELECTION (Choose the most natural fit for this content):
+  hierarchy   → Top-down conceptual hierarchy or contract/implementation pipeline:
+                E.g.: ROOT CONCEPT (dominant) → [hides complexity] → INTERFACE/CONTRACT → [defines contract] → IMPLEMENTATIONS → [yields] → INTERCHANGEABLE CODE
+  process     → Sequential pipeline (Stage 1 → [transforms] → Stage 2 → [produces] → Final Output)
+  concept_map → Central dominant concept hub radiating to distinct dimensions/pillars with labeled outbound arrows
+  cause_effect→ Causes/Triggers → [drives mechanism] → Direct Consequences/Outcomes
+  comparison  → Side-by-side contrast between two opposing approaches or paradigms
+  cycle       → Closed recurring loop (A → B → C → A)
+
+CRITICAL DIAGRAM RULES:
+  1. DOMINANT CENTRAL CONCEPT: Clearly identify the central/root concept in "central_concept". It should be the visually dominant focal point.
+  2. DIRECTIONAL CONNECTOR LABELS: Every connection MUST have a short, informative relationship verb or phrase!
+     Examples: "hides complexity", "defines contract", "implemented by", "leads to", "depends on", "contains", "encapsulates", "produces", "enables".
+     Do NOT leave connector labels blank!
+  3. COMPACT & FOCUSED: Keep node labels short (2 to 4 words max). Use 4 to 7 nodes total.
+
+Return STRICT JSON only matching this schema:
+{{
+  "should_visualize": true,
+  "visual_type": "hierarchy",
+  "title": "Short descriptive title (max 6 words)",
+  "subtitle": "Clear relationship summary phrase",
+  "central_concept": "Label of the dominant core concept node",
+  "explanation": "2-3 plain sentences explaining the diagram relationships. Grounded ONLY in the lesson.",
+  "key_takeaways": ["Takeaway 1", "Takeaway 2", "Takeaway 3"],
+  "why_visual": "1-sentence reason this diagram structure clarifies the concept.",
+  "nodes": [
+    {{
+      "id": "n1",
+      "label": "Short label",
+      "description": "Optional 1-line note",
+      "semantic_type": "process",
+      "role": "root"
+    }}
+  ],
+  "connections": [
+    {{
+      "from": "n1",
+      "to": "n2",
+      "label": "hides complexity"
+    }}
+  ],
+  "data": []
+}}
+
+SECTIONS IN THIS CLUSTER:
+{sections_text}
+"""
+
+
+def _heuristic_cluster_sections(sections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Deterministic fallback: groups sections by natural heading patterns or ~4-7 section windows."""
+    n = len(sections)
+    if n == 0:
+        return []
+    if n <= 3:
+        first_h = sections[0].get("heading") or "Lesson Concepts"
+        first_h = re.sub(r"\s*\(Part\s*\d+\)$", "", first_h, flags=re.IGNORECASE).strip()
+        return [{
+            "cluster_id": "cluster_0",
+            "title": first_h or "Lesson Overview",
+            "subtitle": "Core concepts and overview",
+            "start_section_index": 0,
+            "end_section_index": n - 1,
+            "covers_label": f"Sections 1–{n}" if n > 1 else "Section 1",
+            "section_headings": [s.get("heading") or f"Section {i+1}" for i, s in enumerate(sections)],
+            "rationale": "Single concept group for short lesson",
+        }]
+
+    # Target 2 to 8 clusters, each approx 3-8 sections depending on length
+    target_cluster_size = max(3, min(8, math.ceil(n / 4)))
+    clusters = []
+    start = 0
+    c_idx = 0
+    while start < n:
+        end = min(start + target_cluster_size - 1, n - 1)
+        # If remaining sections after end is only 1 or 2, absorb them into current cluster
+        if n - 1 - end <= 2:
+            end = n - 1
+
+        chunk_secs = sections[start : end + 1]
+        first_heading = chunk_secs[0].get("heading") or f"Part {c_idx + 1}"
+        clean_title = re.sub(r"^\d+[\.\)]\s*", "", first_heading)
+        clean_title = re.sub(r"\s*\(Part\s*\d+\)$", "", clean_title, flags=re.IGNORECASE).strip() or f"Concept Phase {c_idx + 1}"
+
+        covers = f"Sections {start+1}–{end+1}" if end > start else f"Section {start+1}"
+        clusters.append({
+            "cluster_id": f"cluster_{c_idx}",
+            "title": clean_title,
+            "subtitle": f"Key concepts across {covers.lower()}",
+            "start_section_index": start,
+            "end_section_index": end,
+            "sections_count": end - start + 1,
+            "covers_label": covers,
+            "section_headings": [s.get("heading") or f"Section {start + j + 1}" for j, s in enumerate(chunk_secs)],
+            "rationale": "Semantic boundary grouping",
+        })
+        c_idx += 1
+        start = end + 1
+
+    return clusters
+
+
+def cluster_sections(
+    sections: List[Dict[str, Any]],
+    profile: str = "cognitive_load",
+    doc_id: str = "",
+) -> List[Dict[str, Any]]:
+    """Group sections into 2-8 logical concept clusters."""
+    if not sections:
+        return []
+    n = len(sections)
+    if n <= 3:
+        return _heuristic_cluster_sections(sections)
+
+    # Prepare lightweight summary of sections for LLM (headings + first 80 chars)
+    summary_lines = []
+    for idx, s in enumerate(sections):
+        h = s.get("heading") or f"Section {idx+1}"
+        content = s.get("content") or s.get("paragraph") or ""
+        gist = content[:90].replace("\n", " ").strip()
+        summary_lines.append(f"[{idx}] {h} -- {gist}")
+
+    sections_summary = "\n".join(summary_lines)
+    prompt = CLUSTER_SECTIONS_PROMPT.format(max_index=n - 1, sections_summary=sections_summary)
+
+    try:
+        raw = call_visual_llm(prompt)
+        parsed = parse_json_response(raw)
+        raw_clusters = parsed.get("clusters") if isinstance(parsed, dict) else None
+        if isinstance(raw_clusters, list) and len(raw_clusters) >= 2:
+            validated: List[Dict[str, Any]] = []
+            expected_start = 0
+            for i, rc in enumerate(raw_clusters):
+                s_idx = expected_start
+                e_idx = int(rc.get("end_index", s_idx))
+                if e_idx < s_idx:
+                    e_idx = s_idx
+                if i == len(raw_clusters) - 1 or e_idx >= n - 1:
+                    e_idx = n - 1
+
+                chunk_secs = sections[s_idx : e_idx + 1]
+                covers = f"Sections {s_idx+1}–{e_idx+1}" if e_idx > s_idx else f"Section {s_idx+1}"
+                title = str(rc.get("title") or f"Concept Cluster {i+1}").strip()
+                subtitle = str(rc.get("subtitle") or "").strip()
+
+                validated.append({
+                    "cluster_id": f"cluster_{i}",
+                    "title": title,
+                    "subtitle": subtitle,
+                    "start_section_index": s_idx,
+                    "end_section_index": e_idx,
+                    "sections_count": e_idx - s_idx + 1,
+                    "covers_label": covers,
+                    "section_headings": [s.get("heading") or f"Section {s_idx + j + 1}" for j, s in enumerate(chunk_secs)],
+                    "rationale": str(rc.get("rationale", "")),
+                })
+                expected_start = e_idx + 1
+                if expected_start >= n:
+                    break
+
+            if validated and validated[-1]["end_section_index"] == n - 1:
+                return validated
+    except Exception as exc:
+        print(f"[cluster_sections] LLM clustering error: {exc}")
+
+    return _heuristic_cluster_sections(sections)
+
+
+def generate_cluster_visual_card(
+    cluster: Dict[str, Any],
+    all_sections: List[Dict[str, Any]],
+    profile: str = "cognitive_load",
+    doc_id: str = "",
+) -> Dict[str, Any]:
+    """Generate or retrieve cached visual card for a specific concept cluster."""
+    cid = cluster.get("cluster_id", "cluster_0")
+    cache_key = f"{doc_id}_{profile}_{cid}"
+    if cache_key in _VISUAL_CLUSTER_CACHE:
+        return _VISUAL_CLUSTER_CACHE[cache_key]
+
+    s_start = int(cluster.get("start_section_index", 0))
+    s_end = int(cluster.get("end_section_index", len(all_sections) - 1))
+    cluster_sections = all_sections[s_start : s_end + 1]
+    if not cluster_sections:
+        cluster_sections = all_sections
+
+    lines = []
+    for idx, s in enumerate(cluster_sections, start=s_start + 1):
+        h = s.get("heading") or f"Section {idx}"
+        content = s.get("content") or s.get("paragraph") or ""
+        lines.append(f"### Section {idx}: {h}\n{content[:350]}")
+    sections_text = "\n\n".join(lines)
+
+    prompt = CLUSTER_VISUAL_SPEC_PROMPT.format(
+        cluster_title=cluster.get("title", "Concept Cluster"),
+        cluster_subtitle=cluster.get("subtitle", ""),
+        covers_label=cluster.get("covers_label", f"Sections {s_start+1}–{s_end+1}"),
+        profile=profile,
+        sections_text=sections_text,
+    )
+
+    try:
+        raw = call_visual_llm(prompt)
+        spec = parse_json_response(raw)
+    except Exception as exc:
+        spec = {"error": f"Visual planner error: {exc}"}
+
+    if not isinstance(spec, dict):
+        spec = {"error": "Visual response was not a JSON object."}
+
+    vtype = spec.get("visual_type", "concept_map")
+    if vtype not in VALID_TYPES:
+        vtype = "concept_map"
+        spec["visual_type"] = vtype
+
+    spec["nodes"] = _coerce_nodes(spec.get("nodes", []))
+    spec["connections"] = _coerce_connections(
+        spec.get("connections", spec.get("edges", [])), spec["nodes"]
+    )
+
+    # Resilient fallback: if LLM failed or returned no nodes, construct relational spec from cluster headings
+    if not spec.get("nodes") or len(spec["nodes"]) < 2:
+        c_title = cluster.get("title", "Core Concept")
+        headings = [s.get("heading") for s in cluster_sections if s.get("heading")]
+        if not headings:
+            headings = [f"Part {i+1}" for i in range(min(len(cluster_sections), 4))]
+        
+        fb_nodes = [{
+            "id": "n0",
+            "label": c_title,
+            "description": f"Dominant concept governing {cluster.get('covers_label', 'these sections')}",
+            "semantic_type": "core",
+            "role": "root",
+            "icon": "Layers",
+            "group": "",
+            "items": [],
+        }]
+        fb_conns = []
+        for hi, h in enumerate(headings[:4], start=1):
+            nid = f"n{hi}"
+            fb_nodes.append({
+                "id": nid,
+                "label": h,
+                "description": f"Key component in {cluster.get('covers_label', 'section')}",
+                "semantic_type": "concept",
+                "role": "concept",
+                "icon": "Box",
+                "group": "",
+                "items": [],
+            })
+            fb_conns.append({
+                "from": "n0",
+                "to": nid,
+                "label": "defines" if hi == 1 else "implements" if hi == 2 else "connects to",
+            })
+        spec["nodes"] = fb_nodes
+        spec["connections"] = fb_conns
+        spec["visual_type"] = cluster.get("suggested_visual_type") or "concept_map"
+        spec["central_concept"] = c_title
+        spec.pop("error", None)  # Cleared by resilient synthesis fallback
+        if not spec.get("explanation"):
+            spec["explanation"] = f"This concept visual organizes the core ideas of {c_title} across {cluster.get('covers_label', 'these sections')}."
+        if not spec.get("key_takeaways"):
+            spec["key_takeaways"] = [f"Synthesizes {len(cluster_sections)} lesson sections into a coherent concept model."]
+
+    spec.setdefault("should_visualize", True)
+    spec.setdefault("title", cluster.get("title", "Concept Model"))
+    spec.setdefault("subtitle", cluster.get("subtitle", ""))
+    spec.setdefault("central_concept", spec["nodes"][0]["label"] if spec["nodes"] else "")
+    spec.setdefault("explanation", "")
+    spec.setdefault("key_takeaways", [])
+    spec.setdefault("why_visual", "")
+    spec.setdefault("data", [])
+
+    svg_html = render_visual_spec(spec, profile) if spec.get("should_visualize") else None
+
+    covered = [
+        {"index": s_start + i, "heading": s.get("heading") or f"Section {s_start + i + 1}"}
+        for i, s in enumerate(cluster_sections)
+    ]
+
+    result = {
+        "source": "prism",
+        "cluster_id": cid,
+        "title": spec.get("title") or cluster.get("title", ""),
+        "subtitle": spec.get("subtitle") or cluster.get("subtitle", ""),
+        "covers_label": cluster.get("covers_label", f"Sections {s_start+1}–{s_end+1}"),
+        "start_section_index": s_start,
+        "end_section_index": s_end,
+        "sections_covered": covered,
+        "visual_type": spec.get("visual_type", "concept_map"),
+        "svg_html": svg_html,
+        "explanation": spec.get("explanation", ""),
+        "key_takeaways": spec.get("key_takeaways", []),
+        "why_visual": spec.get("why_visual", ""),
+        "spec": spec,
+        "error": spec.get("error"),
+    }
+
+    if not spec.get("error"):
+        _VISUAL_CLUSTER_CACHE[cache_key] = result
+
+    return result

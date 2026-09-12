@@ -72,6 +72,31 @@ export function generateVisual(lessonText, profile, sourcePdfPath = null) {
   });
 }
 
+export function getVisualClusters(sections, profile = "cognitive_load", docId = null) {
+  return request("/api/visual/clusters", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sections,
+      profile,
+      doc_id: docId,
+    }),
+  });
+}
+
+export function getClusterVisualCard(cluster, sections, profile = "cognitive_load", docId = null) {
+  return request("/api/visual/cluster-card", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      cluster,
+      sections,
+      profile,
+      doc_id: docId,
+    }),
+  });
+}
+
 export function generateQuiz(chunk, profile) {
   return request("/api/quiz", {
     method: "POST",

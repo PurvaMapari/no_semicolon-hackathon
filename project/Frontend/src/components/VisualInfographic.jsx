@@ -145,71 +145,74 @@ const VTYPE_META = {
 };
 
 /**
- * Resolves appropriate Lucide icon and semantic theme based on node properties
+ * Resolves semantic icon, color theme, and category badge for a node
  */
 export function resolveNodeVisuals(node = {}) {
   const label = (node.label || "").toLowerCase();
   const desc = (node.description || "").toLowerCase();
   const sem = (node.semantic_type || "").toLowerCase();
-  const combined = `${label} ${desc} ${sem}`;
+  const role = (node.role || "").toLowerCase();
+  const combined = `${label} ${desc} ${sem} ${role}`;
 
-  // 1. Light & Solar Energy
+  // 1. Software & OOP Concepts
+  if (combined.includes("abstract") || combined.includes("interface") || combined.includes("contract")) {
+    return { icon: I.Layers, theme: SEMANTIC_THEMES.process, category: "Interface / Contract" };
+  }
+  if (combined.includes("implementation") || combined.includes("concrete") || combined.includes("subclass")) {
+    return { icon: I.Code2, theme: SEMANTIC_THEMES.biological, category: "Implementation" };
+  }
+  if (combined.includes("polymorphism") || combined.includes("interchangeable") || combined.includes("dynamic dispatch")) {
+    return { icon: I.Shuffle, theme: SEMANTIC_THEMES.product, category: "Polymorphism" };
+  }
+  if (combined.includes("encapsulat") || combined.includes("data hiding") || combined.includes("private") || combined.includes("modifier")) {
+    return { icon: I.ShieldCheck, theme: SEMANTIC_THEMES.cause, category: "Access Control" };
+  }
+  if (combined.includes("class") || combined.includes("blueprint") || combined.includes("prototype")) {
+    return { icon: I.Box, theme: SEMANTIC_THEMES.default, category: "Blueprint" };
+  }
+  if (combined.includes("object") || combined.includes("instance") || combined.includes("state")) {
+    return { icon: I.Component, theme: SEMANTIC_THEMES.water, category: "Instance" };
+  }
+  if (combined.includes("inherit") || combined.includes("hierarchy") || combined.includes("extend")) {
+    return { icon: I.GitFork, theme: SEMANTIC_THEMES.process, category: "Hierarchy" };
+  }
+  if (combined.includes("solid") || combined.includes("principle") || combined.includes("design pattern")) {
+    return { icon: I.Compass, theme: SEMANTIC_THEMES.energy, category: "Principle" };
+  }
+
+  // 2. Physical & Natural Science Concepts
   if (combined.includes("sun") || combined.includes("light") || combined.includes("solar") || combined.includes("photon")) {
     return { icon: I.Sun, theme: SEMANTIC_THEMES.light, category: "Energy Input" };
   }
-  // 2. Water / Liquid
-  if (combined.includes("water") || combined.includes("h2o") || combined.includes("h₂o") || combined.includes("rain") || combined.includes("liquid")) {
+  if (combined.includes("water") || combined.includes("h2o") || combined.includes("liquid")) {
     return { icon: I.Droplets, theme: SEMANTIC_THEMES.water, category: "Raw Material" };
   }
-  // 3. Carbon Dioxide / Air / Gas
-  if (combined.includes("co2") || combined.includes("co₂") || combined.includes("carbon") || combined.includes("gas")) {
+  if (combined.includes("co2") || combined.includes("carbon") || combined.includes("gas") || combined.includes("air")) {
     return { icon: I.Cloud, theme: SEMANTIC_THEMES.gas, category: "Atmospheric Input" };
   }
-  // 4. Photosynthesis / Plant / Biological
   if (combined.includes("photosynthesis") || combined.includes("chloroplast") || combined.includes("chlorophyll") || combined.includes("plant") || combined.includes("leaf")) {
     return { icon: I.Leaf, theme: SEMANTIC_THEMES.biological, category: "Core Reaction" };
   }
-  // 5. Glucose / Sugar / Chemical Energy
-  if (combined.includes("glucose") || combined.includes("sugar") || combined.includes("c6h12o6") || combined.includes("c₆h₁₂o₆")) {
+  if (combined.includes("glucose") || combined.includes("sugar") || combined.includes("chemical energy")) {
     return { icon: I.Sparkles, theme: SEMANTIC_THEMES.product, category: "Energy Stored" };
   }
-  // 6. Oxygen / Breathable
-  if (combined.includes("oxygen") || combined.includes("o2") || combined.includes("o₂")) {
+  if (combined.includes("oxygen") || combined.includes("o2") || combined.includes("breathable")) {
     return { icon: I.Wind, theme: SEMANTIC_THEMES.output, category: "Byproduct Released" };
   }
-  // 7. Steam Engine, Coal, Heat
-  if (combined.includes("steam") || combined.includes("coal") || combined.includes("heat") || combined.includes("fuel") || combined.includes("watt")) {
-    return { icon: I.Flame, theme: SEMANTIC_THEMES.energy, category: "Power Source" };
-  }
-  // 8. Spinning Jenny, Loom, Factory, Textile
-  if (combined.includes("spinning") || combined.includes("loom") || combined.includes("factory") || combined.includes("textile") || combined.includes("cloth")) {
-    return { icon: I.Building2, theme: SEMANTIC_THEMES.process, category: "Mechanization" };
-  }
-  // 9. Labor, Child Labor, Workers, Reform, Union
-  if (combined.includes("worker") || combined.includes("labor") || combined.includes("reform") || combined.includes("union") || combined.includes("law")) {
-    return { icon: I.Scale, theme: SEMANTIC_THEMES.default, category: "Social Reform" };
-  }
-  // 10. General Energy
-  if (sem === "energy" || combined.includes("energy") || combined.includes("power") || combined.includes("electricity")) {
-    return { icon: I.Zap, theme: SEMANTIC_THEMES.energy, category: "Energy" };
-  }
-  // 11. General Input / Resource
+
+  // 3. General Semantic Roles
   if (sem === "input" || sem === "resource") {
     return { icon: I.ArrowDownToLine, theme: SEMANTIC_THEMES.water, category: "Input" };
   }
-  // 12. General Output / Result
-  if (sem === "output" || sem === "result") {
-    return { icon: I.CheckCircle2, theme: SEMANTIC_THEMES.output, category: "Output" };
+  if (sem === "output" || sem === "result" || role === "outcome") {
+    return { icon: I.CheckCircle2, theme: SEMANTIC_THEMES.output, category: "Outcome" };
   }
-  // 13. General Process / Action
   if (sem === "process" || sem === "action") {
     return { icon: I.Cpu, theme: SEMANTIC_THEMES.process, category: "Process" };
   }
-  // 14. Cause
   if (sem === "cause") {
     return { icon: I.HelpCircle, theme: SEMANTIC_THEMES.cause, category: "Cause" };
   }
-  // 15. Effect
   if (sem === "effect") {
     return { icon: I.Target, theme: SEMANTIC_THEMES.effect, category: "Effect" };
   }
@@ -219,415 +222,436 @@ export function resolveNodeVisuals(node = {}) {
 }
 
 /**
- * Reusable Node Card
+ * Directional Connector with Centered Relationship Label
  */
-function InfographicNodeCard({ node, index, isHero = false, activeNodeId, onSelectNode, badgeText }) {
-  const { icon: IconComponent, theme, category } = resolveNodeVisuals(node);
-  const isSelected = activeNodeId === node.id;
+function DirectionalConnector({ label, direction = "down", highlight = false }) {
+  const isDown = direction === "down";
+  const displayLabel = label && label.trim().length > 0 ? label.trim() : null;
 
   return (
     <div
-      onClick={() => onSelectNode && onSelectNode(node)}
+      className={`directional-connector ${isDown ? "vertical" : "horizontal"} ${highlight ? "highlight" : ""}`}
       style={{
-        background: theme.bg,
-        border: `2px solid ${isSelected ? "#4f46e5" : theme.border}`,
-        borderRadius: isHero ? 16 : 14,
-        padding: isHero ? "16px 18px" : "12px 14px",
-        boxShadow: isHero
-          ? `0 10px 25px ${theme.glow}, 0 4px 10px rgba(0,0,0,0.04)`
-          : isSelected
-          ? "0 6px 16px rgba(79, 70, 229, 0.25)"
-          : "0 2px 8px rgba(0,0,0,0.04)",
-        cursor: "pointer",
-        transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
-        transform: isSelected ? "translateY(-2px) scale(1.02)" : "none",
-        position: "relative",
         display: "flex",
-        flexDirection: "column",
-        gap: 6,
+        flexDirection: isDown ? "column" : "row",
+        alignItems: "center",
+        justifyContent: "center",
+        margin: isDown ? "4px 0" : "0 8px",
+        gap: 2,
+        position: "relative",
       }}
     >
-      {/* Top row: Icon + Category Badge */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-        <div
-          style={{
-            width: isHero ? 38 : 32,
-            height: isHero ? 38 : 32,
-            borderRadius: 10,
-            background: theme.iconBg,
-            color: theme.iconColor,
-            display: "grid",
-            placeItems: "center",
-            flexShrink: 0,
-          }}
-        >
-          <IconComponent size={isHero ? 20 : 17} />
-        </div>
-
-        <span
-          style={{
-            fontSize: 10,
-            fontWeight: 800,
-            letterSpacing: "0.04em",
-            textTransform: "uppercase",
-            padding: "2px 8px",
-            borderRadius: 999,
-            background: theme.badgeBg,
-            color: theme.badgeText,
-          }}
-        >
-          {badgeText || category}
-        </span>
-      </div>
-
-      {/* Label */}
+      {/* Upper/Leading Stem */}
       <div
         style={{
-          fontSize: isHero ? 16 : 14,
-          fontWeight: 800,
-          color: theme.text,
-          lineHeight: 1.25,
-          marginTop: 2,
+          width: isDown ? 2 : 16,
+          height: isDown ? 10 : 2,
+          background: highlight
+            ? "linear-gradient(to bottom, #818cf8, #4f46e5)"
+            : "linear-gradient(to bottom, #cbd5e1, #94a3b8)",
         }}
-      >
-        {node.label}
-      </div>
+      />
 
-      {/* Description / Formula */}
-      {node.description && (
-        <div
+      {/* Centered Relationship Pill */}
+      {displayLabel && (
+        <span
+          className="connector-relationship-badge"
           style={{
-            fontSize: 12,
-            color: theme.subtext,
-            lineHeight: 1.45,
-            fontWeight: 500,
+            fontSize: 11,
+            fontWeight: 800,
+            letterSpacing: "0.02em",
+            textTransform: "lowercase",
+            color: highlight ? "#3730a3" : "#4338ca",
+            background: highlight ? "#e0e7ff" : "#eef2ff",
+            border: `1.5px solid ${highlight ? "#a5b4fc" : "#c7d2fe"}`,
+            padding: "2px 10px",
+            borderRadius: 999,
+            whiteSpace: "nowrap",
+            boxShadow: "0 1px 4px rgba(79, 70, 229, 0.12)",
+            zIndex: 2,
           }}
         >
-          {node.description}
-        </div>
+          {displayLabel}
+        </span>
+      )}
+
+      {/* Arrowhead */}
+      {isDown ? (
+        <I.ArrowDown size={17} style={{ color: highlight ? "#4f46e5" : "#6366f1", marginTop: -2 }} />
+      ) : (
+        <I.ArrowRight size={17} style={{ color: highlight ? "#4f46e5" : "#6366f1", marginLeft: -2 }} />
       )}
     </div>
   );
 }
 
 /**
- * Connector Arrow with Relationship Label
+ * Diagram Node Card: adapts dynamically for Hero/Central, Mediator, Implementation, or Outcome
  */
-function ConnectorBadge({ label = "produces", direction = "down", split = false }) {
+function DiagramNodeCard({
+  node,
+  isDominant = false,
+  isHero = false,
+  activeNodeId,
+  onSelectNode,
+  badgeOverride = null,
+  role = "concept",
+}) {
+  if (!node || typeof node !== "object") return null;
+
+  const { icon: IconComponent, theme, category } = resolveNodeVisuals(node);
+  const safeTheme = theme || SEMANTIC_THEMES.default;
+  const Icon = (IconComponent && (typeof IconComponent === "function" || typeof IconComponent === "object"))
+    ? IconComponent
+    : I.CircleDot;
+
+  const isSelected = Boolean(activeNodeId && node.id && activeNodeId === node.id);
+  const isCoreHero = Boolean(isDominant || isHero || role === "root");
+  const isOutcome = Boolean(role === "outcome" || (node.semantic_type === "output"));
+
   return (
     <div
+      onClick={() => onSelectNode && onSelectNode(node)}
+      className={`diagram-node-card ${isCoreHero ? "dominant-hero-node" : ""} ${isSelected ? "selected" : ""}`}
       style={{
+        background: isCoreHero ? "#ffffff" : isOutcome ? "#f0fdf4" : safeTheme.bg,
+        border: isCoreHero
+          ? "2.5px solid #4f46e5"
+          : `1.5px solid ${isSelected ? "#4f46e5" : isOutcome ? "#22c55e" : safeTheme.border}`,
+        borderRadius: isCoreHero ? 16 : 12,
+        padding: isCoreHero ? "14px 18px" : "10px 14px",
+        boxShadow: isCoreHero
+          ? "0 8px 24px rgba(79, 70, 229, 0.16), 0 2px 6px rgba(0,0,0,0.04)"
+          : isSelected
+          ? "0 4px 14px rgba(79, 70, 229, 0.2)"
+          : "0 1px 4px rgba(0,0,0,0.03)",
+        cursor: "pointer",
+        transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+        transform: isSelected ? "translateY(-2px) scale(1.02)" : "none",
+        position: "relative",
         display: "flex",
-        flexDirection: direction === "down" ? "column" : "row",
-        alignItems: "center",
-        justifyContent: "center",
-        margin: direction === "down" ? "8px 0" : "0 8px",
-        gap: 4,
+        flexDirection: isCoreHero ? "row" : "column",
+        alignItems: isCoreHero ? "center" : "flex-start",
+        gap: isCoreHero ? 14 : 6,
+        width: "100%",
+        maxWidth: isCoreHero ? 540 : "100%",
+        margin: isCoreHero ? "0 auto" : 0,
       }}
     >
-      {split ? (
-        <div style={{ display: "flex", width: "100%", justifyContent: "space-around", alignItems: "center" }}>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-            <I.ArrowDownLeft size={22} style={{ color: "#8b5cf6" }} />
+      {/* Icon */}
+      <div
+        style={{
+          width: isCoreHero ? 42 : 30,
+          height: isCoreHero ? 42 : 30,
+          borderRadius: 10,
+          background: isCoreHero ? "linear-gradient(135deg, #4f46e5, #6366f1)" : safeTheme.iconBg,
+          color: isCoreHero ? "#ffffff" : safeTheme.iconColor,
+          display: "grid",
+          placeItems: "center",
+          flexShrink: 0,
+          boxShadow: isCoreHero ? "0 4px 12px rgba(79, 70, 229, 0.3)" : "none",
+        }}
+      >
+        <Icon size={isCoreHero ? 22 : 16} />
+      </div>
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {/* Eyebrow / Category badge */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+          {isCoreHero && (
             <span
               style={{
-                fontSize: 10,
-                fontWeight: 800,
-                background: "#ede9fe",
-                color: "#6d28d9",
-                padding: "2px 8px",
-                borderRadius: 999,
-                border: "1px solid #ddd6fe",
+                fontSize: 9,
+                fontWeight: 900,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                background: "#e0e7ff",
+                color: "#3730a3",
+                padding: "1px 6px",
+                borderRadius: 4,
               }}
             >
-              synthesizes
+              ★ CORE CONCEPT
             </span>
+          )}
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+              color: isCoreHero ? "#4f46e5" : isOutcome ? "#15803d" : theme.badgeText,
+            }}
+          >
+            {badgeOverride || category}
+          </span>
+        </div>
+
+        {/* Node Label */}
+        <div
+          style={{
+            fontSize: isCoreHero ? 17 : 14,
+            fontWeight: 800,
+            color: isCoreHero ? "#0f172a" : isOutcome ? "#14532d" : theme.text,
+            lineHeight: 1.25,
+          }}
+        >
+          {node.label}
+        </div>
+
+        {/* Optional 1-line description */}
+        {node.description && (
+          <div
+            style={{
+              fontSize: 11,
+              color: isCoreHero ? "#475569" : theme.subtext,
+              lineHeight: 1.4,
+              marginTop: 2,
+            }}
+          >
+            {node.description}
           </div>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-            <I.ArrowDownRight size={22} style={{ color: "#0d9488" }} />
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 800,
-                background: "#ccfbf1",
-                color: "#0f766e",
-                padding: "2px 8px",
-                borderRadius: 999,
-                border: "1px solid #99f6e4",
-              }}
-            >
-              releases
-            </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GRAMMAR 1: HIERARCHY & CONTRACT IMPLEMENTATION (Abstraction -> Interface -> Impls -> Result)
+// ─────────────────────────────────────────────────────────────────────────────
+function HierarchyInfographic({ nodes = [], connections = [], centralConcept = "", activeNodeId, onSelectNode }) {
+  const safeNodes = (Array.isArray(nodes) ? nodes : []).filter(Boolean);
+  const safeConns = (Array.isArray(connections) ? connections : []).filter(Boolean);
+  if (safeNodes.length === 0) return null;
+
+  // 1. Identify Root node (dominant core concept)
+  const rootNode =
+    safeNodes.find((n) => centralConcept && String(n.label || "").toLowerCase().includes(centralConcept.toLowerCase())) ||
+    safeNodes.find((n) => n.role === "root") ||
+    safeNodes[0];
+
+  if (!rootNode) return null;
+
+  // Helper to find connection label between two nodes
+  const getConnLabel = (fromId, toId, fallback = "defines") => {
+    const direct = safeConns.find((c) => c && c.from === fromId && c.to === toId);
+    if (direct && direct.label) return direct.label;
+    const reverse = safeConns.find((c) => c && c.to === fromId && c.from === toId);
+    if (reverse && reverse.label) return reverse.label;
+    return fallback;
+  };
+
+  // Find nodes connected from root
+  const rootOutIds = new Set(
+    safeConns.filter((c) => c && c.from === rootNode.id).map((c) => c.to)
+  );
+
+  // Remaining nodes excluding root
+  const nonRootNodes = safeNodes.filter((n) => n && n.id !== rootNode.id);
+
+  // If there's an intermediate mediator (e.g. "Interface", "Contract", or first child of root)
+  const mediatorNode =
+    nonRootNodes.find((n) => rootOutIds.has(n.id) && (n.role === "mediator" || /interface|contract|blueprint|protocol/i.test(String(n.label || "")))) ||
+    nonRootNodes.find((n) => rootOutIds.has(n.id)) ||
+    (nonRootNodes.length > 0 ? nonRootNodes[0] : null);
+
+  // Remaining nodes after mediator
+  const remaining = nonRootNodes.filter((n) => n && n.id !== mediatorNode?.id);
+
+  // Check if any node represents the final outcome (e.g. "Interchangeable Code", "Polymorphic Code", "Result")
+  const outcomeNode = remaining.find(
+    (n) => n.role === "outcome" || /interchangeable|reusab|polymorphic|result|output|benefit/i.test(String(n.label || ""))
+  );
+
+  const implementationNodes = remaining.filter((n) => n && n.id !== outcomeNode?.id);
+
+  // Connection labels
+  const rootToMediatorLabel = mediatorNode
+    ? getConnLabel(rootNode.id, mediatorNode.id, "hides complexity")
+    : "defines";
+
+  const mediatorToImplsLabel = mediatorNode && implementationNodes.length > 0
+    ? getConnLabel(mediatorNode.id, implementationNodes[0].id, "defines contract")
+    : "implemented by";
+
+  const implsToOutcomeLabel = outcomeNode
+    ? (implementationNodes[0] ? getConnLabel(implementationNodes[0].id, outcomeNode.id, "yields") : "enables")
+    : "interchangeable";
+
+  return (
+    <div className="hierarchy-diagram-flow" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, width: "100%", padding: "4px 0" }}>
+      {/* TIER 1: DOMINANT ROOT CONCEPT */}
+      <DiagramNodeCard
+        node={rootNode}
+        isDominant={true}
+        activeNodeId={activeNodeId}
+        onSelectNode={onSelectNode}
+        badgeOverride="Dominant Concept"
+        role="root"
+      />
+
+      {/* CONNECTOR: Root -> Mediator */}
+      {mediatorNode && (
+        <DirectionalConnector label={rootToMediatorLabel} direction="down" highlight={true} />
+      )}
+
+      {/* TIER 2: INTERFACE / MEDIATOR NODE */}
+      {mediatorNode && (
+        <div style={{ width: "100%", maxWidth: 440 }}>
+          <DiagramNodeCard
+            node={mediatorNode}
+            activeNodeId={activeNodeId}
+            onSelectNode={onSelectNode}
+            badgeOverride="Contract Specification"
+            role="mediator"
+          />
+        </div>
+      )}
+
+      {/* CONNECTOR: Mediator -> Implementations */}
+      {implementationNodes.length > 0 && (
+        <DirectionalConnector label={mediatorToImplsLabel} direction="down" highlight={true} />
+      )}
+
+      {/* TIER 3: IMPLEMENTATIONS CLUSTER */}
+      {implementationNodes.length > 0 && (
+        <div
+          className="implementations-group-box"
+          style={{
+            width: "100%",
+            maxWidth: 520,
+            background: "#f8fafc",
+            border: "1.5px dashed #cbd5e1",
+            borderRadius: 14,
+            padding: "12px 14px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 800,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              color: "#475569",
+              marginBottom: 8,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <I.Code2 size={13} style={{ color: "#16a34a" }} />
+            <span>Concrete Implementations ({implementationNodes.length})</span>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: `repeat(auto-fit, minmax(130px, 1fr))`,
+              gap: 8,
+            }}
+          >
+            {implementationNodes.map((node, i) => (
+              <DiagramNodeCard
+                key={node.id}
+                node={node}
+                activeNodeId={activeNodeId}
+                onSelectNode={onSelectNode}
+                badgeOverride={`Impl ${i + 1}`}
+                role="implementation"
+              />
+            ))}
           </div>
         </div>
-      ) : (
-        <>
-          {direction === "down" && (
-            <div
-              style={{
-                width: 2,
-                height: 12,
-                background: "linear-gradient(to bottom, #cbd5e1, #818cf8)",
-              }}
-            />
-          )}
-          {label && (
-            <span
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: "#4f46e5",
-                background: "#eef2ff",
-                border: "1px solid #c7d2fe",
-                padding: "2px 10px",
-                borderRadius: 999,
-                letterSpacing: "0.02em",
-                whiteSpace: "nowrap",
-                boxShadow: "0 1px 4px rgba(79, 70, 229, 0.08)",
-              }}
-            >
-              {label}
-            </span>
-          )}
-          {direction === "down" ? (
-            <I.ArrowDown size={18} style={{ color: "#4f46e5", marginTop: -2 }} />
-          ) : (
-            <I.ArrowRight size={18} style={{ color: "#4f46e5" }} />
-          )}
-        </>
+      )}
+
+      {/* CONNECTOR: Implementations -> Outcome */}
+      {outcomeNode && (
+        <DirectionalConnector label={implsToOutcomeLabel} direction="down" highlight={true} />
+      )}
+
+      {/* TIER 4: OUTCOME / INTERCHANGEABLE LEAF */}
+      {outcomeNode && (
+        <div style={{ width: "100%", maxWidth: 380 }}>
+          <DiagramNodeCard
+            node={outcomeNode}
+            activeNodeId={activeNodeId}
+            onSelectNode={onSelectNode}
+            badgeOverride="Resulting System Property"
+            role="outcome"
+          />
+        </div>
       )}
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FORMAT 1: PHOTOSYNTHESIS & MULTI-STAGE PROCESS
+// GRAMMAR 2: CONCEPT MAP (Radial Dominant Hub with Labeled Satellite Connectors)
 // ─────────────────────────────────────────────────────────────────────────────
-function ProcessInfographic({ nodes, connections, activeNodeId, onSelectNode }) {
-  // Check if this matches a Photosynthesis/Converge-Diverge pattern
-  const coreNode = nodes.find(
-    (n) =>
-      n.label.toLowerCase().includes("photosynthesis") ||
-      n.description.toLowerCase().includes("conversion") ||
-      n.semantic_type === "process"
-  ) || nodes[Math.floor(nodes.length / 2)];
+function ConceptMapInfographic({ nodes = [], connections = [], centralConcept = "", activeNodeId, onSelectNode }) {
+  const safeNodes = (Array.isArray(nodes) ? nodes : []).filter(Boolean);
+  const safeConns = (Array.isArray(connections) ? connections : []).filter(Boolean);
+  if (safeNodes.length === 0) return null;
 
-  const inputs = nodes.filter(
-    (n) =>
-      n.id !== coreNode?.id &&
-      (n.semantic_type === "input" ||
-        n.semantic_type === "resource" ||
-        n.semantic_type === "energy" ||
-        n.semantic_type === "light" ||
-        n.label.toLowerCase().includes("sun") ||
-        n.label.toLowerCase().includes("water") ||
-        n.label.toLowerCase().includes("co2") ||
-        n.label.toLowerCase().includes("light"))
-  );
+  const hubNode =
+    safeNodes.find((n) => centralConcept && String(n.label || "").toLowerCase().includes(centralConcept.toLowerCase())) ||
+    safeNodes.find((n) => n.role === "root") ||
+    safeNodes[0];
 
-  const outputs = nodes.filter(
-    (n) =>
-      n.id !== coreNode?.id &&
-      !inputs.some((inp) => inp.id === n.id)
-  );
+  if (!hubNode) return null;
 
-  // If we have a clear Input → Core → Output structure (Photosynthesis pattern)
-  if (inputs.length > 0 && coreNode && outputs.length > 0) {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, width: "100%", padding: "4px 0" }}>
-        {/* Tier 1: Inputs Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-          <span style={{ fontSize: 11, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            1. Essential Inputs & Energy
-          </span>
-          <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
-        </div>
+  const satellites = safeNodes.filter((n) => n && n.id !== hubNode.id);
 
-        {/* Tier 1: Input Cards Grid */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: `repeat(auto-fit, minmax(130px, 1fr))`,
-            gap: 10,
-          }}
-        >
-          {inputs.map((node, i) => (
-            <InfographicNodeCard
-              key={node.id}
-              node={node}
-              index={i}
-              activeNodeId={activeNodeId}
-              onSelectNode={onSelectNode}
-            />
-          ))}
-        </div>
+  // Helper to find connection label between hub and satellite
+  const getLabel = (satId) => {
+    const direct = safeConns.find((c) => c && c.from === hubNode.id && c.to === satId);
+    if (direct && direct.label) return direct.label;
+    const reverse = safeConns.find((c) => c && c.to === hubNode.id && c.from === satId);
+    if (reverse && reverse.label) return reverse.label;
+    return "relates to";
+  };
 
-        {/* Central Convergence Connector */}
-        <div style={{ margin: "10px 0" }}>
-          <ConnectorBadge label="absorbed & converted inside chloroplast" direction="down" />
-        </div>
-
-        {/* Tier 2: Core Transformation Hero Card */}
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-          <span style={{ fontSize: 11, fontWeight: 800, color: "#166534", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            2. Core Biological Reaction
-          </span>
-          <div style={{ flex: 1, height: 1, background: "#bbf7d0" }} />
-        </div>
-
-        <InfographicNodeCard
-          node={coreNode}
-          isHero={true}
-          activeNodeId={activeNodeId}
-          onSelectNode={onSelectNode}
-          badgeText="Chemical Transformation"
-        />
-
-        {/* Diverging Branching Connectors */}
-        <div style={{ margin: "10px 0" }}>
-          <ConnectorBadge split={true} />
-        </div>
-
-        {/* Tier 3: Outputs Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-          <span style={{ fontSize: 11, fontWeight: 800, color: "#0f766e", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            3. Final Products & Energy Storage
-          </span>
-          <div style={{ flex: 1, height: 1, background: "#99f6e4" }} />
-        </div>
-
-        {/* Tier 3: Output Cards Grid */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: `repeat(auto-fit, minmax(140px, 1fr))`,
-            gap: 10,
-          }}
-        >
-          {outputs.map((node, i) => (
-            <InfographicNodeCard
-              key={node.id}
-              node={node}
-              index={i}
-              activeNodeId={activeNodeId}
-              onSelectNode={onSelectNode}
-            />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  // Linear Sequential Process (Step 1 → Step 2 → Step 3)
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {nodes.map((node, i) => (
-        <React.Fragment key={node.id}>
-          <div style={{ display: "flex", alignItems: "stretch", gap: 12 }}>
-            {/* Step Number Spine */}
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 28, flexShrink: 0 }}>
-              <div
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: "50%",
-                  background: "#4f46e5",
-                  color: "#fff",
-                  fontSize: 12,
-                  fontWeight: 800,
-                  display: "grid",
-                  placeItems: "center",
-                  boxShadow: "0 2px 6px rgba(79, 70, 229, 0.3)",
-                }}
-              >
-                {i + 1}
-              </div>
-              {i < nodes.length - 1 && (
-                <div style={{ width: 2, flex: 1, background: "linear-gradient(#4f46e5, #cbd5e1)", margin: "4px 0" }} />
-              )}
-            </div>
-
-            {/* Card */}
-            <div style={{ flex: 1 }}>
-              <InfographicNodeCard
-                node={node}
-                index={i}
-                activeNodeId={activeNodeId}
-                onSelectNode={onSelectNode}
-                badgeText={`Stage ${i + 1}`}
-              />
-            </div>
-          </div>
-          {i < nodes.length - 1 && (
-            <div style={{ marginLeft: 34, padding: "2px 0" }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: "#6366f1" }}>↓ leads to</span>
-            </div>
-          )}
-        </React.Fragment>
-      ))}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FORMAT 2: CHRONOLOGICAL TIMELINE
-// ─────────────────────────────────────────────────────────────────────────────
-function TimelineInfographic({ nodes, activeNodeId, onSelectNode }) {
-  return (
-    <div style={{ position: "relative", padding: "8px 0" }}>
-      {/* Central spine */}
-      <div
-        style={{
-          position: "absolute",
-          left: 20,
-          top: 10,
-          bottom: 10,
-          width: 3,
-          background: "linear-gradient(to bottom, #6366f1, #a855f7, #ec4899)",
-          borderRadius: 999,
-        }}
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, width: "100%" }}>
+      {/* 1. Visually Dominant Central Concept Hub */}
+      <DiagramNodeCard
+        node={hubNode}
+        isDominant={true}
+        activeNodeId={activeNodeId}
+        onSelectNode={onSelectNode}
+        badgeOverride="Central Paradigm"
+        role="root"
       />
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        {nodes.map((node, i) => {
-          const { icon: IconComp, theme } = resolveNodeVisuals(node);
-          // Try to extract date/year from label or description (e.g. 1764, 1769, 1833)
-          const dateMatch = (node.label + " " + (node.description || "")).match(/\b(1\d{3}|20\d{2})\b/);
-          const dateLabel = dateMatch ? dateMatch[0] : `Event ${i + 1}`;
-
+      {/* 2. Radiant Connectors & Satellites Grid */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          gap: 12,
+          width: "100%",
+          marginTop: 6,
+        }}
+      >
+        {satellites.map((sat) => {
+          const relLabel = getLabel(sat.id);
           return (
-            <div key={node.id} style={{ display: "flex", gap: 14, alignItems: "flex-start", paddingLeft: 6 }}>
-              {/* Timeline marker node */}
-              <div
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: "50%",
-                  background: theme.iconBg,
-                  border: `3px solid #fff`,
-                  boxShadow: `0 0 0 2px ${theme.border}, 0 2px 8px rgba(0,0,0,0.08)`,
-                  display: "grid",
-                  placeItems: "center",
-                  color: theme.iconColor,
-                  zIndex: 2,
-                  flexShrink: 0,
-                }}
-              >
-                <IconComp size={15} />
-              </div>
-
-              {/* Event Card */}
-              <div style={{ flex: 1 }}>
-                <div style={{ display: "inline-block", background: "#ede9fe", color: "#6d28d9", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 6, marginBottom: 4 }}>
-                  📅 {dateLabel}
-                </div>
-                <InfographicNodeCard
-                  node={node}
-                  index={i}
-                  activeNodeId={activeNodeId}
-                  onSelectNode={onSelectNode}
-                />
-              </div>
+            <div
+              key={sat.id}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <DirectionalConnector label={relLabel} direction="down" />
+              <DiagramNodeCard
+                node={sat}
+                activeNodeId={activeNodeId}
+                onSelectNode={onSelectNode}
+              />
             </div>
           );
         })}
@@ -637,244 +661,267 @@ function TimelineInfographic({ nodes, activeNodeId, onSelectNode }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FORMAT 3: CONCEPT MAP (Central Hub & Radiant Nodes)
+// GRAMMAR 3: PROCESS & PIPELINE FLOW (Sequential with Transition Action Badges)
 // ─────────────────────────────────────────────────────────────────────────────
-function ConceptMapInfographic({ nodes, centralConcept, activeNodeId, onSelectNode }) {
-  const hubLabel = centralConcept || (nodes[0] ? nodes[0].label : "Core Concept");
-  const hubNode = nodes.find((n) => n.label.toLowerCase() === hubLabel.toLowerCase()) || {
-    id: "hub",
-    label: hubLabel,
-    description: "Central educational focus",
-    semantic_type: "process",
-  };
-  const satellites = nodes.filter((n) => n.id !== hubNode.id);
+function ProcessInfographic({ nodes, connections, activeNodeId, onSelectNode }) {
+  // Check for Photosynthesis Converge-Diverge pattern
+  const isPhotosynthesis = nodes.some(
+    (n) => /photosynthesis|chloroplast|light reaction|calvin cycle/i.test(n.label || "")
+  );
+
+  if (isPhotosynthesis) {
+    const inputs = nodes.filter((n) => /sun|light|water|co2|photon/i.test(n.label));
+    const outputs = nodes.filter((n) => /glucose|sugar|oxygen|o2|energy/i.test(n.label));
+    const core = nodes.find((n) => !inputs.includes(n) && !outputs.includes(n)) || nodes[0];
+
+    if (inputs.length > 0 && outputs.length > 0) {
+      return (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, width: "100%" }}>
+          {/* Inputs */}
+          <div style={{ width: "100%", background: "#f0f9ff", border: "1px dashed #bae6fd", borderRadius: 12, padding: "10px 12px" }}>
+            <span style={{ fontSize: 10, fontWeight: 800, color: "#0369a1", textTransform: "uppercase" }}>Inputs Absorbed</span>
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(120px, 1fr))`, gap: 8, marginTop: 6 }}>
+              {inputs.map((n) => (
+                <DiagramNodeCard key={n.id} node={n} activeNodeId={activeNodeId} onSelectNode={onSelectNode} />
+              ))}
+            </div>
+          </div>
+
+          <DirectionalConnector label="absorbed & catalyzed" direction="down" highlight={true} />
+
+          {/* Core Biological Transformation */}
+          <DiagramNodeCard node={core} isDominant={true} activeNodeId={activeNodeId} onSelectNode={onSelectNode} role="root" />
+
+          <DirectionalConnector label="synthesizes & releases" direction="down" highlight={true} />
+
+          {/* Outputs */}
+          <div style={{ width: "100%", background: "#f0fdf4", border: "1px dashed #bbf7d0", borderRadius: 12, padding: "10px 12px" }}>
+            <span style={{ fontSize: 10, fontWeight: 800, color: "#166534", textTransform: "uppercase" }}>Products Yielded</span>
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(120px, 1fr))`, gap: 8, marginTop: 6 }}>
+              {outputs.map((n) => (
+                <DiagramNodeCard key={n.id} node={n} activeNodeId={activeNodeId} onSelectNode={onSelectNode} role="outcome" />
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+  }
+
+  // General Sequential Pipeline with Directional Verbs
+  return (
+    <div className="process-pipeline-flow" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, width: "100%" }}>
+      {nodes.map((node, i) => {
+        const isFirst = i === 0;
+        const nextNode = nodes[i + 1];
+        let transitionLabel = "leads to";
+        if (nextNode) {
+          const direct = connections.find((c) => c.from === node.id && c.to === nextNode.id);
+          if (direct && direct.label) transitionLabel = direct.label;
+        }
+
+        return (
+          <React.Fragment key={node.id}>
+            <div style={{ width: "100%", maxWidth: isFirst ? 500 : 440 }}>
+              <DiagramNodeCard
+                node={node}
+                isDominant={isFirst}
+                activeNodeId={activeNodeId}
+                onSelectNode={onSelectNode}
+                badgeOverride={`Stage ${i + 1}`}
+              />
+            </div>
+            {i < nodes.length - 1 && (
+              <DirectionalConnector label={transitionLabel} direction="down" highlight={i === 0} />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GRAMMAR 4: CAUSE & EFFECT (Triggers -> Mechanism -> Impacts)
+// ─────────────────────────────────────────────────────────────────────────────
+function CauseEffectInfographic({ nodes, connections, activeNodeId, onSelectNode }) {
+  const causes = nodes.filter((n) => n.semantic_type === "cause" || n.role === "cause");
+  const effects = nodes.filter((n) => n.semantic_type === "effect" || n.role === "outcome");
+  const mid = Math.ceil(nodes.length / 2);
+
+  const leftNodes = causes.length > 0 ? causes : nodes.slice(0, mid);
+  const rightNodes = effects.length > 0 ? effects : nodes.slice(mid);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      {/* Central Hub Hero Node */}
-      <div style={{ position: "relative" }}>
-        <div style={{ fontSize: 10, fontWeight: 800, color: "#64748b", textTransform: "uppercase", marginBottom: 4, letterSpacing: "0.06em" }}>
-          Central Focus
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 12, alignItems: "center" }}>
+        {/* Causes Column */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "#ea580c", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 4 }}>
+            <I.HelpCircle size={14} /> Causes / Triggers
+          </div>
+          {leftNodes.map((n) => (
+            <DiagramNodeCard key={n.id} node={n} activeNodeId={activeNodeId} onSelectNode={onSelectNode} />
+          ))}
         </div>
-        <InfographicNodeCard
-          node={hubNode}
-          isHero={true}
-          activeNodeId={activeNodeId}
-          onSelectNode={onSelectNode}
-          badgeText="Hub Concept"
-        />
-      </div>
 
-      {/* Radial Bridge */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "2px 0" }}>
-        <I.Share2 size={16} style={{ color: "#6366f1" }} />
-        <span style={{ fontSize: 11, fontWeight: 700, color: "#4f46e5" }}>connected sub-concepts</span>
-        <div style={{ flex: 1, height: 1, background: "#c7d2fe" }} />
-      </div>
+        {/* Central Transition Bridge */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+          <DirectionalConnector label="drives" direction="right" highlight={true} />
+        </div>
 
-      {/* Satellite Grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
-        {satellites.map((sat, i) => (
-          <InfographicNodeCard
-            key={sat.id}
-            node={sat}
-            index={i}
-            activeNodeId={activeNodeId}
-            onSelectNode={onSelectNode}
-          />
-        ))}
+        {/* Effects Column */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "#059669", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 4 }}>
+            <I.Target size={14} /> Consequences / Effects
+          </div>
+          {rightNodes.map((n) => (
+            <DiagramNodeCard key={n.id} node={n} activeNodeId={activeNodeId} onSelectNode={onSelectNode} role="outcome" />
+          ))}
+        </div>
       </div>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FORMAT 4: CAUSE & EFFECT (Split Two-Column)
-// ─────────────────────────────────────────────────────────────────────────────
-function CauseEffectInfographic({ nodes, activeNodeId, onSelectNode }) {
-  const midpoint = Math.ceil(nodes.length / 2);
-  const causes = nodes.slice(0, midpoint);
-  const effects = nodes.slice(midpoint);
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {/* Causes section */}
-      <div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-          <span style={{ fontSize: 11, fontWeight: 800, color: "#c2410c", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            ⚡ Root Causes & Drivers
-          </span>
-          <div style={{ flex: 1, height: 1, background: "#ffedd5" }} />
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
-          {causes.map((node, i) => (
-            <InfographicNodeCard
-              key={node.id}
-              node={{ ...node, semantic_type: "cause" }}
-              index={i}
-              activeNodeId={activeNodeId}
-              onSelectNode={onSelectNode}
-              badgeText="Cause"
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Bridge connector */}
-      <ConnectorBadge label="causes & triggers" direction="down" />
-
-      {/* Effects section */}
-      <div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-          <span style={{ fontSize: 11, fontWeight: 800, color: "#065f46", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            🎯 Observed Outcomes & Impacts
-          </span>
-          <div style={{ flex: 1, height: 1, background: "#d1fae5" }} />
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
-          {effects.map((node, i) => (
-            <InfographicNodeCard
-              key={node.id}
-              node={{ ...node, semantic_type: "effect" }}
-              index={i}
-              activeNodeId={activeNodeId}
-              onSelectNode={onSelectNode}
-              badgeText="Outcome"
-            />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FORMAT 5: SIDE-BY-SIDE COMPARISON
+// GRAMMAR 5: SIDE-BY-SIDE COMPARISON
 // ─────────────────────────────────────────────────────────────────────────────
 function ComparisonInfographic({ nodes, activeNodeId, onSelectNode }) {
+  const mid = Math.ceil(nodes.length / 2);
+  const sideA = nodes.slice(0, mid);
+  const sideB = nodes.slice(mid);
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(140px, 1fr))`, gap: 12 }}>
-        {nodes.map((node, i) => (
-          <div key={node.id} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <div style={{ fontSize: 11, fontWeight: 800, color: "#4f46e5", textTransform: "uppercase", textAlign: "center" }}>
-              Case {i + 1}
-            </div>
-            <InfographicNodeCard
-              node={node}
-              index={i}
-              activeNodeId={activeNodeId}
-              onSelectNode={onSelectNode}
-            />
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 12, alignItems: "center" }}>
+        {/* Side A */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "#4f46e5", textTransform: "uppercase", textAlign: "center" }}>
+            Paradigm A
           </div>
-        ))}
-      </div>
-      <div style={{ background: "#f1f5f9", padding: "10px 14px", borderRadius: 10, fontSize: 12, color: "#334155", marginTop: 4, display: "flex", alignItems: "center", gap: 8 }}>
-        <I.Scale size={16} style={{ color: "#6366f1", flexShrink: 0 }} />
-        <span>Compare the core distinctions and operational parameters highlighted above.</span>
+          {sideA.map((n) => (
+            <DiagramNodeCard key={n.id} node={n} activeNodeId={activeNodeId} onSelectNode={onSelectNode} />
+          ))}
+        </div>
+
+        {/* VS Divider */}
+        <div
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: "50%",
+            background: "#ede9fe",
+            color: "#6d28d9",
+            fontWeight: 900,
+            fontSize: 12,
+            display: "grid",
+            placeItems: "center",
+            border: "2px solid #c4b5fd",
+          }}
+        >
+          VS
+        </div>
+
+        {/* Side B */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "#059669", textTransform: "uppercase", textAlign: "center" }}>
+            Paradigm B
+          </div>
+          {sideB.map((n) => (
+            <DiagramNodeCard key={n.id} node={n} activeNodeId={activeNodeId} onSelectNode={onSelectNode} />
+          ))}
+        </div>
       </div>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FORMAT 6: CIRCULAR CYCLE
+// GRAMMAR 6: RECURRING CYCLE
 // ─────────────────────────────────────────────────────────────────────────────
-function CycleInfographic({ nodes, activeNodeId, onSelectNode }) {
+function CycleInfographic({ nodes, connections, activeNodeId, onSelectNode }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-        <I.RotateCw size={16} style={{ color: "#7c3aed" }} />
-        <span style={{ fontSize: 11, fontWeight: 800, color: "#5b21b6", textTransform: "uppercase" }}>
-          Perpetual Cycle Flow
-        </span>
-        <div style={{ flex: 1, height: 1, background: "#ede9fe" }} />
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, width: "100%" }}>
+      {nodes.map((node, i) => (
+        <React.Fragment key={node.id}>
+          <div style={{ width: "100%", maxWidth: 440 }}>
+            <DiagramNodeCard
+              node={node}
+              activeNodeId={activeNodeId}
+              onSelectNode={onSelectNode}
+              badgeOverride={`Step ${i + 1}`}
+            />
+          </div>
+          {i < nodes.length - 1 && (
+            <DirectionalConnector label="feeds into" direction="down" />
+          )}
+        </React.Fragment>
+      ))}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: 10 }}>
-        {nodes.map((node, i) => (
-          <InfographicNodeCard
-            key={node.id}
-            node={node}
-            index={i}
-            activeNodeId={activeNodeId}
-            onSelectNode={onSelectNode}
-            badgeText={`Step ${i + 1}`}
-          />
-        ))}
-      </div>
-
-      {/* Return loop indicator */}
+      {/* Return Loop Bridge */}
       <div
         style={{
+          width: "100%",
+          maxWidth: 440,
           background: "#fdf4ff",
-          border: "1px dashed #d946ef",
+          border: "1.5px dashed #d946ef",
           borderRadius: 10,
-          padding: "8px 12px",
+          padding: "8px 14px",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           gap: 6,
-          fontSize: 12,
-          fontWeight: 700,
+          fontSize: 11,
+          fontWeight: 800,
           color: "#86198f",
           marginTop: 6,
         }}
       >
         <I.RotateCw size={14} />
-        <span>Output feeds continuously back into Step 1</span>
+        <span>Loop closes: Final output returns back to Step 1</span>
       </div>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FORMAT 7: NUMERICAL DATA CHART
+// MASTER INFOGRAPHIC DISPATCHER
 // ─────────────────────────────────────────────────────────────────────────────
-function NumericalChartInfographic({ data = [] }) {
-  if (!data || data.length === 0) return null;
-  const maxVal = Math.max(...data.map((d) => d.value || 0), 1);
-
-  return (
-    <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 14, padding: 16 }}>
-      <div style={{ fontSize: 12, fontWeight: 800, color: "#1e1b4b", marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
-        <I.BarChart3 size={16} style={{ color: "#4f46e5" }} />
-        <span>Quantitative Comparison</span>
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {data.map((item, i) => {
-          const pct = Math.min(100, Math.round(((item.value || 0) / maxVal) * 100));
-          return (
-            <div key={i} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
-                <span style={{ fontWeight: 700, color: "#334155" }}>{item.label}</span>
-                <span style={{ fontWeight: 800, color: "#4f46e5" }}>
-                  {item.value} {item.unit || ""}
-                </span>
-              </div>
-              <div style={{ height: 10, background: "#e2e8f0", borderRadius: 999, overflow: "hidden" }}>
-                <div
-                  style={{
-                    height: "100%",
-                    width: `${pct}%`,
-                    background: "linear-gradient(90deg, #6366f1, #a855f7)",
-                    borderRadius: 999,
-                    transition: "width 0.6s ease-out",
-                  }}
-                />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+class VisualErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.warn("[VisualInfographic] Fallback triggered due to error:", error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      if (this.props.svgHtmlFallback) {
+        return (
+          <div
+            style={{ borderRadius: 12, overflow: "hidden", border: "1px solid #e5e7eb", background: "#fafafa", padding: 8 }}
+            dangerouslySetInnerHTML={{ __html: this.props.svgHtmlFallback }}
+          />
+        );
+      }
+      return (
+        <div style={{ padding: 18, background: "#f8fafc", border: "1.5px dashed #cbd5e1", borderRadius: 12, textAlign: "center" }}>
+          <p style={{ fontSize: 13, color: "#475569", fontWeight: 600, margin: 0 }}>
+            Simplified visual overview displayed.
+          </p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MASTER INFOGRAPHIC COMPONENT
-// ─────────────────────────────────────────────────────────────────────────────
-export default function VisualInfographic({
+function VisualInfographicInner({
   spec = {},
   sourceImages = [],
   onReadAloud,
@@ -883,20 +930,18 @@ export default function VisualInfographic({
   const [activeNode, setActiveNode] = useState(null);
   const [imgIndex, setImgIndex] = useState(0);
 
-  // If source images from PDF exist, prioritize showing the authentic source figure
   const hasSourceImages = sourceImages && sourceImages.length > 0;
-
-  const visualType = spec.visual_type || "process";
+  const visualType = (spec.visual_type || "hierarchy").toLowerCase();
   const nodes = spec.nodes || [];
   const connections = spec.connections || [];
-  const chartData = spec.data || [];
+  const centralConcept = spec.central_concept || "";
 
   return (
-    <div style={{ padding: "0 18px", marginTop: 12 }}>
-      {/* 1. PDF SOURCE VISUAL (Priority if present) */}
+    <div className="diagram-canvas" style={{ padding: "0 4px", marginTop: 10 }}>
+      {/* 1. Authentic PDF Source Visual if extracted */}
       {hasSourceImages && (
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
             <span
               style={{
                 fontSize: 10,
@@ -905,14 +950,14 @@ export default function VisualInfographic({
                 textTransform: "uppercase",
                 background: "#fef3c7",
                 color: "#92400e",
-                padding: "3px 9px",
+                padding: "2px 8px",
                 borderRadius: 999,
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 4,
               }}
             >
-              <I.FileText size={12} /> Source Figure from Document
+              <I.FileText size={11} /> Source Document Figure
             </span>
           </div>
 
@@ -922,56 +967,40 @@ export default function VisualInfographic({
               overflow: "hidden",
               border: "1px solid #e2e8f0",
               background: "#fafafa",
-              boxShadow: "0 2px 10px rgba(0,0,0,0.04)",
             }}
           >
             <img
               src={`data:image/png;base64,${sourceImages[imgIndex]}`}
               alt={`Source figure ${imgIndex + 1}`}
-              style={{ width: "100%", maxHeight: 320, objectFit: "contain", display: "block" }}
+              style={{ width: "100%", maxHeight: 300, objectFit: "contain", display: "block" }}
             />
-            {sourceImages.length > 1 && (
-              <div style={{ display: "flex", justifyContent: "center", gap: 6, padding: "8px 0", background: "#f8fafc" }}>
-                {sourceImages.map((_, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setImgIndex(i)}
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: "50%",
-                      border: "none",
-                      background: i === imgIndex ? "#4f46e5" : "#cbd5e1",
-                      cursor: "pointer",
-                      padding: 0,
-                    }}
-                  />
-                ))}
-              </div>
-            )}
           </div>
         </div>
       )}
 
-      {/* 2. DYNAMIC EDUCATIONAL INFOGRAPHIC BY TYPE */}
+      {/* 2. Concept Relationship Diagram Engine */}
       {nodes.length > 0 ? (
-        <div style={{ marginTop: 8 }}>
-          {visualType === "timeline" ? (
-            <TimelineInfographic
+        <div className="infographic-engine-container">
+          {visualType === "hierarchy" || visualType === "tree" || visualType === "flowchart" ? (
+            <HierarchyInfographic
               nodes={nodes}
+              connections={connections}
+              centralConcept={centralConcept}
               activeNodeId={activeNode?.id}
               onSelectNode={setActiveNode}
             />
           ) : visualType === "concept_map" ? (
             <ConceptMapInfographic
               nodes={nodes}
-              centralConcept={spec.central_concept}
+              connections={connections}
+              centralConcept={centralConcept}
               activeNodeId={activeNode?.id}
               onSelectNode={setActiveNode}
             />
           ) : visualType === "cause_effect" ? (
             <CauseEffectInfographic
               nodes={nodes}
+              connections={connections}
               activeNodeId={activeNode?.id}
               onSelectNode={setActiveNode}
             />
@@ -987,10 +1016,8 @@ export default function VisualInfographic({
               activeNodeId={activeNode?.id}
               onSelectNode={setActiveNode}
             />
-          ) : visualType === "bar_chart" && chartData.length > 0 ? (
-            <NumericalChartInfographic data={chartData} />
           ) : (
-            /* Default to smart Multi-Stage Process (Photosynthesis pattern) */
+            /* Default to smart Multi-Stage Process */
             <ProcessInfographic
               nodes={nodes}
               connections={connections}
@@ -1053,3 +1080,12 @@ export default function VisualInfographic({
     </div>
   );
 }
+
+export default function VisualInfographic(props) {
+  return (
+    <VisualErrorBoundary svgHtmlFallback={props.svgHtmlFallback}>
+      <VisualInfographicInner {...props} />
+    </VisualErrorBoundary>
+  );
+}
+

@@ -47,6 +47,44 @@ class VisualCardResponse(BaseModel):
     source_images: List[str] = []        # base64 PNG strings from the PDF
     spec: Dict[str, Any] = {}            # raw spec for debugging / future use
     error: Optional[str] = None
+    cluster_id: Optional[str] = None
+    covers_label: Optional[str] = None
+    start_section_index: Optional[int] = None
+    end_section_index: Optional[int] = None
+    sections_covered: List[Dict[str, Any]] = []
+
+
+class VisualClusterItem(BaseModel):
+    cluster_id: str
+    title: str
+    subtitle: str = ""
+    start_section_index: int
+    end_section_index: int
+    covers_label: str
+    sections_count: int = 0
+    section_headings: List[str] = []
+    rationale: str = ""
+
+
+class VisualClustersRequest(BaseModel):
+    sections: List[Dict[str, Any]]
+    profile: str = "cognitive_load"
+    doc_id: Optional[str] = None
+
+
+class VisualClustersResponse(BaseModel):
+    clusters: List[VisualClusterItem]
+
+
+class ClusterVisualCardRequest(BaseModel):
+    cluster: VisualClusterItem
+    sections: List[Dict[str, Any]]
+    profile: str = "cognitive_load"
+    doc_id: Optional[str] = None
+
+
+class ClusterVisualCardResponse(VisualCardResponse):
+    pass
 
 
 class QuizRequest(BaseModel):
