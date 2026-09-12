@@ -168,7 +168,7 @@ const styles = {
     width: 26,
     height: 26,
     borderRadius: '50%',
-    background: '#ede9fe',
+    background: 'rgba(252, 224, 114, 0.25)',
     color: '#1f5e63',
     flexShrink: 0,
   },
@@ -190,7 +190,7 @@ const styles = {
   labelMain: {
     fontSize: 12,
     fontWeight: 600,
-    color: '#1e1b4b',
+    color: '#1e293b',
     lineHeight: 1.3,
   },
 
@@ -277,17 +277,17 @@ const styles = {
     marginTop: 8,
     padding: '5px 10px',
     borderRadius: 7,
-    background: '#eff6ff',
-    border: '1px solid #bfdbfe',
+    background: '#fef9c3',
+    border: '1px solid #fce072',
     fontSize: 11,
-    color: '#1e40af',
+    color: '#713f12',
     lineHeight: 1.5,
   },
 
   spinner: {
     display: 'inline-block',
     animation: 'prism-pulse 1.4s ease-in-out infinite',
-    color: '#60a5fa',
+    color: '#713f12',
   },
 
   errorNotice: {

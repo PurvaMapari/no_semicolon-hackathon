@@ -71,7 +71,7 @@ export default function LearnPage() {
       {/* Dwell calibration bar */}
       <div className="ln-dwell-bar">
         <span className="ln-dwell-dot">●</span>
-        &nbsp; Calibrating dwell time &amp; reread cues
+        &nbsp; Calibrating dwell time &amp; focus cues
         {dyslexiaOn && (
           <span className="ln-dyslexia-badge">Dyslexia Mode Active</span>
         )}

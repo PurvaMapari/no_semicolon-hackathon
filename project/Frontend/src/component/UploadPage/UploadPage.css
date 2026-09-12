@@ -4,7 +4,7 @@
   justify-content: space-between;
   font-size: 11px;
   font-weight: 700;
-  color: #2440c6;
+  color: #713f12;
   padding-top: 4px;
 }
 
@@ -22,32 +22,33 @@
   margin-top: 9px;
   font-size: 10px;
   font-weight: 800;
-  color: #2742c7;
+  color: #713f12;
 }
 
 .up-step {
   flex: 1;
   text-align: center;
-  border-top: 4px solid #e4e6f3;
+  border-top: 4px solid #e8ded9;
   padding-top: 9px;
   color: #202333;
 }
 
 .up-step--active {
-  border-top-color: #2941c8;
-  color: #2742c7;
+  border-top-color: #fce072;
+  color: #713f12;
 }
 
 .up-hero {
   margin-top: 15px;
   padding: 17px 15px;
-  background: #f0f1ff !important;
+  background: rgba(252, 224, 114, 0.15) !important;
   border: 0 !important;
 }
 
 .up-hero-title {
   font-weight: 800;
   font-size: 14px;
+  color: #713f12;
 }
 
 .up-hero-desc {
@@ -61,7 +62,7 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 4px;
-  background: #e8e9f7;
+  background: #ebe4e1;
   border-radius: 10px;
   padding: 3px;
   margin-top: 15px;
@@ -82,7 +83,7 @@
 
 .up-tab--active {
   background: #fff;
-  color: #2440c6;
+  color: #713f12;
 }
 
 .up-dropcard {
@@ -113,10 +114,10 @@
   width: 47px;
   height: 47px;
   border-radius: 50%;
-  background: #e1e5ff;
+  background: #fef9c3;
   display: grid;
   place-items: center;
-  color: #2b43c9;
+  color: #713f12;
   font-size: 22px;
 }
 
@@ -134,8 +135,8 @@
 
 .up-select-btn {
   margin-top: 13px;
-  background: #4157dc;
-  color: #fff;
+  background: #fce072;
+  color: #451a03;
   padding: 10px 16px;
   border-radius: 7px;
   font-size: 11px;
@@ -153,11 +154,11 @@
   font-family: inherit;
   padding: 8px;
   border-radius: 8px;
-  background: #f6f7ff;
+  background: #faf8f7;
 }
 
 .up-buffer {
-  background: #eef0ff;
+  background: rgba(252, 224, 114, 0.15);
   border-radius: 6px;
   padding: 7px 9px;
   font-size: 9px;
@@ -172,7 +173,7 @@
 
 .up-buffer-track {
   height: 5px;
-  background: #dce0f4;
+  background: #e8ded9;
   border-radius: 5px;
   margin-top: 5px;
   overflow: hidden;
@@ -231,7 +232,7 @@
 }
 
 .up-recent-icon {
-  background: #eef0ff;
+  background: rgba(252, 224, 114, 0.2);
   border-radius: 5px;
   padding: 7px;
   font-size: 14px;
@@ -296,7 +297,7 @@
 }
 
 .up-diag-cell {
-  background: #f0f1ff;
+  background: rgba(252, 224, 114, 0.15);
   border-radius: 6px;
   padding: 10px 5px;
   text-align: center;
@@ -319,7 +320,7 @@
 }
 
 .up-sample {
-  background: #e9ebff;
+  background: rgba(252, 224, 114, 0.18);
   padding: 9px;
   border-radius: 5px;
   margin-top: 10px;
@@ -329,7 +330,7 @@
 
 .up-sample-chunk {
   float: right;
-  color: #2941c8;
+  color: #713f12;
 }
 
 .up-profile-row {
@@ -362,14 +363,14 @@
 .up-customize-btn {
   border: 0;
   background: none;
-  color: #2941c8;
+  color: #713f12;
   font-weight: 800;
   font-size: 9px;
   cursor: pointer;
 }
 
 .up-groq-banner {
-  background: #e7e9fb;
+  background: #fefce8;
   border-radius: 8px;
   padding: 10px;
   margin-top: 10px;
@@ -386,8 +387,8 @@
   width: 100%;
   border: 0;
   border-radius: 7px;
-  background: #3e54d7;
-  color: #fff;
+  background: #fce072;
+  color: #451a03;
   font-weight: 800;
   padding: 12px;
   margin-top: 9px;
@@ -397,8 +398,15 @@
 }
 
 .up-transform-btn--disabled {
-  background: #b0b8e8;
+  background: #c29d93;
   cursor: not-allowed;
+}
+
+.up-footer-note {
+  font-size: 8px;
+  text-align: center;
+  margin: 8px 0 2px;
+  color: #4e5265;
 }
 
 .up-footer-note {
