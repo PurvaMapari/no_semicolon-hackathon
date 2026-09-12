@@ -169,7 +169,7 @@ const styles = {
     height: 26,
     borderRadius: '50%',
     background: '#ede9fe',
-    color: '#7c3aed',
+    color: '#1f5e63',
     flexShrink: 0,
   },
 
@@ -219,7 +219,7 @@ const styles = {
     transform: 'translateX(-50%)',
     width: 210,
     background: '#1e293b',
-    color: '#f8fafc',
+    color: '#e8e6df',
     fontSize: 11,
     lineHeight: 1.5,
     padding: '7px 10px',
@@ -246,7 +246,7 @@ const styles = {
   },
 
   trackOn: {
-    background: '#4f46e5',
+    background: '#1f5e63',
   },
 
   trackDisabled: {

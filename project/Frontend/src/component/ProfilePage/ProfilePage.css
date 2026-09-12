@@ -1,0 +1,651 @@
+/* ── ProfilePage ─────────────────────────────────────── */
+
+/* Hero */
+.pf-hero {
+  padding: 18px 20px 16px;
+  margin-top: 10px;
+}
+
+.pf-hero-inner {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.pf-avatar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+}
+
+.pf-avatar {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #d5b99a, #8b5f44);
+  border: 3px solid #fff;
+  box-shadow: 0 2px 8px #bbb;
+}
+
+.pf-avatar--initials {
+  background: linear-gradient(135deg, #4157dc, #2440c6);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.pf-info {
+  flex: 1;
+}
+
+.pf-name {
+  font-size: 18px;
+  display: block;
+}
+
+.pf-handle {
+  font-size: 10px;
+  color: #4e5265;
+  margin-top: 3px;
+}
+
+.pf-mode-pill {
+  background: #e8f9f1;
+  color: #075f46;
+  font-size: 9px !important;
+  padding: 5px 9px !important;
+  margin-top: 9px;
+  display: inline-flex;
+}
+
+.pf-edit-btn {
+  border: 1px solid #dde0f5;
+  border-radius: 8px;
+  background: #f4f5ff;
+  color: #2742c7;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 7px 13px;
+  cursor: pointer;
+  font-family: inherit;
+  flex-shrink: 0;
+}
+
+/* Focus pace */
+.pf-focus {
+  margin-top: 16px;
+}
+
+.pf-focus-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.pf-focus-icon {
+  font-size: 14px;
+}
+
+.pf-focus-label {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pf-focus-count {
+  margin-left: auto;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.pf-focus-bar {
+  height: 10px;
+}
+
+.pf-focus-fill {
+  height: 100%;
+  background: #2dbe82;
+  border-radius: 999px;
+  transition: width .4s;
+}
+
+.pf-focus-note {
+  font-size: 10px;
+  color: #075f46;
+  margin-top: 5px;
+}
+
+/* Section row */
+.pf-section-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 20px;
+}
+
+.pf-section-title {
+  font-size: 15px;
+}
+
+.pf-view-all {
+  border: 0;
+  background: none;
+  color: #2742c7;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Stats grid */
+.pf-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.pf-stat {
+  padding: 14px 12px;
+}
+
+.pf-stat--full {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.pf-stat--full .pf-stat-icon {
+  font-size: 24px;
+}
+
+.pf-stat-icon {
+  font-size: 22px;
+  margin-bottom: 6px;
+}
+
+.pf-stat-val {
+  font-size: 19px;
+  display: block;
+  color: #202333;
+}
+
+.pf-stat-val--orange {
+  color: #c85a10;
+}
+
+.pf-stat-val--muted {
+  color: #aab;
+}
+
+.pf-protect-pill {
+  background: #ffdbc9;
+  color: #7a3a14;
+  font-size: 8px !important;
+  padding: 3px 7px !important;
+  margin-top: 5px;
+  display: inline-flex;
+}
+
+.pf-stat-label {
+  font-size: 10px;
+  color: #4e5265;
+  margin-top: 3px;
+}
+
+.pf-stat-meta {
+  font-size: 9px;
+  color: #4e5265;
+  margin-top: 4px;
+}
+
+.pf-stat-gain {
+  font-size: 10px;
+  color: #087d5a;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+/* Empty state */
+.pf-empty-state {
+  margin-top: 8px;
+  padding: 28px 20px;
+  text-align: center;
+}
+
+.pf-empty-icon {
+  font-size: 32px;
+  margin-bottom: 10px;
+}
+
+.pf-empty-title {
+  font-size: 14px;
+  display: block;
+}
+
+.pf-empty-desc {
+  font-size: 12px;
+  color: #4e5265;
+  margin: 6px 0 0;
+  line-height: 1.6;
+}
+
+/* Badges */
+.pf-badges-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.pf-badge {
+  padding: 14px 12px;
+}
+
+.pf-badge-icon {
+  font-size: 28px;
+  margin-bottom: 7px;
+}
+
+.pf-badge-name {
+  font-size: 12px;
+  display: block;
+}
+
+.pf-badge-desc {
+  font-size: 10px;
+  line-height: 1.5;
+  color: #4e5265;
+  margin: 5px 0 5px;
+}
+
+.pf-badge-tier {
+  font-size: 9px;
+  color: #075f46;
+  font-weight: 700;
+}
+
+/* Controls card */
+.pf-controls {
+  margin-top: 20px;
+  padding: 20px;
+}
+
+.pf-controls-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 4px;
+}
+
+.pf-controls-title {
+  font-size: 15px;
+}
+
+.pf-controls-live {
+  font-size: 9px;
+  color: #4e5265;
+}
+
+.pf-control-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 13px 0;
+  border-bottom: 1px solid #eeeef7;
+}
+
+.pf-ctrl-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: #eef0ff;
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  font-weight: 800;
+  color: #2742c7;
+  flex-shrink: 0;
+}
+
+.pf-ctrl-info {
+  flex: 1;
+}
+
+.pf-ctrl-label {
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.pf-ctrl-tag {
+  background: #e8eaff;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 9px;
+  color: #2742c7;
+}
+
+.pf-ctrl-sub {
+  font-size: 10px;
+  color: #4e5265;
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+/* Toggle */
+.pf-toggle {
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  border: 0;
+  background: #dde0f5;
+  position: relative;
+  flex-shrink: 0;
+  margin-top: 3px;
+  cursor: pointer;
+  transition: background .2s;
+}
+
+.pf-toggle--on {
+  background: #2742c7;
+}
+
+.pf-toggle-thumb {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .2);
+  transition: transform .2s;
+}
+
+.pf-toggle--on .pf-toggle-thumb {
+  transform: translateX(18px);
+}
+
+/* Mastery gate */
+.pf-mastery-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #eeeef7;
+}
+
+.pf-mastery-title {
+  font-size: 12px;
+}
+
+.pf-mastery-desc {
+  font-size: 10px;
+  color: #4e5265;
+  margin: 5px 0 10px;
+  line-height: 1.5;
+}
+
+.pf-mastery-btns {
+  display: flex;
+  gap: 8px;
+}
+
+.pf-mastery-btn {
+  flex: 1;
+  border: 1px solid #dde0f5;
+  background: #f4f5ff;
+  border-radius: 8px;
+  padding: 9px 4px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  color: #4e5265;
+  white-space: pre-line;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.pf-mastery-btn--on {
+  background: #2742c7;
+  color: #fff;
+  border-color: #2742c7;
+}
+
+/* Sign out / reset */
+.pf-signout {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  border: 0;
+  background: none;
+  padding: 14px 0;
+  margin-top: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #d63b2f;
+  cursor: pointer;
+  font-family: inherit;
+  border-top: 1px solid #eeeef7;
+}
+
+.pf-version {
+  font-size: 9px;
+  text-align: center;
+  color: #4e5265;
+  margin-top: 6px;
+}
+
+.pf-confirm-clear {
+  border-top: 1px solid #eeeef7;
+  margin-top: 12px;
+  padding-top: 14px;
+}
+
+.pf-confirm-text {
+  font-size: 12px;
+  color: #4e5265;
+  margin: 0 0 10px;
+  line-height: 1.5;
+}
+
+.pf-confirm-row {
+  display: flex;
+  gap: 8px;
+}
+
+.pf-confirm-yes {
+  flex: 1;
+  border: 0;
+  border-radius: 8px;
+  background: #d63b2f;
+  color: #fff;
+  padding: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.pf-confirm-no {
+  flex: 1;
+  border: 1px solid #dde0f5;
+  border-radius: 8px;
+  background: #f4f5ff;
+  color: #4e5265;
+  padding: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* Continue */
+.pf-continue-btn {
+  width: 100%;
+  border: 0;
+  border-radius: 10px;
+  background: #2942c8;
+  color: #fff;
+  font-weight: 800;
+  padding: 14px;
+  margin-top: 16px;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  margin-bottom: 4px;
+}
+
+/* ── Onboarding form ─────────────────────────────────── */
+.pf-form-wrap {
+  padding-top: 10px;
+}
+
+.pf-form-brand {
+  text-align: center;
+  padding: 20px 10px 10px;
+}
+
+.pf-form-logo {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: #eef0ff;
+  color: #2742c7;
+  font-size: 22px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 12px;
+}
+
+.pf-form-title {
+  font-size: 20px;
+  margin: 0 0 6px;
+}
+
+.pf-form-subtitle {
+  font-size: 12px;
+  color: #4e5265;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.pf-form {
+  margin-top: 16px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.pf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pf-field-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #4e5265;
+}
+
+.pf-input {
+  border: 1px solid #dde0f5;
+  border-radius: 9px;
+  padding: 12px 13px;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  background: #fafbff;
+  color: #202333;
+  transition: border-color .15s;
+}
+
+.pf-input:focus {
+  border-color: #2742c7;
+  background: #fff;
+}
+
+.pf-input-prefix-wrap {
+  display: flex;
+  align-items: center;
+  border: 1px solid #dde0f5;
+  border-radius: 9px;
+  background: #fafbff;
+  overflow: hidden;
+  transition: border-color .15s;
+}
+
+.pf-input-prefix-wrap:focus-within {
+  border-color: #2742c7;
+  background: #fff;
+}
+
+.pf-input-prefix {
+  padding: 12px 8px 12px 13px;
+  font-size: 14px;
+  color: #4e5265;
+  background: transparent;
+  pointer-events: none;
+}
+
+.pf-input--prefix {
+  border: 0;
+  border-radius: 0;
+  padding-left: 0;
+  flex: 1;
+  background: transparent;
+}
+
+.pf-input--prefix:focus {
+  border: 0;
+  background: transparent;
+}
+
+.pf-form-err {
+  font-size: 11px;
+  color: #d63b2f;
+  margin: 0;
+}
+
+.pf-form-submit {
+  width: 100%;
+  border: 0;
+  border-radius: 9px;
+  background: #2942c8;
+  color: #fff;
+  font-weight: 800;
+  padding: 14px;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  margin-top: 4px;
+}
+
+.pf-form-cancel {
+  width: 100%;
+  border: 1px solid #dde0f5;
+  border-radius: 9px;
+  background: #f4f5ff;
+  color: #4e5265;
+  font-weight: 700;
+  padding: 12px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.pf-form-note {
+  font-size: 10px;
+  text-align: center;
+  color: #4e5265;
+  margin: 12px 0 4px;
+  line-height: 1.6;
+}

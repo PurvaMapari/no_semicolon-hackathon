@@ -18,6 +18,8 @@ venv.bak/
 # Python Cache & Bytecode
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
 *$py.class
 *.so
 .Python
@@ -62,6 +64,9 @@ dist-ssr/
 build/
 .vite/
 *.local
+project/Frontend/node_modules/
+project/Frontend/dist/
+project/Frontend/.env
 
 # Jupyter Notebooks
 .ipynb_checkpoints/

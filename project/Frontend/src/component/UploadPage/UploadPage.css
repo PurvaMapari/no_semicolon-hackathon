@@ -1,0 +1,409 @@
+/* UploadPage */
+.up-steps-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 700;
+  color: #2440c6;
+  padding-top: 4px;
+}
+
+.up-step-label {
+  font-weight: 800;
+}
+
+.up-step-sub {
+  color: #4e5265;
+  font-weight: 500;
+}
+
+.up-stepper {
+  display: flex;
+  margin-top: 9px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #2742c7;
+}
+
+.up-step {
+  flex: 1;
+  text-align: center;
+  border-top: 4px solid #e4e6f3;
+  padding-top: 9px;
+  color: #202333;
+}
+
+.up-step--active {
+  border-top-color: #2941c8;
+  color: #2742c7;
+}
+
+.up-hero {
+  margin-top: 15px;
+  padding: 17px 15px;
+  background: #f0f1ff !important;
+  border: 0 !important;
+}
+
+.up-hero-title {
+  font-weight: 800;
+  font-size: 14px;
+}
+
+.up-hero-desc {
+  font-size: 12px;
+  line-height: 1.75;
+  margin: 4px 0 0;
+  color: #4e5265;
+}
+
+.up-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  background: #e8e9f7;
+  border-radius: 10px;
+  padding: 3px;
+  margin-top: 15px;
+}
+
+.up-tab {
+  border: 0;
+  border-radius: 8px;
+  padding: 11px 4px;
+  background: transparent;
+  color: #3f4352;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .15s;
+  font-family: inherit;
+}
+
+.up-tab--active {
+  background: #fff;
+  color: #2440c6;
+}
+
+.up-dropcard {
+  margin-top: 14px;
+  padding: 12px 14px;
+}
+
+.up-ocr-badge {
+  display: inline-block;
+  font-size: 9px;
+  background: #eefcf7;
+  border-radius: 20px;
+  padding: 6px 10px;
+  color: #394253;
+}
+
+.up-dropzone {
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  margin-top: 12px;
+}
+
+.up-drop-icon {
+  width: 47px;
+  height: 47px;
+  border-radius: 50%;
+  background: #e1e5ff;
+  display: grid;
+  place-items: center;
+  color: #2b43c9;
+  font-size: 22px;
+}
+
+.up-drop-title {
+  font-size: 13px;
+  margin-top: 11px;
+  text-align: center;
+}
+
+.up-drop-hint {
+  font-size: 9px;
+  margin-top: 5px;
+  color: #4e5265;
+}
+
+.up-select-btn {
+  margin-top: 13px;
+  background: #4157dc;
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.up-textarea {
+  width: 100%;
+  height: 200px;
+  border: 0;
+  outline: 0;
+  resize: none;
+  margin-top: 14px;
+  font-size: 12px;
+  font-family: inherit;
+  padding: 8px;
+  border-radius: 8px;
+  background: #f6f7ff;
+}
+
+.up-buffer {
+  background: #eef0ff;
+  border-radius: 6px;
+  padding: 7px 9px;
+  font-size: 9px;
+  font-weight: 700;
+  margin-top: 12px;
+}
+
+.up-buffer-ready {
+  float: right;
+  color: #007d57;
+}
+
+.up-buffer-track {
+  height: 5px;
+  background: #dce0f4;
+  border-radius: 5px;
+  margin-top: 5px;
+  overflow: hidden;
+}
+
+.up-buffer-fill {
+  height: 100%;
+  background: #18bd83;
+  border-radius: 5px;
+  transition: width .4s;
+}
+
+.up-recents {
+  margin-top: 15px;
+  padding: 14px;
+}
+
+.up-recents-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  margin-bottom: 10px;
+  font-weight: 700;
+}
+
+/* empty state */
+.up-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 18px 10px;
+  gap: 8px;
+}
+
+.up-empty-icon {
+  font-size: 28px;
+}
+
+.up-empty-text {
+  font-size: 11px;
+  color: #4e5265;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.up-recent {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 4px;
+  border-bottom: 1px solid #f0f0f8;
+}
+
+.up-recent:last-child {
+  border-bottom: 0;
+}
+
+.up-recent-icon {
+  background: #eef0ff;
+  border-radius: 5px;
+  padding: 7px;
+  font-size: 14px;
+}
+
+.up-recent-icon--red {
+  background: #ffd9d3;
+  color: #d74437;
+}
+
+.up-recent-info {
+  flex: 1;
+  font-size: 10px;
+}
+
+.up-recent-info b {
+  font-size: 10px;
+}
+
+.up-recent-meta {
+  font-size: 8px;
+  margin-top: 3px;
+  color: #4e5265;
+}
+
+.up-diag {
+  margin-top: 15px;
+  padding: 14px;
+}
+
+.up-diag--empty {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #4e5265;
+}
+
+.up-diag--empty b {
+  font-size: 11px;
+  color: #202333;
+}
+
+.up-diag-empty-text {
+  font-size: 11px;
+  color: #4e5265;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.up-diag-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+}
+
+.up-diag-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.up-diag-cell {
+  background: #f0f1ff;
+  border-radius: 6px;
+  padding: 10px 5px;
+  text-align: center;
+  font-size: 8px;
+}
+
+.up-diag-cell-label {
+  color: #4e5265;
+}
+
+.up-diag-cell-value {
+  display: block;
+  font-size: 14px;
+  margin-top: 5px;
+}
+
+.up-diag-cell-sub {
+  margin-top: 4px;
+  color: #4e5265;
+}
+
+.up-sample {
+  background: #e9ebff;
+  padding: 9px;
+  border-radius: 5px;
+  margin-top: 10px;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.up-sample-chunk {
+  float: right;
+  color: #2941c8;
+}
+
+.up-profile-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-top: 15px;
+}
+
+.up-profile-title {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.up-profile-badge {
+  background: #a0f0c7;
+  border-radius: 10px;
+  padding: 3px 6px;
+  font-size: 9px;
+  color: #07684b;
+  font-weight: 700;
+}
+
+.up-profile-hint {
+  font-size: 9px;
+  margin-top: 4px;
+  color: #4e5265;
+}
+
+.up-customize-btn {
+  border: 0;
+  background: none;
+  color: #2941c8;
+  font-weight: 800;
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.up-groq-banner {
+  background: #e7e9fb;
+  border-radius: 8px;
+  padding: 10px;
+  margin-top: 10px;
+  font-size: 9px;
+}
+
+.up-groq-sub {
+  font-size: 8px;
+  margin-top: 2px;
+  color: #4e5265;
+}
+
+.up-transform-btn {
+  width: 100%;
+  border: 0;
+  border-radius: 7px;
+  background: #3e54d7;
+  color: #fff;
+  font-weight: 800;
+  padding: 12px;
+  margin-top: 9px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.up-transform-btn--disabled {
+  background: #b0b8e8;
+  cursor: not-allowed;
+}
+
+.up-footer-note {
+  font-size: 8px;
+  text-align: center;
+  margin: 8px 0 2px;
+  color: #4e5265;
+}

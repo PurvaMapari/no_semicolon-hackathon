@@ -224,7 +224,7 @@ export default function VoiceAssistant({
               width: 36,
               height: 36,
               borderRadius: 10,
-              background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)",
+              background: "linear-gradient(135deg, #1f5e63 0%, #8faf9a 100%)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -265,7 +265,7 @@ export default function VoiceAssistant({
               color: isListening
                 ? "#dc2626"
                 : voiceSupported
-                ? "#4338ca"
+                ? "#17464a"
                 : "#64748b",
             }}
           >
@@ -412,7 +412,7 @@ export default function VoiceAssistant({
             border: isListening ? "2px solid #ef4444" : "1px solid var(--border-color)",
             background: isListening
               ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)"
-              : "linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%)",
+              : "linear-gradient(135deg, #dfeae5 0%, #e8e6df 100%)",
             color: isListening ? "#ffffff" : "var(--primary)",
             display: "flex",
             alignItems: "center",
@@ -445,7 +445,7 @@ export default function VoiceAssistant({
             padding: "0 14px",
             fontSize: 14,
             borderRadius: 12,
-            border: isListening ? "2px solid #6366f1" : "1px solid var(--border-color)",
+              border: isListening ? "2px solid #1f5e63" : "1px solid var(--border-color)",
             background: isListening ? "#fafafa" : "#ffffff",
           }}
         />
