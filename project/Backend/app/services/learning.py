@@ -903,3 +903,102 @@ def generate_adaptive_quiz(
 
     # Fallback — return a basic question
     raise ValueError("Adaptive quiz generation failed after retries.")
+
+
+# ── Practice Quiz (full-lesson, post-completion) ──────────────────────────────
+
+PRACTICE_QUIZ_PROMPT = """You are creating a comprehensive practice quiz for a learner with {profile} accessibility needs who has just finished studying the lesson below.
+
+Generate exactly {count} multiple-choice questions that test the most important and relevant concepts from the lesson.
+
+RULES:
+- Cover a variety of topics from across the lesson — do not focus on only one part
+- Each question must be clearly worded and unambiguous
+- For dyslexia profile: use simple, direct language (max 20 words per question)
+- For cognitive_load profile: focus on one concept per question
+- For low_vision profile: use straightforward, clear wording
+- Base every question ONLY on information in the lesson below (no outside knowledge)
+- Each question must have exactly 4 options labeled as plain strings (no A/B/C/D prefixes)
+- The answer must exactly match one of the options (character for character)
+- Provide a brief explanation (1-2 sentences) for why the answer is correct
+
+Return ONLY valid JSON — an object with a single key "questions" whose value is an array of exactly {count} objects.
+Each object must have exactly these keys: "question", "options" (array of 4 strings), "answer" (string), "explanation" (string).
+
+Include the marker QUIZ_JSON.
+
+LESSON TEXT:
+{text}"""
+
+
+def generate_practice_quiz(
+    text: str,
+    profile: str,
+    question_count: int = 8,
+) -> List[Dict[str, Any]]:
+    """
+    Generate a full-lesson practice quiz from the extracted lesson text.
+
+    Sends the complete lesson to Groq and asks for question_count important,
+    relevant MCQ questions covering the whole content. Returns a list of
+    {question, options, answer, explanation} dicts.
+    """
+    if profile not in VALID_PROFILES:
+        profile = "cognitive_load"
+    question_count = max(3, min(question_count, 15))
+
+    prompt = PRACTICE_QUIZ_PROMPT.format(
+        profile=profile,
+        count=question_count,
+        text=text[:12000],  # guard against excessively long lessons
+    )
+
+    required_keys = {"question", "options", "answer", "explanation"}
+
+    for _attempt in range(3):
+        try:
+            raw = call_llm(prompt)
+            parsed = parse_json_response(raw)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+
+        questions_raw = None
+        if isinstance(parsed, dict):
+            questions_raw = parsed.get("questions")
+        elif isinstance(parsed, list):
+            questions_raw = parsed
+
+        if not isinstance(questions_raw, list):
+            continue
+
+        valid: List[Dict[str, Any]] = []
+        for item in questions_raw:
+            if not isinstance(item, dict):
+                continue
+            if not required_keys.issubset(item):
+                continue
+            options = item.get("options")
+            if not isinstance(options, list) or len(options) != 4:
+                continue
+            if item.get("answer") not in options:
+                continue
+            valid.append({key: item[key] for key in required_keys})
+
+        if valid:
+            return valid[:question_count]
+
+    # Fallback — single generic question so the UI never crashes
+    return [
+        {
+            "question": "What is the main topic covered in this lesson?",
+            "options": [
+                "The content described in the lesson",
+                "A topic unrelated to the lesson",
+                "Only historical background",
+                "Mathematical formulas",
+            ],
+            "answer": "The content described in the lesson",
+            "explanation": "The lesson focuses on the content provided.",
+        }
+    ]
+

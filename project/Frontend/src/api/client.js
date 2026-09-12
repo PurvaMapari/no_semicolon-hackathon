@@ -163,4 +163,12 @@ export function generateLessonTest(text, profile, questionCount = 5) {
   });
 }
 
+export function generatePracticeQuiz(text, profile, questionCount = 8) {
+  return request("/api/practice-quiz", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, profile, question_count: questionCount }),
+  });
+}
+
 export { API_BASE_URL };

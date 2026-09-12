@@ -14,6 +14,7 @@ import {
   evaluateQuizAnswer,
   generateQuiz,
   generateLessonTest,
+  generatePracticeQuiz,
   generateVisual,
   getVisualClusters,
   getClusterVisualCard,
@@ -285,6 +286,13 @@ export function SessionProvider({ children }) {
     }));
   }
 
+  async function getPracticeQuiz() {
+    return run("practiceQuiz", async () => {
+      const result = await generatePracticeQuiz(session.text, session.profile, 8);
+      return result.questions || result;
+    });
+  }
+
   async function getVisual(sectionsList = null, activeSecIndex = 0) {
     if (session.visualClusters && session.visualClusters.length > 0) {
       const secIdx = typeof activeSecIndex === "number" ? activeSecIndex : 0;
@@ -524,6 +532,7 @@ export function SessionProvider({ children }) {
         getQuiz,
         evaluateAnswer,
         getWholeTest,
+        getPracticeQuiz,
         getVisual,
         loadVisualClusters,
         loadClusterVisual,
@@ -1716,9 +1725,9 @@ function Learn() {
   });
 
   const [activeSection, setActiveSection] = useState(0);
-  const [playing, setPlaying] = useState(false);
   const [showVisualPanel, setShowVisualPanel] = useState(false);
   const [sectionMenuOpen, setSectionMenuOpen] = useState(false);
+  const [showQuizPrompt, setShowQuizPrompt] = useState(false);
   const sectionPickerRef = useRef(null);
 
   // Close section dropdown when clicking outside
@@ -2017,7 +2026,18 @@ function Learn() {
       tabFocusedNow:         webcamHook.tabFocused,
       scrollConsistentNow:   scrollConsistent,
     }, estimatedSeconds);
-    if (activeSection < sections.length - 1) {
+
+    const isLastSection = activeSection === sections.length - 1;
+    const currentCompleted = session.completedSections || [];
+    const newCompletedSections = currentCompleted.includes(activeSection)
+      ? currentCompleted
+      : [...currentCompleted, activeSection];
+    const allDone = sections.length > 0 && sections.every((_, idx) => newCompletedSections.includes(idx));
+
+    if (allDone) {
+      // All sections complete — ask learner to take the Practice Quiz
+      setShowQuizPrompt(true);
+    } else if (!isLastSection) {
       setActiveSection((index) => index + 1);
     }
   }
@@ -2057,9 +2077,72 @@ function Learn() {
     session.lessonTitle ||
     "Lesson";
 
+  const allSectionsCompleted =
+    sections.length > 0 &&
+    sections.every((_, idx) => (session.completedSections || []).includes(idx));
+
   return (
     <Layout section="Learn">
       <main className="page learn-page">
+
+        {/* ── All sections complete banner ───────────────────────────── */}
+        {allSectionsCompleted && (
+          <div
+            className="card"
+            style={{
+              marginBottom: 16,
+              padding: "16px 20px",
+              background: "linear-gradient(135deg, #f0fdf4 0%, #eff6ff 100%)",
+              border: "2px solid #86efac",
+              borderRadius: 14,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 16,
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: "50%",
+                  background: "#059669",
+                  color: "#fff",
+                  display: "grid",
+                  placeItems: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <I.Trophy size={22} />
+              </div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 15, color: "#065f46" }}>
+                  All Sections Complete!
+                </div>
+                <div style={{ fontSize: 13, color: "#166534", marginTop: 2 }}>
+                  You have completed every section. Ready to test your understanding with the AI Practice Quiz?
+                </div>
+              </div>
+            </div>
+            <button
+              className="primary-action"
+              style={{
+                background: "#059669",
+                padding: "9px 18px",
+                fontSize: 14,
+                width: "auto",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+              onClick={() => navigate("/practice")}
+            >
+              Take Practice Quiz <I.ArrowRight size={16} />
+            </button>
+          </div>
+        )}
 
         {/* ── REWIRE Banner ──────────────────────────────────────────── */}
         {session.rewireState.active && (
@@ -2487,7 +2570,6 @@ function Learn() {
                       const isCurrentMatch = currentSectionCluster?.cluster_id === cluster.cluster_id;
                       const isSelected = activeCluster?.cluster_id === cluster.cluster_id;
                       const isLoaded = Boolean(session.clusterVisuals?.[cluster.cluster_id]);
-
                       return (
                         <button
                           key={cluster.cluster_id}
@@ -2693,7 +2775,295 @@ function Learn() {
         )}
 
       </main>
+
+      {showQuizPrompt && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            background: "rgba(15, 23, 42, 0.65)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+          }}
+        >
+          <div
+            className="card"
+            style={{
+              maxWidth: 480,
+              width: "100%",
+              padding: 32,
+              textAlign: "center",
+              boxShadow: "0 25px 50px -12px rgba(0,0,0,0.3)",
+              border: "2px solid #818cf8",
+              background: "#ffffff",
+              borderRadius: 20,
+            }}
+          >
+            <div
+              style={{
+                width: 58,
+                height: 58,
+                borderRadius: "50%",
+                background: "linear-gradient(135deg, #6366f1, #818cf8)",
+                margin: "0 auto 16px",
+                display: "grid",
+                placeItems: "center",
+                color: "#fff",
+              }}
+            >
+              <I.Trophy size={30} />
+            </div>
+            <h2
+              style={{
+                fontSize: 22,
+                fontWeight: 800,
+                color: "var(--ink)",
+                marginBottom: 8,
+                fontFamily: "var(--font-heading)",
+              }}
+            >
+              All Sections Complete!
+            </h2>
+            <p style={{ fontSize: 14, color: "var(--muted)", lineHeight: 1.6, marginBottom: 24 }}>
+              Fantastic job completing every section of this lesson. Would you like to take the{" "}
+              <strong>Practice Quiz</strong> now? The AI will generate relevant questions from your lesson to test your mastery.
+            </p>
+            <div style={{ display: "flex", gap: 12, flexDirection: "column" }}>
+              <button
+                id="take-practice-quiz-btn"
+                className="primary-action"
+                style={{
+                  background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
+                  fontSize: 15,
+                  padding: "12px 20px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                }}
+                onClick={() => {
+                  setShowQuizPrompt(false);
+                  navigate("/practice");
+                }}
+              >
+                Take Practice Quiz Now <I.ChevronRight size={18} />
+              </button>
+              <button
+                className="secondary-action"
+                style={{ padding: "10px 18px", fontSize: 14 }}
+                onClick={() => setShowQuizPrompt(false)}
+              >
+                Stay and Review Sections
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
+  );
+}
+
+function PracticeQuizView({ questions, onDone, onExit }) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [selected, setSelected] = useState("");
+  const [revealed, setRevealed] = useState(false);
+  const [answers, setAnswers] = useState([]);
+  const [finished, setFinished] = useState(false);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    setCurrentIndex(0);
+    setSelected("");
+    setRevealed(false);
+    setAnswers([]);
+    setFinished(false);
+  }, [questions]);
+
+  const q = questions[currentIndex] || {};
+  const total = questions.length;
+  const progress = total > 0 ? ((currentIndex) / total) * 100 : 0;
+
+  function handleReveal() {
+    if (!selected || revealed) return;
+    setRevealed(true);
+    setAnswers((prev) => [...prev, { question: q.question, selected, answer: q.answer, explanation: q.explanation, correct: selected === q.answer }]);
+  }
+
+  function handleNext() {
+    if (currentIndex < total - 1) {
+      setCurrentIndex((i) => i + 1);
+      setSelected("");
+      setRevealed(false);
+    } else {
+      setFinished(true);
+    }
+  }
+
+  if (finished) {
+    const correct = answers.filter((a) => a.correct).length;
+    const wrong = answers.filter((a) => !a.correct);
+    const pct = Math.round((correct / total) * 100);
+    const grade = pct >= 80 ? "Excellent" : pct >= 60 ? "Good" : "Keep Practising";
+    const gradeColor = pct >= 80 ? "#059669" : pct >= 60 ? "#2563eb" : "#dc2626";
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* Score hero */}
+        <section className="card" style={{ padding: 28, textAlign: "center", background: "linear-gradient(135deg,#f0fdf4 0%,#eff6ff 100%)", border: "2px solid #bbf7d0" }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Practice Quiz Complete</div>
+          <div style={{ position: "relative", width: 110, height: 110, margin: "0 auto 14px" }}>
+            <svg viewBox="0 0 110 110" style={{ width: 110, height: 110, transform: "rotate(-90deg)" }}>
+              <circle cx="55" cy="55" r="46" fill="none" stroke="#e2e8f0" strokeWidth="10" />
+              <circle cx="55" cy="55" r="46" fill="none" stroke={gradeColor} strokeWidth="10"
+                strokeDasharray={`${2 * Math.PI * 46}`}
+                strokeDashoffset={`${2 * Math.PI * 46 * (1 - pct / 100)}`}
+                style={{ transition: "stroke-dashoffset 1s ease" }} />
+            </svg>
+            <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+              <div style={{ fontSize: 26, fontWeight: 900, color: gradeColor, fontFamily: "var(--font-heading)" }}>{pct}%</div>
+              <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>SCORE</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: gradeColor, fontFamily: "var(--font-heading)", marginBottom: 4 }}>{grade}!</div>
+          <div style={{ fontSize: 14, color: "var(--muted)" }}>
+            <span style={{ fontWeight: 700, color: "#059669" }}>{correct} correct</span>
+            {" "}·{" "}
+            <span style={{ fontWeight: 700, color: "#dc2626" }}>{wrong.length} wrong</span>
+            {" "}out of {total} questions
+          </div>
+        </section>
+
+        {/* Correct answers */}
+        {answers.filter((a) => a.correct).length > 0 && (
+          <section className="card" style={{ padding: 18 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <I.CheckCircle2 size={18} style={{ color: "#059669", flexShrink: 0 }} />
+              <b style={{ fontSize: 14, color: "#065f46" }}>Correct ({answers.filter((a) => a.correct).length})</b>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {answers.filter((a) => a.correct).map((a, i) => (
+                <div key={i} style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "10px 14px" }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b", marginBottom: 2 }}>{a.question}</div>
+                  <div style={{ fontSize: 12, color: "#059669", fontWeight: 700 }}>✓ {a.answer}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Wrong answers */}
+        {wrong.length > 0 && (
+          <section className="card" style={{ padding: 18 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <I.AlertCircle size={18} style={{ color: "#dc2626", flexShrink: 0 }} />
+              <b style={{ fontSize: 14, color: "#7f1d1d" }}>Needs Review ({wrong.length})</b>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {wrong.map((a, i) => (
+                <div key={i} style={{ background: "#fff7f7", border: "1px solid #fecaca", borderRadius: 10, padding: "10px 14px" }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b", marginBottom: 4 }}>{a.question}</div>
+                  <div style={{ fontSize: 12, color: "#dc2626", fontWeight: 600, marginBottom: 2 }}>✗ You answered: {a.selected}</div>
+                  <div style={{ fontSize: 12, color: "#059669", fontWeight: 700, marginBottom: 4 }}>✓ Correct: {a.answer}</div>
+                  <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>{a.explanation}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Actions */}
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <button className="secondary-action" style={{ flex: 1 }} onClick={onDone}>
+            <I.RefreshCw size={15} /> Retake Quiz
+          </button>
+          {onExit && (
+            <button className="secondary-action" style={{ flex: 1 }} onClick={onExit}>
+              <I.BookOpen size={15} /> Practice Overview
+            </button>
+          )}
+          <button className="primary-action" style={{ flex: 1 }} onClick={() => navigate("/progress")}>
+            View Progress <I.BarChart3 size={15} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Progress bar */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ flex: 1, height: 6, background: "#e2e8f0", borderRadius: 99, overflow: "hidden" }}>
+          <div style={{ width: `${progress}%`, height: "100%", background: "linear-gradient(90deg,#6366f1,#818cf8)", borderRadius: 99, transition: "width 0.4s ease" }} />
+        </div>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", whiteSpace: "nowrap" }}>{currentIndex + 1} / {total}</span>
+      </div>
+
+      {/* Question card */}
+      <section className="card practice-card" style={{ padding: 22 }}>
+        <div style={{ fontSize: 11, fontWeight: 800, color: "var(--primary)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>
+          Question {currentIndex + 1}
+        </div>
+        <h2 style={{ fontSize: 17, fontWeight: 700, color: "var(--ink)", marginBottom: 18, lineHeight: 1.45 }}>{q.question}</h2>
+
+        <div className="option-list">
+          {q.options.map((option, idx) => {
+            const letter = String.fromCharCode(65 + idx);
+            const isSelected = selected === option;
+            const isCorrect = option === q.answer;
+            let bg = isSelected ? "var(--primary)" : "#e2e8f0";
+            let color = isSelected ? "#fff" : "var(--muted)";
+            let rowBorder = "";
+            let rowBg = "";
+            if (revealed) {
+              if (isCorrect) { bg = "#059669"; color = "#fff"; rowBorder = "1px solid #bbf7d0"; rowBg = "#f0fdf4"; }
+              else if (isSelected && !isCorrect) { bg = "#dc2626"; color = "#fff"; rowBorder = "1px solid #fecaca"; rowBg = "#fff7f7"; }
+              else { bg = "#e2e8f0"; color = "var(--muted)"; }
+            }
+            return (
+              <button
+                key={option}
+                className={isSelected ? "selected" : ""}
+                style={revealed ? { border: rowBorder, background: rowBg, cursor: "default", opacity: (!isCorrect && !isSelected) ? 0.55 : 1 } : {}}
+                onClick={() => !revealed && setSelected(option)}
+              >
+                <span style={{ width: 24, height: 24, borderRadius: 6, background: bg, color, display: "grid", placeItems: "center", fontSize: 12, fontWeight: 700, flexShrink: 0, transition: "background 0.2s" }}>{letter}</span>
+                <span>{option}</span>
+                {revealed && isCorrect && <I.CheckCircle2 size={16} style={{ marginLeft: "auto", color: "#059669", flexShrink: 0 }} />}
+                {revealed && isSelected && !isCorrect && <I.XCircle size={16} style={{ marginLeft: "auto", color: "#dc2626", flexShrink: 0 }} />}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Explanation after reveal */}
+        {revealed && (
+          <div className={`feedback ${selected === q.answer ? "correct-feedback" : "failed-feedback"}`} style={{ marginTop: 14 }}>
+            <b style={{ fontSize: 14, display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+              {selected === q.answer ? <><I.CheckCircle2 size={15} /> Correct!</> : <><I.AlertCircle size={15} /> Incorrect — correct answer: {q.answer}</>}
+            </b>
+            <p style={{ fontSize: 13, margin: 0 }}>{q.explanation}</p>
+          </div>
+        )}
+
+        {/* Action buttons */}
+        <div style={{ marginTop: 16, display: "flex", gap: 10 }}>
+          {!revealed ? (
+            <button className="primary-action" disabled={!selected} onClick={handleReveal} style={{ flex: 1 }}>
+              Check Answer
+            </button>
+          ) : (
+            <button className="primary-action" onClick={handleNext} style={{ flex: 1 }}>
+              {currentIndex < total - 1 ? <>Next Question <I.ChevronRight size={16} /></> : <>See Results <I.Award size={16} /></>}
+            </button>
+          )}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -2703,7 +3073,7 @@ function Practice() {
     busy,
     getQuiz,
     evaluateAnswer,
-    getWholeTest,
+    getPracticeQuiz,
     getAdaptiveQuizAction,
     recordQuizAnswerAction,
     completeChunk,
@@ -2719,25 +3089,37 @@ function Practice() {
   const isRewireActive = session.rewireState.active;
   const chunk = chunks[0] || "";
 
+  // ── Adaptive (REWIRE) quiz state ─────────────────────────────────────────
   const [adaptiveQuiz, setAdaptiveQuiz] = useState(null);
   const [adaptiveSelected, setAdaptiveSelected] = useState("");
   const [adaptiveSubmitted, setAdaptiveSubmitted] = useState(false);
 
+  // ── Per-section quiz state ───────────────────────────────────────────────
   const [sectionIndex, setSectionIndex] = useState(0);
   const [quiz, setQuiz] = useState(null);
   const [selected, setSelected] = useState("");
   const [report, setReport] = useState(null);
 
-  const [testIndex, setTestIndex] = useState(0);
-  const [testAnswers, setTestAnswers] = useState([]);
-  const [testReport, setTestReport] = useState(null);
+  // ── Practice Quiz state (full-lesson, post-completion) ───────────────────
+  const [practicePhase, setPracticePhase] = useState("idle"); // "idle" | "loading" | "quiz" | "done"
+  const [practiceQuestions, setPracticeQuestions] = useState([]);
 
   const sectionText = chunks[sectionIndex] || "";
-  const allSectionsMastered =
-    chunks.length > 0 &&
-    chunks.every((_, index) =>
-      session.practiceReport.masteredSections.includes(index)
-    );
+
+  // Detect if all sections are complete (learner came from Learn after finishing)
+  const totalSectionsCount =
+    Array.isArray(session.transformed?.sections) && session.transformed.sections.length > 0
+      ? session.transformed.sections.length
+      : Array.isArray(session.transformed?.chunks) && session.transformed.chunks.length > 0
+        ? session.transformed.chunks.length
+        : 1;
+
+  const completedSections = session.completedSections || [];
+  const completedCount = completedSections.length;
+  const allSectionsComplete = Boolean(
+    session.transformed &&
+    completedCount >= totalSectionsCount
+  );
 
   async function loadAdaptiveQuiz() {
     const result = await getAdaptiveQuizAction(chunk);
@@ -2784,37 +3166,26 @@ function Practice() {
     }
   }
 
-  async function startWholeTest() {
-    const questions = await getWholeTest();
-    if (questions?.length) {
-      setTestIndex(0);
-      setTestAnswers([]);
-      setTestReport(null);
+  async function startPracticeQuiz() {
+    if (!session.text) return;
+    setPracticePhase("loading");
+    try {
+      const questions = await getPracticeQuiz();
+      if (questions && questions.length > 0) {
+        setPracticeQuestions(questions);
+        setPracticePhase("quiz");
+      } else {
+        setPracticePhase("idle");
+      }
+    } catch (err) {
+      console.error("Practice quiz generation error:", err);
+      setPracticePhase("idle");
     }
   }
 
-  async function submitTestAnswer() {
-    if (!session.wholeTest?.[testIndex] || !selected) return;
-    const currentQ = session.wholeTest[testIndex];
-    const nextAnswers = [
-      ...testAnswers,
-      {
-        question: currentQ.question,
-        selected,
-        correct: selected === currentQ.answer,
-      },
-    ];
-    setTestAnswers(nextAnswers);
-    setSelected("");
-    if (testIndex < session.wholeTest.length - 1) {
-      setTestIndex((index) => index + 1);
-    } else {
-      setTestReport({
-        answered: nextAnswers,
-        correct: nextAnswers.filter((a) => a.correct).length,
-        failed: nextAnswers.filter((a) => !a.correct),
-      });
-    }
+  function resetPracticeQuiz() {
+    setPracticeQuestions([]);
+    setPracticePhase("idle");
   }
 
   return (
@@ -2822,29 +3193,122 @@ function Practice() {
       <main className="page">
         <div className="eyebrow">
           <b>Mastery Practice</b>
-          <span>
-            {session.practiceReport.masteredSections.length}/{chunks.length} mastered
-          </span>
+          <span>{completedCount}/{totalSectionsCount} sections done</span>
         </div>
         <h1 className="page-title">Check your understanding</h1>
 
-        {/* REWIRE Adaptive Question Card */}
+        {/* ── Practice Quiz (full-lesson, Groq AI generated) ─────────── */}
+        {practicePhase === "loading" ? (
+          <section className="card" style={{ padding: 48, textAlign: "center" }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+              <div style={{
+                width: 52, height: 52, borderRadius: "50%",
+                border: "4px solid #e2e8f0", borderTop: "4px solid var(--primary)",
+                animation: "spin 0.8s linear infinite"
+              }} />
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 17, color: "var(--ink)" }}>Generating your practice quiz…</div>
+                <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 6 }}>
+                  Asking Groq AI to extract and formulate the most important and relevant questions from your lesson.
+                </div>
+              </div>
+            </div>
+          </section>
+        ) : practicePhase === "quiz" ? (
+          <PracticeQuizView
+            questions={practiceQuestions}
+            onDone={startPracticeQuiz}
+            onExit={resetPracticeQuiz}
+          />
+        ) : (
+          <>
+            {allSectionsComplete ? (
+              /* ── Start card shown when all sections done ───────────────── */
+              <section className="card" style={{
+                marginBottom: 16, padding: 28,
+                background: "linear-gradient(135deg, #eef2ff 0%, #f0fdf4 100%)",
+                border: "2px solid #c7d2fe"
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                  <div style={{
+                    width: 44, height: 44, borderRadius: "50%",
+                    background: "linear-gradient(135deg, #6366f1, #818cf8)",
+                    display: "flex", alignItems: "center", justifyContent: "center"
+                  }}>
+                    <I.Trophy size={22} style={{ color: "#fff" }} />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 16, color: "var(--ink)", fontFamily: "var(--font-heading)" }}>All Sections Complete!</div>
+                    <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 2 }}>Ready to test your full knowledge of the lesson.</div>
+                  </div>
+                </div>
+                <p style={{ fontSize: 14, color: "#334155", lineHeight: 1.6, marginBottom: 18 }}>
+                  Great work completing every section. Now take a <strong>Practice Quiz</strong> — Groq AI will pick the most important questions from your lesson to test your understanding.
+                </p>
+                <button
+                  id="start-practice-quiz-btn"
+                  className="primary-action"
+                  disabled={busy === "practiceQuiz" || !session.text}
+                  onClick={startPracticeQuiz}
+                  style={{ background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)", fontSize: 15 }}
+                >
+                  {busy === "practiceQuiz" ? "Generating quiz…" : "Start Practice Quiz"}
+                  <I.ClipboardCheck size={18} />
+                </button>
+              </section>
+            ) : (
+              <section className="card" style={{
+                marginBottom: 16, padding: 24,
+                background: "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
+                border: "1.5px solid #cbd5e1"
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                  <div style={{
+                    width: 40, height: 40, borderRadius: "50%",
+                    background: "#64748b",
+                    display: "flex", alignItems: "center", justifyContent: "center"
+                  }}>
+                    <I.BookOpen size={20} style={{ color: "#fff" }} />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 15, color: "var(--ink)" }}>Practice Quiz Available</div>
+                    <div style={{ fontSize: 12, color: "var(--muted)" }}>{completedCount} of {totalSectionsCount} sections completed in Learn</div>
+                  </div>
+                </div>
+                <p style={{ fontSize: 13, color: "#475569", lineHeight: 1.5, marginBottom: 16 }}>
+                  You can finish all sections in Learn to unlock the full mastery quiz, or start a practice quiz right now covering key concepts in the lesson.
+                </p>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button
+                    id="start-practice-quiz-btn"
+                    className="primary-action"
+                    disabled={busy === "practiceQuiz" || !session.text}
+                    onClick={startPracticeQuiz}
+                    style={{ flex: 1 }}
+                  >
+                    {busy === "practiceQuiz" ? "Generating quiz…" : "Start Practice Quiz Now"}
+                    <I.ClipboardCheck size={16} />
+                  </button>
+                  <button
+                    className="secondary-action"
+                    onClick={() => navigate("/learn")}
+                    style={{ flex: 1 }}
+                  >
+                    Back to Learn <I.ArrowRight size={15} />
+                  </button>
+                </div>
+              </section>
+            )}
+
+        {/* ── REWIRE Adaptive Question Card ─────────────────────────────── */}
         {isRewireActive && (
           <section className="card" style={{ marginBottom: 16, padding: 20, border: "2px solid #a855f7" }}>
-            <div
-              style={{
-                background: "#f3e8ff",
-                color: "#7e22ce",
-                padding: "6px 12px",
-                borderRadius: 9999,
-                fontSize: 12,
-                fontWeight: 700,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                marginBottom: 12,
-              }}
-            >
+            <div style={{
+              background: "#f3e8ff", color: "#7e22ce",
+              padding: "6px 12px", borderRadius: 9999,
+              fontSize: 12, fontWeight: 700,
+              display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 12,
+            }}>
               <I.Zap size={13} />
               <span>Adaptive Question: Calibrated to Simplified Level</span>
             </div>
@@ -2854,11 +3318,7 @@ function Practice() {
                 <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 12 }}>
                   Generate an adaptive question calibrated to your learning recovery.
                 </p>
-                <button
-                  className="primary-action"
-                  disabled={Boolean(busy)}
-                  onClick={loadAdaptiveQuiz}
-                >
+                <button className="primary-action" disabled={Boolean(busy)} onClick={loadAdaptiveQuiz}>
                   {busy === "quiz" ? "Generating..." : "Generate Adaptive Question"}
                   <I.HelpCircle size={18} />
                 </button>
@@ -2870,63 +3330,32 @@ function Practice() {
                   {adaptiveQuiz.options.map((option, idx) => {
                     const letter = String.fromCharCode(65 + idx);
                     return (
-                      <button
-                        key={option}
-                        className={adaptiveSelected === option ? "selected" : ""}
-                        onClick={() => !adaptiveSubmitted && setAdaptiveSelected(option)}
-                      >
-                        <span style={{
-                          width: 24, height: 24, borderRadius: 6,
-                          background: adaptiveSelected === option ? "var(--primary)" : "#e2e8f0",
-                          color: adaptiveSelected === option ? "#fff" : "var(--muted)",
-                          display: "grid", placeItems: "center", fontSize: 12, fontWeight: 700, flexShrink: 0
-                        }}>{letter}</span>
+                      <button key={option} className={adaptiveSelected === option ? "selected" : ""}
+                        onClick={() => !adaptiveSubmitted && setAdaptiveSelected(option)}>
+                        <span style={{ width: 24, height: 24, borderRadius: 6, background: adaptiveSelected === option ? "var(--primary)" : "#e2e8f0", color: adaptiveSelected === option ? "#fff" : "var(--muted)", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{letter}</span>
                         <span>{option}</span>
                       </button>
                     );
                   })}
                 </div>
-                <button
-                  className="primary-action"
-                  disabled={!adaptiveSelected || adaptiveSubmitted}
-                  onClick={handleAdaptiveSubmit}
-                >
-                  {adaptiveSubmitted
-                    ? adaptiveSelected === adaptiveQuiz.answer
-                      ? "Correct"
-                      : "Review Answer"
-                    : "Submit Answer"}
+                <button className="primary-action" disabled={!adaptiveSelected || adaptiveSubmitted} onClick={handleAdaptiveSubmit}>
+                  {adaptiveSubmitted ? (adaptiveSelected === adaptiveQuiz.answer ? "Correct" : "Review Answer") : "Submit Answer"}
                 </button>
-
                 {adaptiveSubmitted && (
                   <div className={`feedback ${adaptiveSelected === adaptiveQuiz.answer ? "correct-feedback" : "failed-feedback"}`} style={{ marginTop: 14 }}>
                     <b style={{ fontSize: 15, display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                      {adaptiveSelected === adaptiveQuiz.answer ? (
-                        <><I.CheckCircle2 size={16} /> Correct</>
-                      ) : (
-                        <><I.AlertCircle size={16} /> Answer: {adaptiveQuiz.answer}</>
-                      )}
+                      {adaptiveSelected === adaptiveQuiz.answer ? <><I.CheckCircle2 size={16} /> Correct</> : <><I.AlertCircle size={16} /> Answer: {adaptiveQuiz.answer}</>}
                     </b>
                     <p>{adaptiveQuiz.explanation}</p>
                   </div>
                 )}
-
                 {adaptiveSubmitted && session.latestOutcome && (
                   <div className="outcome-card" style={{ marginTop: 14 }}>
                     <div className="outcome-title">
-                      <span className="outcome-delta-badge">
-                        +{((session.latestOutcome.outcomeDelta || 1) * 100).toFixed(0)}%
-                      </span>
+                      <span className="outcome-delta-badge">+{((session.latestOutcome.outcomeDelta || 1) * 100).toFixed(0)}%</span>
                       <span>SCALE Outcome: Struggle Successfully Resolved</span>
                     </div>
-                    <p style={{ fontSize: 13, color: "#065f46", margin: "6px 0 10px", lineHeight: 1.5 }}>
-                      Cognitive restructuring enabled mastery. Accuracy improved significantly following adaptation.
-                    </p>
-                    <button
-                      className="primary-action"
-                      style={{ background: "#059669", fontSize: 12, padding: "8px 14px", width: "auto" }}
-                      onClick={() => navigate("/progress")}
-                    >
+                    <button className="primary-action" style={{ background: "#059669", fontSize: 12, padding: "8px 14px", width: "auto", marginTop: 10 }} onClick={() => navigate("/progress")}>
                       View in Progress Dashboard <I.ArrowRight size={14} />
                     </button>
                   </div>
@@ -2936,28 +3365,7 @@ function Practice() {
           </section>
         )}
 
-        <section className="card practice-report" style={{ padding: 18 }}>
-          <b style={{ fontSize: 15, color: "var(--ink)", fontFamily: "var(--font-heading)" }}>Section Report</b>
-          <div className="stats-grid" style={{ marginTop: 12 }}>
-            <div className="stat">
-              <b>{session.practiceReport.answered.length}</b>
-              <span>Answered</span>
-            </div>
-            <div className="stat">
-              <b>{session.practiceReport.failed.length}</b>
-              <span>Need Review</span>
-            </div>
-            <div className="stat">
-              <b>{session.practiceReport.masteredSections.length}</b>
-              <span>Mastered</span>
-            </div>
-            <div className="stat">
-              <b>{chunks.length}</b>
-              <span>Total Sections</span>
-            </div>
-          </div>
-        </section>
-
+        {/* ── Per-section quiz ─────────────────────────────────────────── */}
         {!sectionText ? (
           <section className="card empty-state" style={{ marginTop: 16 }}>
             <I.BadgeHelp size={36} style={{ color: "var(--muted)", margin: "0 auto 12px" }} />
@@ -2966,11 +3374,10 @@ function Practice() {
         ) : (
           <section className="card practice-card" style={{ marginTop: 16 }}>
             <span className="pill">Section {sectionIndex + 1} of {chunks.length}</span>
-            <p className="practice-context" style={{ marginTop: 8 }}>Questions are generated from this lesson section.</p>
-
+            <p className="practice-context" style={{ marginTop: 8 }}>Section-by-section comprehension check.</p>
             {!quiz ? (
               <div style={{ marginTop: 16, textAlign: "center" }}>
-                <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 14 }}>Complete the section check before moving to the next topic.</p>
+                <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 14 }}>Test your understanding of this section before moving on.</p>
                 <button className="primary-action" disabled={Boolean(busy)} onClick={loadSectionQuestion}>
                   {busy === "quiz" ? "Generating question..." : "Start section question"}
                   <I.HelpCircle size={18} />
@@ -2983,17 +3390,8 @@ function Practice() {
                   {quiz.options.map((option, idx) => {
                     const letter = String.fromCharCode(65 + idx);
                     return (
-                      <button
-                        key={option}
-                        className={selected === option ? "selected" : ""}
-                        onClick={() => !report && setSelected(option)}
-                      >
-                        <span style={{
-                          width: 24, height: 24, borderRadius: 6,
-                          background: selected === option ? "var(--primary)" : "#e2e8f0",
-                          color: selected === option ? "#fff" : "var(--muted)",
-                          display: "grid", placeItems: "center", fontSize: 12, fontWeight: 700, flexShrink: 0
-                        }}>{letter}</span>
+                      <button key={option} className={selected === option ? "selected" : ""} onClick={() => !report && setSelected(option)}>
+                        <span style={{ width: 24, height: 24, borderRadius: 6, background: selected === option ? "var(--primary)" : "#e2e8f0", color: selected === option ? "#fff" : "var(--muted)", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{letter}</span>
                         <span>{option}</span>
                       </button>
                     );
@@ -3006,21 +3404,13 @@ function Practice() {
                 ) : (
                   <div className={`feedback ${report.is_correct ? "correct-feedback" : "failed-feedback"}`}>
                     <b style={{ fontSize: 15, display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                      {report.is_correct ? (
-                        <><I.CheckCircle2 size={16} /> Correct! Section mastered.</>
-                      ) : (
-                        <><I.AlertCircle size={16} /> Review this topic</>
-                      )}
+                      {report.is_correct ? <><I.CheckCircle2 size={16} /> Correct! Section mastered.</> : <><I.AlertCircle size={16} /> Review this topic</>}
                     </b>
                     <p>{report.explanation}</p>
                     <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
-                      {!report.is_correct && (
-                        <button className="secondary-action" onClick={loadSectionQuestion}>
-                          Retry this topic
-                        </button>
-                      )}
+                      {!report.is_correct && (<button className="secondary-action" onClick={loadSectionQuestion}>Retry this topic</button>)}
                       {report.is_correct && sectionIndex < chunks.length - 1 && (
-                        <button className="primary-action" onClick={() => { setSectionIndex((index) => index + 1); setQuiz(null); setReport(null); }}>
+                        <button className="primary-action" onClick={() => { setSectionIndex((i) => i + 1); setQuiz(null); setReport(null); }}>
                           Continue to next section <I.ArrowRight size={16} />
                         </button>
                       )}
@@ -3031,61 +3421,7 @@ function Practice() {
             )}
           </section>
         )}
-
-        {allSectionsMastered && !session.wholeTest && (
-          <section className="card mastery-unlocked" style={{ marginTop: 16 }}>
-            <b style={{ fontSize: 16, color: "#065f46", display: "flex", alignItems: "center", gap: 8 }}>
-              <I.Award size={20} /> All Sections Mastered
-            </b>
-            <p style={{ margin: "6px 0 14px" }}>You can now take a comprehensive test covering the entire extracted lesson.</p>
-            <button className="primary-action" disabled={Boolean(busy)} onClick={startWholeTest} style={{ background: "linear-gradient(135deg, #059669 0%, #10b981 100%)" }}>
-              {busy === "test" ? "Building test..." : "Take whole-lesson test"}
-              <I.ClipboardCheck size={18} />
-            </button>
-          </section>
-        )}
-
-        {session.wholeTest && !testReport && (
-          <section className="card practice-card" style={{ marginTop: 16 }}>
-            <span className="pill">Whole-lesson test · {testIndex + 1} of {session.wholeTest.length}</span>
-            <h2>{session.wholeTest[testIndex].question}</h2>
-            <div className="option-list">
-              {session.wholeTest[testIndex].options.map((option, idx) => {
-                const letter = String.fromCharCode(65 + idx);
-                return (
-                  <button key={option} className={selected === option ? "selected" : ""} onClick={() => setSelected(option)}>
-                    <span style={{
-                      width: 24, height: 24, borderRadius: 6,
-                      background: selected === option ? "var(--primary)" : "#e2e8f0",
-                      color: selected === option ? "#fff" : "var(--muted)",
-                      display: "grid", placeItems: "center", fontSize: 12, fontWeight: 700, flexShrink: 0
-                    }}>{letter}</span>
-                    <span>{option}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <button className="primary-action" disabled={!selected || Boolean(busy)} onClick={submitTestAnswer}>
-              Submit test answer
-            </button>
-          </section>
-        )}
-
-        {testReport && (
-          <section className="card feedback correct-feedback" style={{ marginTop: 16, padding: 20 }}>
-            <b style={{ fontSize: 16, display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-              <I.Award size={20} /> Whole-lesson test complete
-            </b>
-            <p style={{ fontSize: 14 }}>You scored {testReport.correct} of {testReport.answered.length} correct.</p>
-            {testReport.failed.length ? (
-              <div style={{ marginTop: 10 }}>
-                <b>Topics to review:</b>
-                <p style={{ marginTop: 4 }}>{testReport.failed.map((item) => item.question).join(" ")}</p>
-              </div>
-            ) : (
-              <p style={{ marginTop: 6, fontWeight: 600 }}>Excellent work! You answered every test question correctly.</p>
-            )}
-          </section>
+          </>
         )}
 
         <ErrorNotice />
