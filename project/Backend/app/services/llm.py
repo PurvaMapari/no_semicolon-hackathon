@@ -70,7 +70,7 @@ _VISUAL_CLIENT, _VISUAL_MODEL = _client_and_model(VISUAL_GROQ_API_KEY, GROQ_MODE
 def call_llm(prompt: str) -> str:
     """Generate text with Groq or return the notebook's local development fallback."""
     if _MAIN_CLIENT and _MAIN_MODEL:
-        needs_json = "QUIZ_JSON" in prompt or "CHUNK_JSON" in prompt or "VISUAL_JSON" in prompt
+        needs_json = "QUIZ_JSON" in prompt or "CHUNK_JSON" in prompt or "VISUAL_JSON" in prompt or "SECTION_JSON" in prompt
         is_openai_model = _MAIN_MODEL.startswith("openai/")
         options: Dict[str, Any] = {
             "model": _MAIN_MODEL,
@@ -92,6 +92,12 @@ def call_llm(prompt: str) -> str:
         return json.dumps({"chunks": [" ".join(sentences[index:index + 3]) for index in range(0, len(sentences), 3)]})
     if "PREFERENCE_JSON" in prompt:
         return json.dumps({"profile": "cognitive_load", "reason": "The description suggests that dense text is difficult to process."})
+    if "SECTION_JSON" in prompt:
+        return json.dumps({"sections": [
+            {"heading": "Introduction", "content": "Photosynthesis is the process plants use to make food from sunlight."},
+            {"heading": "How It Works", "content": "Chlorophyll in leaves captures light energy and combines water with carbon dioxide to produce glucose."},
+            {"heading": "Why It Matters", "content": "Photosynthesis produces oxygen as a byproduct, which is essential for life on Earth."},
+        ]})
     if "VISUAL_JSON" in prompt:
         return json.dumps({"should_visualize": False, "visual_type": "none", "title": "", "description": "", "why_helpful": "", "nodes": [], "edges": [], "labels": [], "data": []})
     return (
@@ -135,6 +141,15 @@ def call_visual_llm(prompt: str) -> str:
 
 
 def parse_json_response(response: str) -> Any:
-    """Parse plain JSON or JSON wrapped in Markdown fences."""
+    """Parse plain JSON, JSON wrapped in Markdown fences, or JSON preceded by markers."""
     cleaned = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", response.strip(), flags=re.IGNORECASE)
-    return json.loads(cleaned)
+    cleaned = re.sub(r"^\s*(?:SECTION_JSON|QUIZ_JSON|PREFERENCE_JSON|SCALE_JSON)\s*", "", cleaned).strip()
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        # Extract the outermost JSON object {...} or array [...]
+        match = re.search(r"(\{.*\}|\[.*\])", cleaned, re.DOTALL)
+        if match:
+            return json.loads(match.group(1))
+        raise
+

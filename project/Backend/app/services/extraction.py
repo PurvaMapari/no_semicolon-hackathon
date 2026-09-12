@@ -33,12 +33,17 @@ def extract_text_and_tables_from_pdf(filepath: str) -> Tuple[str, List[List[List
                 page_text = (prose_page.extract_text() or "").strip()
                 if not page_text:
                     page_text = f"[No extractable prose text found on page {page_number}; OCR may be required.]"
+                else:
+                    # Clean unmapped PDF font encoding artifacts (e.g. (cid:127) -> "• ")
+                    page_text = re.sub(r"\(cid:\d+\)", "• ", page_text)
                 pages_text.append(page_text)
                 pages_tables.append([table.extract() for table in found_tables])
     except Exception as error:
         raise RuntimeError(f"Could not extract PDF content from {filepath}: {error}") from error
 
-    return "\n\n".join(pages_text), pages_tables
+    full_text = "\n\n".join(pages_text)
+    full_text = re.sub(r"\(cid:\d+\)", "• ", full_text)
+    return full_text, pages_tables
 
 
 def extract_source_images_from_pdf(filepath: str, max_images: int = 6) -> List[str]:

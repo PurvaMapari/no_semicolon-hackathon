@@ -15,6 +15,7 @@ class TransformRequest(BaseModel):
 class VoiceRequest(BaseModel):
     question: str = Field(min_length=1)
     lesson_text: str = ""
+    profile: str = "cognitive_load"
 
 
 class LessonQuestionRequest(BaseModel):

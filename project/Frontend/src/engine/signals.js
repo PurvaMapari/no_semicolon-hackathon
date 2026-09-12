@@ -3,27 +3,63 @@
  *
  * Tracks behavioral signals per concept/chunk and feeds them into SCALE.
  * Used by the SessionProvider to maintain learner interaction state.
+ *
+ * ACTIVE DWELL TIME
+ * -----------------
+ * Only time spent in SECTION_ACTIVE state contributes to dwell.
+ * Loading, tab-hidden, generation, and navigation delays are excluded.
+ *
+ * Section lifecycle states:
+ *   SECTION_LOADING    — content being fetched / generated
+ *   SECTION_READY      — content rendered, not yet interactive
+ *   SECTION_ACTIVE     — learner is actively reading (timer runs)
+ *   SECTION_PAUSED     — tab hidden, busy operation, or section not focused
+ *   SECTION_COMPLETED  — learner marked section done
  */
 
-import { scaleEvaluate, measureOutcome } from "./scale.js";
+import { scaleEvaluate, measureOutcome, SCALE_CONFIG } from "./scale.js";
+
+// ─── Section Lifecycle States ────────────────────────────────────────────────
+
+export const SECTION_STATES = {
+  LOADING:   'SECTION_LOADING',
+  READY:     'SECTION_READY',
+  ACTIVE:    'SECTION_ACTIVE',
+  PAUSED:    'SECTION_PAUSED',
+  COMPLETED: 'SECTION_COMPLETED',
+};
 
 // ─── Default Signal State ────────────────────────────────────────────────────
 
 export function createSignalState() {
   return {
-    dwellTime: 0,
-    rereadCount: 0,
+    // --- Active dwell (the ONLY dwell signal fed to SCALE) ---
+    activeDwellMs: 0,            // total active learning time in milliseconds
+    dwellTime: 0,                // backward-compat alias (kept in sync with activeDwellMs)
+
+    // --- Learning behavior signals ---
+    audioReplayCount: 0,         // audio / TTS replay count (replaces rereadCount semantics)
+    rereadCount: 0,              // backward-compat alias
     scrollBack: 0,
     helpRequests: 0,
-    questionAccuracy: null,   // null = no quiz taken yet
+    questionAccuracy: null,      // null = no quiz taken yet
     answerLatency: 0,
     retryCount: 0,
     voiceHelpRequests: 0,
-    // Internal tracking
+
+    // --- Internal quiz tracking ---
     _questionsCorrect: 0,
     _questionsTotal: 0,
-    _dwellStart: null,
     _answerLatencies: [],
+
+    // --- Section lifecycle & timing internals ---
+    _sectionState: SECTION_STATES.LOADING,
+    _dwellTimerStart: null,      // Date.now() when SECTION_ACTIVE began (null = not active)
+    _sectionOpenedAt: null,      // when the section was first navigated to
+    _sectionReadyAt: null,       // when section content became ready
+    _sectionCompletedAt: null,   // when learner marked section done
+    _pausedMs: 0,                // total paused time (diagnostic only)
+    _loadingMs: 0,               // total loading time (diagnostic only)
   };
 }
 
@@ -42,11 +78,144 @@ export function createSessionMeta() {
   };
 }
 
+// ─── Section Lifecycle Functions ─────────────────────────────────────────────
+
+/**
+ * Accumulate any in-flight active dwell into activeDwellMs and clear the timer.
+ * Safe to call when timer is not running (no-op).
+ */
+function _flushActiveDwell(signals) {
+  if (signals._dwellTimerStart === null) return signals;
+  const elapsed = Date.now() - signals._dwellTimerStart;
+  const newActiveDwell = signals.activeDwellMs + Math.max(0, elapsed);
+  return {
+    ...signals,
+    activeDwellMs: newActiveDwell,
+    dwellTime: newActiveDwell, // keep backward compat
+    _dwellTimerStart: null,
+  };
+}
+
+/**
+ * Transition to SECTION_LOADING. Pauses any active timer.
+ * Called when a blocking operation (content fetch, generation) starts.
+ */
+export function sectionLoading(signals) {
+  const flushed = _flushActiveDwell(signals);
+  return {
+    ...flushed,
+    _sectionState: SECTION_STATES.LOADING,
+  };
+}
+
+/**
+ * Transition to SECTION_READY. Records when section content became available.
+ * Does NOT start the active timer — call sectionActive() for that.
+ */
+export function sectionReady(signals) {
+  const flushed = _flushActiveDwell(signals);
+  return {
+    ...flushed,
+    _sectionState: SECTION_STATES.READY,
+    _sectionReadyAt: Date.now(),
+  };
+}
+
+/**
+ * Transition to SECTION_ACTIVE. Starts the active dwell timer.
+ * Only this state contributes to active_dwell_seconds.
+ */
+export function sectionActive(signals) {
+  // Don't restart if already active
+  if (signals._sectionState === SECTION_STATES.ACTIVE && signals._dwellTimerStart !== null) {
+    return signals;
+  }
+  return {
+    ...signals,
+    _sectionState: SECTION_STATES.ACTIVE,
+    _dwellTimerStart: Date.now(),
+  };
+}
+
+/**
+ * Transition to SECTION_PAUSED. Accumulates elapsed active dwell.
+ * Called when tab becomes hidden, busy operation starts, or section loses focus.
+ */
+export function sectionPaused(signals) {
+  const flushed = _flushActiveDwell(signals);
+  return {
+    ...flushed,
+    _sectionState: SECTION_STATES.PAUSED,
+  };
+}
+
+/**
+ * Transition to SECTION_COMPLETED. Finalizes active dwell.
+ */
+export function sectionCompleted(signals) {
+  const flushed = _flushActiveDwell(signals);
+  return {
+    ...flushed,
+    _sectionState: SECTION_STATES.COMPLETED,
+    _sectionCompletedAt: Date.now(),
+  };
+}
+
+/**
+ * Reset per-section timing for a new section.
+ * Preserves cumulative signals (quiz, help, reread) — only resets dwell tracking.
+ */
+export function resetSectionDwell(signals) {
+  return {
+    ...signals,
+    activeDwellMs: 0,
+    dwellTime: 0,
+    _sectionState: SECTION_STATES.LOADING,
+    _dwellTimerStart: null,
+    _sectionOpenedAt: Date.now(),
+    _sectionReadyAt: null,
+    _sectionCompletedAt: null,
+    _pausedMs: 0,
+    _loadingMs: 0,
+  };
+}
+
+/**
+ * Get the current active dwell in SECONDS, including any in-flight active period.
+ * This is the value that should be passed to SCALE as `active_dwell_seconds`.
+ */
+export function getActiveDwellSeconds(signals) {
+  let totalMs = signals.activeDwellMs;
+  if (signals._dwellTimerStart !== null) {
+    totalMs += Date.now() - signals._dwellTimerStart;
+  }
+  return totalMs / 1000;
+}
+
+// ─── Legacy Dwell Timer Functions (backward compat) ──────────────────────────
+// These are kept so any existing code calling them doesn't break,
+// but the Learn component should use the section lifecycle functions above.
+
+export function startDwellTimer(signals) {
+  return sectionActive(signals);
+}
+
+export function stopDwellTimer(signals) {
+  return sectionPaused(signals);
+}
+
 // ─── Signal Recording Functions ──────────────────────────────────────────────
 
-export function recordReread(signals) {
-  return { ...signals, rereadCount: signals.rereadCount + 1 };
+export function recordAudioReplay(signals) {
+  const newCount = (signals.audioReplayCount ?? signals.rereadCount ?? 0) + 1;
+  return {
+    ...signals,
+    audioReplayCount: newCount,
+    rereadCount: newCount, // keep backward compat
+  };
 }
+
+export const recordReread = recordAudioReplay;
 
 export function recordScrollBack(signals) {
   return { ...signals, scrollBack: signals.scrollBack + 1 };
@@ -58,20 +227,6 @@ export function recordHelpRequest(signals) {
 
 export function recordVoiceHelp(signals) {
   return { ...signals, voiceHelpRequests: signals.voiceHelpRequests + 1 };
-}
-
-export function startDwellTimer(signals) {
-  return { ...signals, _dwellStart: Date.now() };
-}
-
-export function stopDwellTimer(signals) {
-  if (!signals._dwellStart) return signals;
-  const elapsed = Date.now() - signals._dwellStart;
-  return {
-    ...signals,
-    dwellTime: signals.dwellTime + elapsed,
-    _dwellStart: null,
-  };
 }
 
 export function recordQuizAnswer(signals, isCorrect, latencyMs) {
@@ -103,68 +258,48 @@ export function recordQuizAnswer(signals, isCorrect, latencyMs) {
  * webcamContext shape:
  *   { presenceRatio: 0–1, tabFocused: bool, headStable: bool }
  *   All fields are optional — missing fields contribute 0.
+ *
+ * Optional baselineDwellSeconds parameter sets the expected reading time for
+ * this section (from backend metadata). Used to compute dwell ratio dynamically.
  */
-export function evaluateSignals(signals, sessionMeta, webcamContext = null) {
+export function evaluateSignals(signals, sessionMeta, webcamContext = null, baselineDwellSeconds = null) {
+  // Use active dwell (including any in-flight period) for the SCALE evaluation
+  const currentActiveDwellMs = signals.activeDwellMs +
+    (signals._dwellTimerStart !== null ? Date.now() - signals._dwellTimerStart : 0);
+
   const rawSignals = {
-    dwellTime: signals.dwellTime,
-    rereadCount: signals.rereadCount,
-    scrollBack: signals.scrollBack,
-    helpRequests: signals.helpRequests,
+    dwellTime: currentActiveDwellMs,  // ACTIVE dwell only, in ms
+    activeDwellMs: currentActiveDwellMs,
+    audioReplayCount: signals.audioReplayCount ?? signals.rereadCount ?? 0,
+    rereadCount: signals.audioReplayCount ?? signals.rereadCount ?? 0,
+    scrollBack: signals.scrollBack ?? 0,
+    helpRequests: signals.helpRequests ?? 0,
+    voiceHelpRequests: signals.voiceHelpRequests ?? 0,
     questionAccuracy: signals.questionAccuracy ?? 0.8, // default to "normal" if no quiz yet
-    answerLatency: signals.answerLatency,
-    retryCount: signals.retryCount,
-    voiceHelpRequests: signals.voiceHelpRequests,
+    answerLatency: signals.answerLatency ?? 0,
+    retryCount: signals.retryCount ?? 0,
   };
 
-  const baseResult = scaleEvaluate(rawSignals, sessionMeta.currentVariantLevel, sessionMeta);
+  const evalResult = scaleEvaluate(
+    rawSignals,
+    sessionMeta?.currentVariantLevel ?? 1,
+    sessionMeta,
+    baselineDwellSeconds,
+    webcamContext
+  );
 
-  // ── Webcam signal boost (supporting evidence only) ─────────────────────────
-  if (!webcamContext) return baseResult;
-
-  const presenceRatio = webcamContext.presence_ratio ?? webcamContext.presenceRatio ?? 1;
-  const tabFocused = webcamContext.tab_focused_now ?? webcamContext.tabFocused ?? true;
-  const headStable = webcamContext.head_stable_now ?? webcamContext.headStable ?? true;
-  const facePresentNow = webcamContext.face_present_now ?? webcamContext.facePresentNow ?? true;
-  const scrollConsistent = webcamContext.scroll_consistent_now ?? webcamContext.scrollConsistentNow ?? true;
-
-  console.log('[SCALE] Evaluation with signals:', {
-    learningSignals: rawSignals,
-    webcamContext: {
-      presence_ratio: presenceRatio,
-      face_present_now: facePresentNow,
-      head_stable_now: headStable,
-      tab_focused_now: tabFocused,
-      scroll_consistent_now: scrollConsistent,
-    },
-  });
-
-  // Each signal contributes a small weight — total cap is 0.12
-  // Low presence ratio or face absent = more likely to be disengaged
-  const presenceBoost  = (!facePresentNow || presenceRatio < 0.5) ? (0.5 - Math.min(0.5, presenceRatio)) * 0.12 : 0;
-  // Tab not focused = mild signal of disengagement
-  const tabBoost       = !tabFocused ? 0.04 : 0;
-  // Head unstable = learner moving around = mild distraction signal
-  const stabilityBoost = !headStable ? 0.02 : 0;
-  // Scroll inconsistent = jumping back and forth
-  const scrollBoost    = !scrollConsistent ? 0.02 : 0;
-
-  const webcamBoost = Math.min(0.12, presenceBoost + tabBoost + stabilityBoost + scrollBoost);
-
-  if (webcamBoost === 0) return baseResult;
-
-  const boostedScore = Math.min(1.0, baseResult.struggleScore + webcamBoost);
+  const webcamBoost = (evalResult.normalized?.webcamContext ?? 0) * (SCALE_CONFIG?.WEIGHTS?.webcamContext ?? 0.05);
 
   return {
-    ...baseResult,
-    struggleScore: boostedScore,
+    ...evalResult,
     webcamBoost,
-    webcamContext: {
-      presence_ratio: presenceRatio,
-      face_present_now: facePresentNow,
-      head_stable_now: headStable,
-      tab_focused_now: tabFocused,
-      scroll_consistent_now: scrollConsistent,
-    },
+    webcamContext: webcamContext ? {
+      presence_ratio: webcamContext.presence_ratio ?? webcamContext.presenceRatio ?? 1,
+      face_present_now: webcamContext.face_present_now ?? webcamContext.facePresentNow ?? true,
+      head_stable_now: webcamContext.head_stable_now ?? webcamContext.headStableNow ?? true,
+      tab_focused_now: webcamContext.tab_focused_now ?? webcamContext.tabFocusedNow ?? true,
+      scroll_consistent_now: webcamContext.scroll_consistent_now ?? webcamContext.scrollConsistentNow ?? true,
+    } : null,
   };
 }
 
@@ -243,7 +378,9 @@ export function advanceChunk(sessionMeta) {
 export function injectGoldenPathStruggle(signals) {
   return {
     ...signals,
+    activeDwellMs: 50000,
     dwellTime: 50000,
+    audioReplayCount: 4,
     rereadCount: 4,
     scrollBack: 2,
     helpRequests: 2,

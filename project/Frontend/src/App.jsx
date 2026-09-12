@@ -1,4 +1,4 @@
- import React, { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from "react";
 import {
   NavLink,
   Route,
@@ -25,6 +25,7 @@ import { WebcamProvider, useWebcam } from "./hooks/WebcamContext";
 import { ToastProvider, ToastContainer, useToast } from "./components/PrismToast";
 import { WebcamStatusBadge } from "./components/WebcamStatusBadge";
 import { useWebcamToasts } from "./hooks/useWebcamToasts.jsx";
+import { formatReadTime } from "./utils/formatReadTime";
 import {
   createSignalState,
   createSessionMeta,
@@ -35,8 +36,10 @@ import {
   evaluateSignals,
   applyAdaptation,
   recordAdaptationOutcome,
-  computeSessionStruggleScore,
+  resetSectionDwell,
+  SECTION_STATES,
 } from "./engine/signals";
+import { SCALE_CONFIG } from "./engine/scale";
 import { measureOutcome } from "./engine/scale";
 
 const PROFILE_LABELS = {
@@ -229,7 +232,7 @@ export function SessionProvider({ children }) {
     });
   }
 
-  function completeChunk(webcamContext = null) {
+  function completeChunk(webcamContext = null, baselineDwellSeconds = null) {
     setSession((current) => {
       // Advance cooldown tracker (advances lastAdaptationChunksAgo by 1)
       const updatedMeta = {
@@ -244,7 +247,7 @@ export function SessionProvider({ children }) {
       // Optionally update struggle evaluation with webcam context for SCALE display
       // (webcamContext is used purely for evaluation; it doesn't modify stored signals)
       const evalWithWebcam = webcamContext
-        ? evaluateSignals(current.signals, updatedMeta, webcamContext)
+        ? evaluateSignals(current.signals, updatedMeta, webcamContext, baselineDwellSeconds)
         : null;
 
       return {
@@ -317,8 +320,9 @@ export function SessionProvider({ children }) {
       const updatedSignals = recordReread(current.signals);
       const evalState = evaluateSignals(updatedSignals, current.sessionMeta);
       
-      // Auto-trigger REWIRE if struggle score passes threshold (>= 0.5)
-      if (evalState.struggleScore >= 0.5 && !current.rewireState.active) {
+      // Auto-trigger REWIRE only at STRUGGLE_THRESHOLD (0.6).
+      // Re-read is primarily an audio/TTS replay — NOT a strong struggle indicator.
+      if (evalState.struggleScore >= SCALE_CONFIG.STRUGGLE_THRESHOLD && !current.rewireState.active) {
         setTimeout(() => {
           triggerRewireForChunk(chunkIndex, chunkText, evalState.explanation);
         }, 100);
@@ -333,7 +337,7 @@ export function SessionProvider({ children }) {
       const updatedSignals = recordHelpRequest(current.signals);
       const evalState = evaluateSignals(updatedSignals, current.sessionMeta);
 
-      if (evalState.struggleScore >= 0.5 && !current.rewireState.active) {
+      if (evalState.struggleScore >= SCALE_CONFIG.STRUGGLE_THRESHOLD && !current.rewireState.active) {
         setTimeout(() => {
           triggerRewireForChunk(chunkIndex, chunkText, evalState.explanation);
         }, 100);
@@ -399,6 +403,33 @@ export function SessionProvider({ children }) {
     }));
   }
 
+  /**
+   * Update the active dwell time in the signal state.
+   * Called by the Learn component's active dwell timer on section transitions
+   * and section completion. The value passed is ONLY active learning time (ms).
+   */
+  function updateActiveDwell(activeDwellMs) {
+    setSession((current) => ({
+      ...current,
+      signals: {
+        ...current.signals,
+        activeDwellMs: activeDwellMs,
+        dwellTime: activeDwellMs, // backward compat for SCALE
+      },
+    }));
+  }
+
+  /**
+   * Reset per-section dwell timing when switching sections.
+   * Preserves accumulated quiz/help/reread signals.
+   */
+  function resetDwellForNewSection() {
+    setSession((current) => ({
+      ...current,
+      signals: resetSectionDwell(current.signals),
+    }));
+  }
+
   return (
     <SessionContext.Provider
       value={{
@@ -423,6 +454,8 @@ export function SessionProvider({ children }) {
         recordQuizAnswerAction,
         getAdaptiveQuizAction,
         dismissRewire,
+        updateActiveDwell,
+        resetDwellForNewSection,
       }}
     >
       {children}
@@ -1371,8 +1404,11 @@ function Learn() {
     recordHelpAction,
     recordVoiceHelpAction,
     dismissRewire,
+    updateActiveDwell,
+    resetDwellForNewSection,
   } = useSession();
   const navigate = useNavigate();
+  const transformed = session.transformed;
 
   // Webcam presence — shared instance from WebcamContext (persists across Step 2→3)
   const webcamHook = useWebcam();
@@ -1394,36 +1430,165 @@ function Learn() {
   const [activeSection, setActiveSection] = useState(0);
   const [playing, setPlaying] = useState(false);
 
-  const transformed = session.transformed;
+  // ── Active Dwell Timer ──────────────────────────────────────────────────────
+  // Tracks ONLY active learning time. Pauses during:
+  //   • tab hidden (visibilitychange)
+  //   • busy operations (loading, generation, quiz gen)
+  //   • section not yet ready
+  // Resets on section switch. Uses refs to avoid re-render loops.
+  const dwellRef = useRef({ startTime: null, accumulatedMs: 0, sectionIndex: -1 });
+  const [sectionContentReady, setSectionContentReady] = useState(false);
+
+  // Helper: get current accumulated active dwell including any in-flight period
+  const getCurrentActiveDwellMs = useCallback(() => {
+    let total = dwellRef.current.accumulatedMs;
+    if (dwellRef.current.startTime !== null) {
+      total += Date.now() - dwellRef.current.startTime;
+    }
+    return total;
+  }, []);
+
+  // Helper: pause the active timer (accumulate elapsed, clear startTime)
+  const pauseDwellTimer = useCallback(() => {
+    if (dwellRef.current.startTime !== null) {
+      dwellRef.current.accumulatedMs += Date.now() - dwellRef.current.startTime;
+      dwellRef.current.startTime = null;
+    }
+  }, []);
+
+  // Helper: resume the active timer (set startTime to now)
+  const resumeDwellTimer = useCallback(() => {
+    if (dwellRef.current.startTime === null) {
+      dwellRef.current.startTime = Date.now();
+    }
+  }, []);
+
+  // Effect 1: Section switching — reset timer for the new section
+  useEffect(() => {
+    // Flush any accumulated dwell from the previous section into signals
+    if (dwellRef.current.sectionIndex >= 0 && dwellRef.current.sectionIndex !== activeSection) {
+      pauseDwellTimer();
+      updateActiveDwell(dwellRef.current.accumulatedMs);
+    }
+
+    // Reset for the new section
+    dwellRef.current = { startTime: null, accumulatedMs: 0, sectionIndex: activeSection };
+    setSectionContentReady(false);
+    resetDwellForNewSection();
+
+    // Mark section content as ready after the next frame (content rendered)
+    const frameId = requestAnimationFrame(() => {
+      setSectionContentReady(true);
+    });
+    return () => cancelAnimationFrame(frameId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection]);
+
+  // Effect 2: Start/stop timer based on conditions
+  // Timer runs ONLY when: transformed + not busy + sectionContentReady + tab visible
+  useEffect(() => {
+    const canTime = transformed && !busy && sectionContentReady && !document.hidden;
+    if (canTime) {
+      resumeDwellTimer();
+    } else {
+      pauseDwellTimer();
+    }
+    // Sync active dwell into signals whenever conditions change
+    updateActiveDwell(getCurrentActiveDwellMs());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy, transformed, sectionContentReady]);
+
+  // Effect 3: Visibility change — pause on tab hidden, resume on visible
+  useEffect(() => {
+    function onVisibilityChange() {
+      if (document.hidden) {
+        pauseDwellTimer();
+        updateActiveDwell(getCurrentActiveDwellMs());
+      } else if (transformed && !busy && sectionContentReady) {
+        resumeDwellTimer();
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transformed, busy, sectionContentReady]);
+
+  // Cleanup: flush dwell on unmount (route change away from /learn)
+  useEffect(() => {
+    return () => {
+      pauseDwellTimer();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const isCognitiveLoad = transformed?.profile === "cognitive_load";
+  const hasStructuredSections = Array.isArray(transformed?.sections) && transformed.sections.length > 0;
   const chunks =
-    isCognitiveLoad
+    Array.isArray(transformed?.chunks)
       ? transformed.chunks
       : [transformed?.text || session.text];
 
+  // Extract metadata for each chunk/section
+  const chunkMeta = transformed?.chunk_meta || [];
+  const sectionMeta = transformed?.section_meta || null;
+
   let globalIndex = 0;
-  const sections = chunks.filter(Boolean).flatMap((chunk, chunkIndex) => {
-    // For cognitive_load: each chunk IS one section — never sub-split it.
-    // The backend already chunked at the right granularity (8–20 chunks).
-    const parts = isCognitiveLoad ? [chunk] : splitIntoLessonSections(chunk);
-    return parts.map((paragraph, paragraphIndex) => {
-      const idx = globalIndex++;
-      return {
-        id: `${chunkIndex}-${paragraphIndex}`,
-        paragraph,
-        chunk: chunkIndex + 1,
-        chunkIndex,
+  const sections = hasStructuredSections
+    ? transformed.sections.map((sec, idx) => ({
+        id: `section-${idx}`,
+        heading: sec.heading || null,
+        paragraph: sec.content,
+        chunk: idx + 1,
+        chunkIndex: idx,
         sectionIndex: idx,
-      };
-    });
-  });
+        meta: chunkMeta[idx] || null,
+      }))
+    : chunks.filter(Boolean).flatMap((chunk, chunkIndex) => {
+        // For cognitive_load without structured sections: each chunk IS one section.
+        const parts = isCognitiveLoad ? [chunk] : splitIntoLessonSections(chunk);
+        return parts.map((paragraph, paragraphIndex) => {
+          const idx = globalIndex++;
+
+          // Attach metadata: for cognitive_load use chunk_meta[chunkIndex], otherwise use sectionMeta
+          let meta = null;
+          if (isCognitiveLoad && chunkMeta[chunkIndex]) {
+            meta = chunkMeta[chunkIndex];
+          } else if (sectionMeta) {
+            const sectionWordCount = paragraph.split(/\s+/).filter(Boolean).length;
+            const difficulty = sectionMeta.difficulty_tier || "intermediate";
+            const wpmByDifficulty = { foundational: 220, intermediate: 180, advanced: 140 };
+            const wpm = wpmByDifficulty[difficulty] || 180;
+            const estimatedSec = Math.round((sectionWordCount / wpm) * 60);
+            meta = { difficulty_tier: difficulty, estimated_seconds: estimatedSec, word_count: sectionWordCount };
+          }
+
+          return {
+            id: `${chunkIndex}-${paragraphIndex}`,
+            heading: null,
+            paragraph,
+            chunk: chunkIndex + 1,
+            chunkIndex,
+            sectionIndex: idx,
+            meta,
+          };
+        });
+      });
 
   const currentSection = sections[activeSection] || sections[0];
   const formatting = transformed?.formatting || {};
   const completedSections = session.completedSections || [];
   const isComplete = completedSections.includes(activeSection);
 
-  const evaluation = evaluateSignals(session.signals, session.sessionMeta);
+  // Get difficulty and estimated time from section metadata (needed for SCALE evaluation)
+  const sectionDifficulty = currentSection?.meta?.difficulty_tier || "intermediate";
+  const estimatedSeconds = currentSection?.meta?.estimated_seconds || 60;
+
+  const evaluation = evaluateSignals(
+    session.signals, 
+    session.sessionMeta, 
+    null, 
+    estimatedSeconds
+  );
   const struggleScore = evaluation.struggleScore;
   const lessonClass =
     transformed?.profile === "dyslexia"
@@ -1472,8 +1637,14 @@ function Learn() {
   }, []);
 
   function markSectionComplete() {
+    // Flush active dwell into signals before completing
+    pauseDwellTimer();
+    const finalDwellMs = getCurrentActiveDwellMs();
+    updateActiveDwell(finalDwellMs);
+
     completeSection(activeSection);
     // Pass current webcam context so SCALE receives all 5 signals as supporting evidence
+    // Also pass estimated reading time baseline for dynamic dwell ratio computation
     completeChunk({
       presence_ratio:        webcamHook.presenceRatio,
       face_present_now:      webcamHook.facePresent,
@@ -1486,7 +1657,7 @@ function Learn() {
       headStableNow:         webcamHook.headStable,
       tabFocusedNow:         webcamHook.tabFocused,
       scrollConsistentNow:   scrollConsistent,
-    });
+    }, estimatedSeconds);
     if (activeSection < sections.length - 1) {
       setActiveSection((index) => index + 1);
     }
@@ -1504,14 +1675,16 @@ function Learn() {
   // Floating voice assistant panel state
   const [voiceOpen, setVoiceOpen] = useState(false);
 
-  // Estimated read time: ~200 words per minute
-  const wordCount = currentSection
-    ? (currentSection.paragraph || "").split(/\s+/).filter(Boolean).length
-    : 0;
-  const estReadMin = Math.max(1, Math.round(wordCount / 200));
+  // Format difficulty for display (sectionDifficulty and estimatedSeconds already defined above)
+  const difficultyLabel = sectionDifficulty.toUpperCase();
+  const difficultyColor = 
+    sectionDifficulty === "foundational" ? "#10b981" : 
+    sectionDifficulty === "advanced" ? "#f59e0b" : 
+    "#3b82f6";
 
-  // Topic title: first non-empty line of the current section
+  // Topic title: use structured heading if available, otherwise first line
   const sectionTopic =
+    currentSection?.heading ||
     currentSection?.paragraph?.split("\n").find((l) => l.trim().length > 0)?.slice(0, 48) ||
     session.lessonTitle ||
     "Lesson";
@@ -1581,6 +1754,20 @@ function Learn() {
                   <span className="lesson-card-section-label">
                     SECTION {activeSection + 1} OF {sections.length}
                   </span>
+                  <span 
+                    style={{ 
+                      color: difficultyColor, 
+                      fontSize: 11, 
+                      fontWeight: 700, 
+                      letterSpacing: "0.05em",
+                      padding: "2px 8px",
+                      borderRadius: "4px",
+                      backgroundColor: `${difficultyColor}15`,
+                      border: `1px solid ${difficultyColor}40`
+                    }}
+                  >
+                    {difficultyLabel}
+                  </span>
                   {sectionTopic && (
                     <>
                       <span style={{ color: "#c7d2fe", fontSize: 12 }}>›</span>
@@ -1594,7 +1781,7 @@ function Learn() {
                   )}
                 </div>
                 <span className="lesson-card-readtime">
-                  Estimated read: {estReadMin} min
+                  Estimated read: {formatReadTime(estimatedSeconds)}
                 </span>
                 {/* Webcam status badge — shows current relevant state */}
                 <WebcamStatusBadge
@@ -1609,6 +1796,22 @@ function Learn() {
               {/* Section body */}
               {currentSection && (
                 <div className="lesson-card-body">
+                  {currentSection?.heading && (
+                    <h2
+                      style={{
+                        fontSize: "1.35em",
+                        fontWeight: 700,
+                        color: "#0f172a",
+                        margin: "0 0 14px 0",
+                        lineHeight: 1.3,
+                        letterSpacing: "-0.01em",
+                        borderBottom: "2px solid #e0e7ff",
+                        paddingBottom: 10,
+                      }}
+                    >
+                      {currentSection.heading}
+                    </h2>
+                  )}
                   <p
                     style={{
                       fontSize: formatting.font_size_multiplier
@@ -1660,23 +1863,61 @@ function Learn() {
                 className="lesson-nav-prev"
                 disabled={activeSection === 0}
                 onClick={() => setActiveSection((i) => i - 1)}
+                aria-label="Previous section"
               >
                 <I.ChevronLeft size={15} /> Previous
               </button>
 
-              {/* Section dots */}
-              <div className="lesson-nav-dots">
-                {sections.map((section, index) => (
-                  <button
-                    key={section.id}
-                    className={`lesson-dot ${index === activeSection ? "current" : ""} ${completedSections.includes(index) ? "done" : ""}`}
-                    onClick={() => setActiveSection(index)}
-                    title={`Section ${index + 1}`}
-                  >
-                    {completedSections.includes(index) ? <I.Check size={10} /> : index + 1}
-                  </button>
-                ))}
-              </div>
+              {/* Section dots (<= 12) or Scalable Jump Selector (> 12) */}
+              {sections.length <= 12 ? (
+                <div className="lesson-nav-dots">
+                  {sections.map((section, index) => (
+                    <button
+                      key={section.id}
+                      className={`lesson-dot ${index === activeSection ? "current" : ""} ${completedSections.includes(index) ? "done" : ""}`}
+                      onClick={() => setActiveSection(index)}
+                      title={`Section ${index + 1}: ${section.heading || ""}`}
+                    >
+                      {completedSections.includes(index) ? <I.Check size={10} /> : index + 1}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="lesson-nav-jump-group">
+                  <span className="lesson-nav-counter">
+                    Section {activeSection + 1} of {sections.length}
+                  </span>
+                  <div className="lesson-jump-select-wrap">
+                    <I.List size={14} className="lesson-jump-icon" />
+                    <select
+                      className="lesson-jump-select"
+                      value={activeSection}
+                      onChange={(e) => setActiveSection(Number(e.target.value))}
+                      aria-label="Jump to section"
+                    >
+                      {sections.map((section, index) => {
+                        const headingText = section.heading || `Section ${index + 1}`;
+                        const isDone = completedSections.includes(index);
+                        return (
+                          <option key={section.id} value={index}>
+                            {isDone ? "✓ " : ""}{index + 1}. {headingText.length > 46 ? headingText.slice(0, 46) + "…" : headingText}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {/* Next */}
+              <button
+                className="lesson-nav-prev lesson-nav-next"
+                disabled={activeSection === sections.length - 1}
+                onClick={() => setActiveSection((i) => i + 1)}
+                aria-label="Next section"
+              >
+                Next <I.ChevronRight size={15} />
+              </button>
             </div>
 
             {/* ── Primary + Visual row ────────────────────────────────── */}
@@ -1799,7 +2040,7 @@ function Practice() {
   const navigate = useNavigate();
 
   const chunks =
-    session.transformed?.profile === "cognitive_load"
+    Array.isArray(session.transformed?.chunks)
       ? session.transformed.chunks
       : [session.transformed?.text || session.text];
 
@@ -2841,80 +3082,11 @@ function Progress() {
   const { session } = useSession();
   const transformed = Boolean(session.transformed);
   const chunks =
-    session.transformed?.profile === "cognitive_load"
-      ? session.transformed.chunks || []
-      : session.transformed?.text
-        ? [session.transformed.text]
-        : session.text
-          ? [session.text]
-          : [];
-
-  const sections = chunks.filter(Boolean).flatMap((chunk, chunkIndex) =>
-    chunk
-      .split(/\n\s*\n|(?<=[.!?])\s+(?=[A-Z])/)
-      .map((part) => part.trim())
-      .filter(Boolean)
-  );
-
-  const totalSections = Math.max(1, sections.length || chunks.length || 1);
-  const completedSectionsCount = session.completedSections?.length || (session.completed || 0);
-  const completionRatio = Math.min(1, completedSectionsCount / totalSections);
-
-  // Current Score & Performance from all practice questions and tests
-  const answeredList = session.practiceReport?.answered || [];
-  const totalAnswered = answeredList.length;
-  const correctCount = answeredList.filter((a) => a.is_correct || a.correct).length;
-  const currentScoreRatio = totalAnswered > 0 ? correctCount / totalAnswered : null;
-  const currentScorePct = currentScoreRatio !== null ? Math.round(currentScoreRatio * 100) : null;
-
-  // Single source of truth for struggle score derived directly from session activity
-  const struggleScore = computeSessionStruggleScore(session);
-
-  // Dev-only sanity check log to verify telemetry and score responsiveness
-  if (process.env.NODE_ENV !== "production") {
-    console.log("[StruggleDebug / Telemetry Sanity Check]", {
-      completedSectionsCount,
-      totalSections,
-      totalAnswered,
-      correctCount,
-      accuracyPct: currentScorePct,
-      helpRequests: session.signals?.helpRequests || 0,
-      voiceHelpRequests: session.signals?.voiceHelpRequests || 0,
-      rereadCount: session.signals?.rereadCount || 0,
-      retryCount: session.signals?.retryCount || 0,
-      dwellTimeMs: session.signals?.dwellTime || 0,
-      totalAdaptations: session.sessionMeta?.totalAdaptations || 0,
-      isRewireActive: Boolean(session.rewireState?.active),
-      computedStruggleScore: struggleScore,
-      strugglePct: Math.round(struggleScore * 100),
-    });
-  }
-
-  // Accurate Progress (Mastery %):
-  // Correctly based on completion ratio, current score, and struggle score
-  const performanceRatio = currentScoreRatio !== null ? currentScoreRatio : (completionRatio > 0 ? 0.85 : 0);
-  const strugglePenalty = struggleScore * 0.25;
-
-  let rawProgress = 0;
-  if (totalAnswered > 0) {
-    // Blend completion (35%) and quiz performance (65%), adjusted by struggle
-    rawProgress = (completionRatio * 0.35 + performanceRatio * 0.65) * (1 - strugglePenalty);
-  } else if (completionRatio > 0) {
-    rawProgress = completionRatio * 0.7 * (1 - strugglePenalty);
-  } else {
-    rawProgress = 0;
-  }
-  const masteryPct = Math.min(100, Math.max(0, Math.round(rawProgress * 100)));
-
-  // Mastered sections count
-  const mastered = session.practiceReport?.masteredSections?.length || (masteryPct >= 70 ? completedSectionsCount : 0);
-
-  // XP derived from active metrics
-  const xpTotal = computeXP({
-    questionsAnswered: totalAnswered,
-    chunksCompleted: completedSectionsCount,
-    sectionsMastered: mastered,
-  });
+    Array.isArray(session.transformed?.chunks)
+      ? session.transformed.chunks.length
+      : transformed
+        ? 1
+        : 0;
 
   const history = session.sessionMeta.adaptationHistory || [];
   const latestOutcome = session.latestOutcome;

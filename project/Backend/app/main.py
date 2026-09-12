@@ -155,7 +155,7 @@ def transform(request: TransformRequest) -> Dict[str, Any]:
 @app.post("/api/voice/ask")
 def ask_voice(request: VoiceRequest) -> Dict[str, str]:
     try:
-        return {"answer": voice_ask(request.question, request.lesson_text)}
+        return {"answer": voice_ask(request.question, request.lesson_text, request.profile)}
     except Exception as error:
         _raise_http(error)
 
