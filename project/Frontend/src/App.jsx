@@ -25,6 +25,7 @@ import { WebcamProvider, useWebcam } from "./hooks/WebcamContext";
 import { ToastProvider, ToastContainer, useToast } from "./components/PrismToast";
 import { WebcamStatusBadge } from "./components/WebcamStatusBadge";
 import { useWebcamToasts } from "./hooks/useWebcamToasts.jsx";
+import { formatReadTime } from "./utils/formatReadTime";
 import {
   createSignalState,
   createSessionMeta,
@@ -228,7 +229,7 @@ export function SessionProvider({ children }) {
     });
   }
 
-  function completeChunk(webcamContext = null) {
+  function completeChunk(webcamContext = null, baselineDwellSeconds = null) {
     setSession((current) => {
       // Advance cooldown tracker (advances lastAdaptationChunksAgo by 1)
       const updatedMeta = {
@@ -243,7 +244,7 @@ export function SessionProvider({ children }) {
       // Optionally update struggle evaluation with webcam context for SCALE display
       // (webcamContext is used purely for evaluation; it doesn't modify stored signals)
       const evalWithWebcam = webcamContext
-        ? evaluateSignals(current.signals, updatedMeta, webcamContext)
+        ? evaluateSignals(current.signals, updatedMeta, webcamContext, baselineDwellSeconds)
         : null;
 
       return {
@@ -1397,8 +1398,12 @@ function Learn() {
   const isCognitiveLoad = transformed?.profile === "cognitive_load";
   const chunks =
     isCognitiveLoad
-      ? transformed.chunks
+      ? (transformed?.chunks || [])
       : [transformed?.text || session.text];
+
+  // Extract metadata for each chunk/section
+  const chunkMeta = transformed?.chunk_meta || [];
+  const sectionMeta = transformed?.section_meta || null;
 
   let globalIndex = 0;
   const sections = chunks.filter(Boolean).flatMap((chunk, chunkIndex) => {
@@ -1407,12 +1412,40 @@ function Learn() {
     const parts = isCognitiveLoad ? [chunk] : splitIntoLessonSections(chunk);
     return parts.map((paragraph, paragraphIndex) => {
       const idx = globalIndex++;
+      
+      // Attach metadata: for cognitive_load use chunk_meta[chunkIndex], otherwise use sectionMeta
+      let meta = null;
+      if (isCognitiveLoad && chunkMeta[chunkIndex]) {
+        meta = chunkMeta[chunkIndex];
+      } else if (sectionMeta) {
+        // For non-cognitive_load profiles: backend returns meta for full text,
+        // but frontend splits into smaller sections. Recalculate time per section.
+        const sectionWordCount = paragraph.split(/\s+/).filter(Boolean).length;
+        const difficulty = sectionMeta.difficulty_tier || "intermediate";
+        
+        // Use same WPM constants as backend
+        const wpmByDifficulty = {
+          foundational: 220,
+          intermediate: 180,
+          advanced: 140
+        };
+        const wpm = wpmByDifficulty[difficulty] || 180;
+        const estimatedSeconds = Math.round((sectionWordCount / wpm) * 60);
+        
+        meta = {
+          difficulty_tier: difficulty,
+          estimated_seconds: estimatedSeconds,
+          word_count: sectionWordCount,
+        };
+      }
+      
       return {
         id: `${chunkIndex}-${paragraphIndex}`,
         paragraph,
         chunk: chunkIndex + 1,
         chunkIndex,
         sectionIndex: idx,
+        meta, // {difficulty_tier, estimated_seconds, word_count}
       };
     });
   });
@@ -1422,7 +1455,16 @@ function Learn() {
   const completedSections = session.completedSections || [];
   const isComplete = completedSections.includes(activeSection);
 
-  const evaluation = evaluateSignals(session.signals, session.sessionMeta);
+  // Get difficulty and estimated time from section metadata (needed for SCALE evaluation)
+  const sectionDifficulty = currentSection?.meta?.difficulty_tier || "intermediate";
+  const estimatedSeconds = currentSection?.meta?.estimated_seconds || 60;
+
+  const evaluation = evaluateSignals(
+    session.signals, 
+    session.sessionMeta, 
+    null, 
+    estimatedSeconds
+  );
   const struggleScore = evaluation.struggleScore;
   const lessonClass =
     transformed?.profile === "dyslexia"
@@ -1473,6 +1515,7 @@ function Learn() {
   function markSectionComplete() {
     completeSection(activeSection);
     // Pass current webcam context so SCALE receives all 5 signals as supporting evidence
+    // Also pass estimated reading time baseline for dynamic dwell ratio computation
     completeChunk({
       presence_ratio:        webcamHook.presenceRatio,
       face_present_now:      webcamHook.facePresent,
@@ -1485,7 +1528,7 @@ function Learn() {
       headStableNow:         webcamHook.headStable,
       tabFocusedNow:         webcamHook.tabFocused,
       scrollConsistentNow:   scrollConsistent,
-    });
+    }, estimatedSeconds);
     if (activeSection < sections.length - 1) {
       setActiveSection((index) => index + 1);
     }
@@ -1503,11 +1546,12 @@ function Learn() {
   // Floating voice assistant panel state
   const [voiceOpen, setVoiceOpen] = useState(false);
 
-  // Estimated read time: ~200 words per minute
-  const wordCount = currentSection
-    ? (currentSection.paragraph || "").split(/\s+/).filter(Boolean).length
-    : 0;
-  const estReadMin = Math.max(1, Math.round(wordCount / 200));
+  // Format difficulty for display (sectionDifficulty and estimatedSeconds already defined above)
+  const difficultyLabel = sectionDifficulty.toUpperCase();
+  const difficultyColor = 
+    sectionDifficulty === "foundational" ? "#10b981" : 
+    sectionDifficulty === "advanced" ? "#f59e0b" : 
+    "#3b82f6";
 
   // Topic title: first non-empty line of the current section
   const sectionTopic =
@@ -1580,6 +1624,20 @@ function Learn() {
                   <span className="lesson-card-section-label">
                     SECTION {activeSection + 1} OF {sections.length}
                   </span>
+                  <span 
+                    style={{ 
+                      color: difficultyColor, 
+                      fontSize: 11, 
+                      fontWeight: 700, 
+                      letterSpacing: "0.05em",
+                      padding: "2px 8px",
+                      borderRadius: "4px",
+                      backgroundColor: `${difficultyColor}15`,
+                      border: `1px solid ${difficultyColor}40`
+                    }}
+                  >
+                    {difficultyLabel}
+                  </span>
                   {sectionTopic && (
                     <>
                       <span style={{ color: "#c7d2fe", fontSize: 12 }}>›</span>
@@ -1593,7 +1651,7 @@ function Learn() {
                   )}
                 </div>
                 <span className="lesson-card-readtime">
-                  Estimated read: {estReadMin} min
+                  Estimated read: {formatReadTime(estimatedSeconds)}
                 </span>
                 {/* Webcam status badge — shows current relevant state */}
                 <WebcamStatusBadge

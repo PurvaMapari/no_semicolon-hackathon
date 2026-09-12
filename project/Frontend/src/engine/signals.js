@@ -103,8 +103,11 @@ export function recordQuizAnswer(signals, isCorrect, latencyMs) {
  * webcamContext shape:
  *   { presenceRatio: 0–1, tabFocused: bool, headStable: bool }
  *   All fields are optional — missing fields contribute 0.
+ *
+ * Optional baselineDwellSeconds parameter sets the expected reading time for
+ * this section (from backend metadata). Used to compute dwell ratio dynamically.
  */
-export function evaluateSignals(signals, sessionMeta, webcamContext = null) {
+export function evaluateSignals(signals, sessionMeta, webcamContext = null, baselineDwellSeconds = null) {
   const rawSignals = {
     dwellTime: signals.dwellTime,
     rereadCount: signals.rereadCount,
@@ -116,7 +119,7 @@ export function evaluateSignals(signals, sessionMeta, webcamContext = null) {
     voiceHelpRequests: signals.voiceHelpRequests,
   };
 
-  const baseResult = scaleEvaluate(rawSignals, sessionMeta.currentVariantLevel, sessionMeta);
+  const baseResult = scaleEvaluate(rawSignals, sessionMeta.currentVariantLevel, sessionMeta, baselineDwellSeconds);
 
   // ── Webcam signal boost (supporting evidence only) ─────────────────────────
   if (!webcamContext) return baseResult;

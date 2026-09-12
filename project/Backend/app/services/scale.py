@@ -16,15 +16,31 @@ from app.services.llm import call_llm, parse_json_response
 # CONFIGURATION CONSTANTS
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Difficulty time multipliers
+# Difficulty time multipliers (legacy — kept for backward compat with struggle score)
 DIFFICULTY_MULTIPLIERS = {
     "foundational": 1.0,
     "intermediate": 1.6,
     "advanced": 2.5,
 }
 
-# Average reading speed (words per minute) for baseline calculation
-AVERAGE_READING_SPEED_WPM = 200
+# Per-difficulty reading speeds (words per minute).
+# Difficulty is determined by CONTENT ANALYSIS (LLM), NOT by word count.
+# These constants affect only the estimated reading time and dwell baseline.
+# Foundational = familiar concepts, reader moves fast
+# Intermediate = requires some mental effort
+# Advanced     = dense / abstract material, reader slows down
+READING_SPEEDS_WPM = {
+    "foundational": 220,
+    "intermediate": 180,
+    "advanced":     140,
+}
+
+# Fallback when difficulty tier is unknown
+DEFAULT_READING_SPEED_WPM = 180
+
+# Legacy flat speed — retained so existing callers that reference this name
+# still compile; new code must use READING_SPEEDS_WPM.
+AVERAGE_READING_SPEED_WPM = DEFAULT_READING_SPEED_WPM
 
 # Struggle score component weights (must sum to 1.0)
 WEIGHT_DWELL = 0.35
@@ -106,8 +122,8 @@ def tag_section_difficulty(lesson_text: str) -> List[Dict[str, Any]]:
         sections = []
         for para in paragraphs:
             word_count = len(para.split())
-            expected_baseline_seconds = (word_count / AVERAGE_READING_SPEED_WPM) * 60
-            
+            expected_baseline_seconds = compute_section_read_time(word_count, "intermediate")
+
             sections.append({
                 "text": para,
                 "difficulty_tier": "intermediate",
@@ -143,7 +159,7 @@ def tag_section_difficulty(lesson_text: str) -> List[Dict[str, Any]]:
                 tier = "intermediate"
             
             word_count = sec.get("word_count", len(sec.get("text", "").split()))
-            expected_baseline_seconds = (word_count / AVERAGE_READING_SPEED_WPM) * 60
+            expected_baseline_seconds = compute_section_read_time(word_count, tier)
             
             sections.append({
                 "text": sec.get("text", "")[:4000],  # Truncate very long sections
@@ -364,6 +380,33 @@ def estimate_word_count(text: str) -> int:
     return len(text.split())
 
 
-def estimate_baseline_seconds(word_count: int) -> float:
-    """Estimate expected reading time from word count."""
-    return (word_count / AVERAGE_READING_SPEED_WPM) * 60
+def reading_speed_for_tier(difficulty_tier: str) -> int:
+    """Return the configured WPM for a given difficulty tier.
+
+    Difficulty is set by content analysis — this function only maps the
+    already-determined tier to the appropriate reading-speed constant.
+    """
+    return READING_SPEEDS_WPM.get(difficulty_tier, DEFAULT_READING_SPEED_WPM)
+
+
+def compute_section_read_time(word_count: int, difficulty_tier: str) -> float:
+    """Return estimated reading time in seconds for a section.
+
+    Formula:  seconds = (word_count / wpm_for_difficulty) * 60
+
+    This is the single source of truth used by both the backend
+    (baseline for dwell-ratio computation) and the frontend (display).
+    Difficulty is NOT derived from word count here — the caller is
+    responsible for providing the content-analysis tier.
+    """
+    wpm = reading_speed_for_tier(difficulty_tier)
+    return (word_count / max(wpm, 1)) * 60
+
+
+def estimate_baseline_seconds(word_count: int, difficulty_tier: str = "intermediate") -> float:
+    """Estimate expected reading time from word count + difficulty tier.
+
+    Replaces the old flat-WPM version.  The difficulty_tier parameter
+    must come from content analysis, not from word count.
+    """
+    return compute_section_read_time(word_count, difficulty_tier)

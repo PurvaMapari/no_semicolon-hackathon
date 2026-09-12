@@ -56,13 +56,21 @@ export function normalizeInverted(value, baseline, criticalThreshold) {
 
 // ─── Struggle Score ──────────────────────────────────────────────────────────
 
-export function normalizeSignals(rawSignals) {
+export function normalizeSignals(rawSignals, baselineDwellSeconds = null) {
   const normalized = {};
   for (const [key, config] of Object.entries(SCALE_CONFIG.BASELINES)) {
     const value = rawSignals[key] ?? (config.inverted ? config.normal : 0);
-    normalized[key] = config.inverted
-      ? normalizeInverted(value, config.normal, config.critical)
-      : normalize(value, config.normal, config.critical);
+    
+    // For dwellTime: use dynamic baseline if provided (from backend estimated_seconds)
+    if (key === 'dwellTime' && baselineDwellSeconds !== null) {
+      const dynamicNormal = baselineDwellSeconds * 1000; // convert seconds to ms
+      const dynamicCritical = baselineDwellSeconds * 4 * 1000; // 4x baseline = critical
+      normalized[key] = normalize(value, dynamicNormal, dynamicCritical);
+    } else {
+      normalized[key] = config.inverted
+        ? normalizeInverted(value, config.normal, config.critical)
+        : normalize(value, config.normal, config.critical);
+    }
   }
   return normalized;
 }
@@ -171,11 +179,11 @@ export function generateExplanation(rawSignals, struggleScore, adaptation) {
 
 // ─── Full SCALE Evaluation ──────────────────────────────────────────────────
 
-export function scaleEvaluate(rawSignals, currentVariantLevel, sessionMeta) {
+export function scaleEvaluate(rawSignals, currentVariantLevel, sessionMeta, baselineDwellSeconds = null) {
   // Step 1: SIGNAL — raw signals are input
 
-  // Step 2: CALIBRATE — normalize
-  const normalized = normalizeSignals(rawSignals);
+  // Step 2: CALIBRATE — normalize (with optional dynamic dwell baseline)
+  const normalized = normalizeSignals(rawSignals, baselineDwellSeconds);
   const struggleScore = computeStruggleScore(normalized);
 
   // Check cooldown

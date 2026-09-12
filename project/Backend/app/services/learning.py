@@ -86,6 +86,62 @@ def _dyslexia_fallback(text: str) -> str:
     return "\n\n".join(f"{sentence}." for sentence in sentences)
 
 
+def _build_chunk_meta(chunks: List[str], full_text: str) -> List[Dict[str, Any]]:
+    """
+    Match each chunk to LLM-tagged difficulty sections via text overlap.
+    Returns metadata list (same length as chunks) with difficulty_tier, estimated_seconds, word_count.
+    Difficulty comes from LLM content analysis (via tag_section_difficulty), NOT from word count.
+    """
+    from app.services.scale import tag_section_difficulty
+    
+    # Tag the full text once — LLM analyzes content complexity
+    # tag_section_difficulty returns a LIST of section dicts
+    sections = tag_section_difficulty(full_text)
+    
+    # If no sections were tagged, fall back to single difficulty for all chunks
+    if not sections:
+        return [
+            {
+                "difficulty_tier": "intermediate",
+                "estimated_seconds": 60,
+                "word_count": len(chunk.split()),
+            }
+            for chunk in chunks
+        ]
+    
+    # Match each chunk to the best-matching tagged section via word overlap
+    chunk_meta = []
+    for chunk in chunks:
+        chunk_words = set(chunk.lower().split())
+        word_count = len(chunk.split())
+        
+        # Find section with highest word overlap
+        best_section = None
+        best_overlap = 0
+        for section in sections:
+            section_words = set(section.get("text", "").lower().split())
+            overlap = len(chunk_words & section_words)
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best_section = section
+        
+        # Use matched section's metadata, or fall back to intermediate
+        if best_section:
+            chunk_meta.append({
+                "difficulty_tier": best_section.get("difficulty_tier", "intermediate"),
+                "estimated_seconds": best_section.get("expected_baseline_seconds", 60),
+                "word_count": word_count,
+            })
+        else:
+            chunk_meta.append({
+                "difficulty_tier": "intermediate",
+                "estimated_seconds": 60,
+                "word_count": word_count,
+            })
+    
+    return chunk_meta
+
+
 def parse_user_preference(user_text: str) -> Dict[str, Any]:
     """Convert free-text accessibility needs into a structured profile."""
     text_lower = user_text.lower()
@@ -111,9 +167,26 @@ def parse_user_preference(user_text: str) -> Dict[str, Any]:
 def transform_text(text: str, profile: str) -> Dict[str, Any]:
     """Transform text according to an accessibility profile."""
     if profile == "low_vision":
+        # Tag difficulty + compute estimated reading time for the full section
+        from app.services.scale import tag_section_difficulty
+        sections = tag_section_difficulty(text)
+        # Use first section's metadata, or fallback
+        if sections:
+            section_meta = {
+                "difficulty_tier": sections[0].get("difficulty_tier", "intermediate"),
+                "estimated_seconds": sections[0].get("expected_baseline_seconds", 60),
+                "word_count": sections[0].get("word_count", len(text.split())),
+            }
+        else:
+            section_meta = {
+                "difficulty_tier": "intermediate",
+                "estimated_seconds": 60,
+                "word_count": len(text.split()),
+            }
         return {
             "profile": profile,
             "text": text,
+            "section_meta": section_meta,
             "formatting": {
                 "font_size_multiplier": 1.5,
                 "line_height": 2.0,
@@ -126,9 +199,26 @@ def transform_text(text: str, profile: str) -> Dict[str, Any]:
         rewritten = _dyslexia_fallback(text) if not (GROQ_API_KEY or VOICE_GROQ_API_KEY) else call_llm(DYSLEXIA_PROMPT.format(text=text)).strip()
         if not rewritten:
             rewritten = _dyslexia_fallback(text)
+        # Tag difficulty + compute estimated reading time for the rewritten text
+        from app.services.scale import tag_section_difficulty
+        sections = tag_section_difficulty(rewritten)
+        # Use first section's metadata, or fallback
+        if sections:
+            section_meta = {
+                "difficulty_tier": sections[0].get("difficulty_tier", "intermediate"),
+                "estimated_seconds": sections[0].get("expected_baseline_seconds", 60),
+                "word_count": sections[0].get("word_count", len(rewritten.split())),
+            }
+        else:
+            section_meta = {
+                "difficulty_tier": "intermediate",
+                "estimated_seconds": 60,
+                "word_count": len(rewritten.split()),
+            }
         return {
             "profile": profile,
             "text": rewritten,
+            "section_meta": section_meta,
             "formatting": {
                 "font_family": "dyslexia-friendly",
                 "line_height": 1.9,
@@ -169,7 +259,17 @@ def transform_text(text: str, profile: str) -> Dict[str, Any]:
             for i in range(0, len(chunks), group_size):
                 merged.append("\n\n".join(chunks[i:i+group_size]))
             chunks = merged[:target]
-        return {"profile": profile, "chunks": chunks if chunks else [text]}
+
+        # ── Tag each chunk with difficulty + estimated reading time ────────────
+        # tag_section_difficulty analyses the FULL text with the LLM so difficulty
+        # reflects content complexity, NOT chunk size / word count.
+        chunk_meta = _build_chunk_meta(chunks, text)
+
+        return {
+            "profile": profile,
+            "chunks": chunks if chunks else [text],
+            "chunk_meta": chunk_meta,
+        }
     raise ValueError("profile must be dyslexia, low_vision, or cognitive_load")
 
 
