@@ -124,31 +124,6 @@ export function SessionProvider({ children }) {
     });
   }
 
-  function removeDocument() {
-    setSession((current) => ({
-      ...current,
-      fileName: "",
-      text: "",
-      wordCount: 0,
-      tables: [],
-      transformed: null,
-      quizzes: [],
-      visual: null,
-      visualClusters: [],
-      clusterVisuals: {},
-      selectedClusterId: null,
-      completed: 0,
-      completedSections: [],
-      practiceReport: { answered: [], failed: [], masteredSections: [] },
-      wholeTest: null,
-      error: null,
-      signals: createSignalState(),
-      sessionMeta: createSessionMeta(),
-      rewireState: { active: false, adaptedContent: null, evaluation: null, chunkIndex: 0 },
-      latestOutcome: null,
-    }));
-  }
-
   function setText(text, customFileName = null) {
     setSession((current) => ({
       ...current,
@@ -643,7 +618,6 @@ export function SessionProvider({ children }) {
         updateActiveDwell,
         resetDwellForNewSection,
         startLearningFromTopic,
-        removeDocument,
       }}
     >
       {children}
@@ -693,12 +667,12 @@ function Layout({ children, section }) {
               textDecoration: "none",
               padding: 14,
               background: location.pathname === "/profile"
-                ? "linear-gradient(135deg, rgba(252, 224, 114, 0.25), rgba(252, 224, 114, 0.12))"
-                : "linear-gradient(135deg, rgba(252, 224, 114, 0.12), rgba(252, 224, 114, 0.05))",
+                ? "linear-gradient(135deg, rgba(224, 231, 255, 0.95), rgba(238, 242, 255, 0.95))"
+                : "linear-gradient(135deg, rgba(238, 242, 255, 0.8), rgba(245, 243, 257, 0.8))",
               borderRadius: 14,
               border: location.pathname === "/profile"
                 ? "1.5px solid var(--primary)"
-                : "1px solid rgba(252, 224, 114, 0.4)",
+                : "1px solid rgba(199, 210, 254, 0.6)",
               marginTop: "auto",
               transition: "all 0.2s ease",
             }}
@@ -781,10 +755,11 @@ function TopicChatAssistant({ onStartLearning, busy }) {
   const [errorMsg, setErrorMsg] = useState("");
 
   const suggestedTopics = [
-    { label: "🚀 Teach me JavaScript from scratch", topic: "JavaScript Fundamentals & DOM" },
-    { label: "🐍 Python for Beginners", topic: "Python Basics & Data Structures" },
-    { label: "⚛️ Modern React & State Management", topic: "Modern React & State Management" },
-    { label: "🧠 Neural Networks & Deep Learning", topic: "Neural Networks & Deep Learning" },
+    { label: "Teach me JavaScript from scratch", topic: "JavaScript Fundamentals & DOM" },
+    { label: "Python for Beginners", topic: "Python Basics & Data Structures" },
+    { label: "Modern React & State Management", topic: "Modern React & State Management" },
+    { label: "Neural Networks & Deep Learning", topic: "Neural Networks & Deep Learning" },
+    { label: "System Design & Microservices", topic: "System Design & Microservices" },
   ];
 
   const handleStartClarification = (topicStr) => {
@@ -854,8 +829,8 @@ function TopicChatAssistant({ onStartLearning, busy }) {
         style={{
           padding: "36px 20px",
           textAlign: "center",
-          background: "linear-gradient(135deg, rgba(252, 224, 114, 0.15) 0%, rgba(252, 224, 114, 0.25) 100%)",
-          border: "2px solid #fce072",
+          background: "linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(168, 85, 247, 0.05) 100%)",
+          border: "2px solid rgba(99, 102, 241, 0.2)",
           borderRadius: 16,
           marginTop: 14,
           display: "flex",
@@ -873,7 +848,7 @@ function TopicChatAssistant({ onStartLearning, busy }) {
             color: "#fff",
             display: "grid",
             placeItems: "center",
-            boxShadow: "0 8px 20px rgba(252, 224, 114, 0.5)",
+            boxShadow: "0 8px 20px rgba(99, 102, 241, 0.3)",
           }}
         >
           <I.Sparkles size={26} className="spin-slow" />
@@ -890,7 +865,7 @@ function TopicChatAssistant({ onStartLearning, busy }) {
           <div className="progressfill" style={{ width: "85%", animation: "pulse 1.5s infinite" }} />
         </div>
         <div style={{ fontSize: 12, color: "var(--primary)", fontWeight: 700 }}>
-          🚀 Automatically taking you to the Learn page once ready...
+          Automatically taking you to the Learn page once ready...
         </div>
       </div>
     );
@@ -898,32 +873,37 @@ function TopicChatAssistant({ onStartLearning, busy }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 14 }}>
-      {/* Topic status bar (only when topic is selected in clarification step) */}
-      {step !== "ask" && currentTopic && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            background: "rgba(252, 224, 114, 0.15)",
-            border: "1px solid #fce072",
-            borderRadius: 12,
-            padding: "8px 14px",
-            fontSize: 13,
-          }}
-        >
-          <span
-            style={{
-              background: "var(--primary-light)",
-              color: "var(--primary)",
-              padding: "2px 8px",
-              borderRadius: 999,
-              fontSize: 11,
-              fontWeight: 700,
-            }}
-          >
-            Topic: {currentTopic}
-          </span>
+      {/* Header bar */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          background: "rgba(99, 102, 241, 0.04)",
+          border: "1px solid rgba(99, 102, 241, 0.15)",
+          borderRadius: 12,
+          padding: "8px 14px",
+          fontSize: 13,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, color: "var(--primary)" }}>
+          
+          {currentTopic && (
+            <span
+              style={{
+                background: "var(--primary-light)",
+                color: "var(--primary)",
+                padding: "2px 8px",
+                borderRadius: 999,
+                fontSize: 11,
+                fontWeight: 700,
+              }}
+            >
+              Topic: {currentTopic}
+            </span>
+          )}
+        </div>
+        {step !== "ask" && (
           <button
             type="button"
             onClick={handleReset}
@@ -940,8 +920,8 @@ function TopicChatAssistant({ onStartLearning, busy }) {
           >
             <I.RotateCcw size={13} /> Change Topic
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       {errorMsg && (
         <div
@@ -990,7 +970,7 @@ function TopicChatAssistant({ onStartLearning, busy }) {
               What would you like to learn today?
             </div>
             <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
-              Don't have a document or PDF? Tell Groq AI any skill or concept (e.g. <i>"Can you teach me JavaScript?"</i>), and we'll generate the full lesson in interactive sections and take you straight into the Learn page!
+              Tell AI any skill or concept (e.g. <i>"Can you teach me JavaScript?"</i>)
             </div>
 
             {/* Input Form */}
@@ -1007,7 +987,7 @@ function TopicChatAssistant({ onStartLearning, busy }) {
                 type="text"
                 value={topicInput}
                 onChange={(e) => setTopicInput(e.target.value)}
-                placeholder="e.g. Can you teach me JavaScript from scratch?"
+                placeholder="Prompt Here"
                 style={{
                   flex: 1,
                   padding: "11px 14px",
@@ -1052,7 +1032,7 @@ function TopicChatAssistant({ onStartLearning, busy }) {
                   fontWeight: 700,
                   fontSize: 13,
                   whiteSpace: "nowrap",
-                  boxShadow: topicInput.trim() ? "0 4px 12px rgba(252, 224, 114, 0.45)" : "none",
+                  boxShadow: topicInput.trim() ? "0 4px 12px rgba(79, 70, 229, 0.25)" : "none",
                 }}
               >
                 <span>Build & Learn</span>
@@ -1074,7 +1054,7 @@ function TopicChatAssistant({ onStartLearning, busy }) {
                   onClick={() => handleBuildAndLearn(item.topic)}
                   style={{
                     background: "#ffffff",
-                    border: "1px solid rgba(252, 224, 114, 0.6)",
+                    border: "1px solid rgba(99, 102, 241, 0.25)",
                     color: "var(--primary)",
                     borderRadius: 999,
                     padding: "6px 14px",
@@ -1093,7 +1073,7 @@ function TopicChatAssistant({ onStartLearning, busy }) {
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.background = "#ffffff";
-                    e.currentTarget.style.borderColor = "rgba(252, 224, 114, 0.6)";
+                    e.currentTarget.style.borderColor = "rgba(99, 102, 241, 0.25)";
                   }}
                 >
                   {item.label}
@@ -1107,7 +1087,7 @@ function TopicChatAssistant({ onStartLearning, busy }) {
         <div
           style={{
             background: "#ffffff",
-            border: "1.5px solid #fce072",
+            border: "1.5px solid rgba(99, 102, 241, 0.3)",
             borderRadius: 14,
             padding: 18,
             display: "flex",
@@ -1202,13 +1182,10 @@ function TopicChatAssistant({ onStartLearning, busy }) {
 }
 
 function Upload() {
-  const { session, busy, upload, setText, startLearningFromTopic, removeDocument } = useSession();
+  const { session, busy, upload, setText, startLearningFromTopic } = useSession();
   const navigate = useNavigate();
   const [tab, setTab] = useState("upload");
-  const [isDragging, setIsDragging] = useState(false);
-  const fileInputRef = useRef(null);
-  const ready = Boolean(session.text && session.text.trim());
-  const hasDoc = Boolean(session.fileName || session.text);
+  const ready = Boolean(session.text.trim());
 
   function handleLessonReady(lessonText, topicTitle) {
     setText(lessonText, topicTitle);
@@ -1217,44 +1194,6 @@ function Upload() {
   async function handleStartLearning(lessonText, topicTitle) {
     await startLearningFromTopic(lessonText, topicTitle);
     navigate("/learn");
-  }
-
-  function handleDragOver(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
-  }
-
-  function handleDragLeave(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-  }
-
-  function handleDrop(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    const file = e.dataTransfer?.files?.[0];
-    if (file) {
-      upload(file);
-    }
-  }
-
-  function handleFileChange(e) {
-    const file = e.target.files?.[0];
-    if (file) {
-      upload(file);
-    }
-  }
-
-  function handleRemoveDoc(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-    removeDocument();
   }
 
   return (
@@ -1266,10 +1205,12 @@ function Upload() {
         </div>
         <h1 className="page-title">Add learning material</h1>
 
+        
+
         <div className="segmented">
           {[
             ["upload", "Upload File"],
-            ["chat", "AI Topic Assistant"],
+            ["chat", "Personalized Learning Chat Bot"],
           ].map(([value, label]) => (
             <button
               key={value}
@@ -1277,7 +1218,7 @@ function Upload() {
               className={tab === value ? "selected" : ""}
             >
               {value === "chat" ? (
-                <I.Bot size={15} style={{ display: "inline", marginRight: 6, verticalAlign: "middle" }} />
+                <div size={15} style={{ display: "inline", marginRight: 6, verticalAlign: "middle" }} />
               ) : (
                 <I.UploadCloud size={15} style={{ display: "inline", marginRight: 6, verticalAlign: "middle" }} />
               )}
@@ -1287,94 +1228,27 @@ function Upload() {
         </div>
 
         <section className="card" style={{ marginTop: 16, padding: 20 }}>
-          {(tab === "upload" || ready) && (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-              {tab === "upload" ? (
-                <span className="pill">
-                  <I.Zap size={13} /> OCR Fallback & Intelligent Extractor
-                </span>
-              ) : <div />}
-              {ready && (
-                <span className="pill" style={{ background: "var(--emerald-light)", color: "#047857" }}>
-                  <I.Check size={13} /> Content Loaded ({session.fileName || "Ready"})
-                </span>
-              )}
-            </div>
-          )}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            {ready && (
+              <span className="pill" style={{ background: "var(--emerald-light)", color: "#047857" }}>
+                <I.Check size={13} /> Content Loaded ({session.fileName || "Ready"})
+              </span>
+            )}
+          </div>
 
           {tab === "upload" ? (
-            !hasDoc ? (
-              <label
-                className={`dropzone ${isDragging ? "dragover" : ""}`}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                style={{
-                  border: isDragging ? "2px dashed var(--primary)" : "1px dashed #9eb9aa",
-                  background: isDragging ? "#eaf2ee" : "#f4f3ed",
-                  transition: "all 0.2s ease",
-                  cursor: "pointer",
-                }}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  className="hidden"
-                  accept=".pdf,.docx,.epub,.txt"
-                  onChange={handleFileChange}
-                />
-                <I.UploadCloud size={40} />
-                <b>Choose or drag doc</b>
-                <span>Supports PDF, DOCX, EPUB, or TXT (up to 45MB)</span>
-                <strong>Select from device</strong>
-              </label>
-            ) : (
-              <div
-                className="dropzone"
-                style={{
-                  border: "1px solid var(--border-color)",
-                  background: "#ffffff",
-                  padding: "24px 20px",
-                  cursor: "default",
-                }}
-              >
-                <I.FileText size={42} style={{ color: "var(--primary)" }} />
-                <b style={{ fontSize: 16, color: "var(--ink)" }}>{session.fileName || "Uploaded Document"}</b>
-                <span style={{ fontSize: 12, color: "var(--muted)" }}>
-                  {session.wordCount ? `${session.wordCount.toLocaleString()} words loaded` : "Ready for learning adaptation"}
-                </span>
-                <button
-                  type="button"
-                  id="remove-doc-btn"
-                  onClick={handleRemoveDoc}
-                  style={{
-                    marginTop: 8,
-                    background: "rgba(220, 38, 38, 0.08)",
-                    border: "1.5px solid #dc2626",
-                    color: "#dc2626",
-                    fontWeight: 700,
-                    padding: "9px 20px",
-                    borderRadius: 8,
-                    fontSize: 13,
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    transition: "all 0.15s ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "#dc2626";
-                    e.currentTarget.style.color = "#ffffff";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "rgba(220, 38, 38, 0.08)";
-                    e.currentTarget.style.color = "#dc2626";
-                  }}
-                >
-                  <I.Trash2 size={16} /> Remove doc
-                </button>
-              </div>
-            )
+            <label className="dropzone">
+              <input
+                type="file"
+                className="hidden"
+                accept=".pdf,.docx,.epub,.txt"
+                onChange={(event) => upload(event.target.files?.[0])}
+              />
+              <I.UploadCloud size={40} />
+              <b>{session.fileName || "Choose a document to upload"}</b>
+              <span>Supports PDF, DOCX, EPUB, or TXT (up to 45MB)</span>
+              <strong>Select from device</strong>
+            </label>
           ) : (
             <TopicChatAssistant
               onLessonReady={handleLessonReady}
@@ -1553,7 +1427,7 @@ function Profile() {
 
   return (
     <Layout section="Profile">
-      <main className="page profile-page">
+      <main className="page" style={{ maxWidth: 960, margin: "0 auto", paddingBottom: 60 }}>
         {/* Step 2 Eyebrow */}
         <div className="step2-eyebrow">
           <span className="step2-badge-num">2</span>
@@ -1568,10 +1442,8 @@ function Profile() {
         {/* 1. SELECT VISUAL ADAPTATION FORMAT */}
         <div className="format-section-header">
           <div className="format-section-title">
-            <I.Sliders size={14} />
             <span>1. SELECT VISUAL ADAPTATION FORMAT</span>
           </div>
-          <span className="format-auto-detected">Auto-detected optimal</span>
         </div>
 
         <div className="format-card-list">
@@ -1591,9 +1463,6 @@ function Profile() {
               <div className="format-info">
                 <div className="format-title-row">
                   <span className="format-name">{title}</span>
-                  {recommended && (
-                    <span className="format-recommended-pill">Recommended</span>
-                  )}
                 </div>
                 <p className="format-desc">{desc}</p>
               </div>
@@ -1651,7 +1520,7 @@ function Profile() {
             </div>
 
             {/* Simulation controls */}
-            <div className="camera-sim-controls">
+            {/* <div className="camera-sim-controls">
               <span>SIMULATE:</span>
               <button
                 type="button"
@@ -1695,8 +1564,8 @@ function Profile() {
                   ✕
                 </button>
               )}
-            </div>
-          </div>
+            </div>*/}
+          </div> 
 
           {/* HUD Viewport */}
           <div className="camera-hud-viewport">
@@ -1787,14 +1656,14 @@ function Profile() {
 
           {/* Hardware fallback skip link */}
           {(effectiveWebcamStatus === "error" || effectiveWebcamStatus === "denied" || (!effectiveFacePresent && !webcamSkipped)) && (
-            <div style={{ marginTop: 12, textAlign: "right" }}>
+            <div style={{ marginTop: 12, textAlign: "right"}}>
               <button
                 type="button"
                 className="camera-gate-skip-link"
                 onClick={() => setWebcamSkipped(true)}
-                style={{ fontSize: 11.5, color: "#64748b", textDecoration: "underline", background: "none", border: "none", cursor: "pointer" }}
+                style={{ fontSize: 14, color: "#ffff", background: "#6f1200", border: "none", cursor: "pointer",borderRadius:12,padding:14}}
               >
-                Skip camera requirement (text-only mode)
+                Skip camera
               </button>
             </div>
           )}
@@ -1806,8 +1675,7 @@ function Profile() {
         <div className="launch-session-bar">
           <div className="launch-bar-left">
             <div className="launch-bar-meta">
-              <span style={{ color: "#fce072", fontSize: 13 }}>✦</span>
-              <span>Ready in ~4 seconds • Configured for {PROFILE_LABELS[session.profile] || "Adaptive Learning"}</span>
+              
             </div>
             <h2 className="launch-bar-title">Launch your customized learning session</h2>
             <p className="launch-bar-subtitle">
@@ -1833,7 +1701,7 @@ function Profile() {
                 navigate("/learn");
               }}
             >
-              <span>{busy === "transform" ? "Adapting lesson…" : "Transform Lesson"}</span>
+              <span>{busy === "transform" ? "Adapting lesson…" : "Prepare Lessons"}</span>
               <I.Sparkles size={16} />
             </button>
           </div>
@@ -1967,7 +1835,7 @@ function VisualCard({ visual, cluster = null, sections = [], onReadAloud }) {
             aria-expanded={showNotes}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <I.BookOpen size={15} color="#fce072" />
+              <I.BookOpen size={15} color="#4f46e5" />
               <span style={{ fontWeight: 700, color: "#1e293b", fontSize: 13 }}>
                 Detailed Concept Notes & Key Takeaways
               </span>
@@ -2653,7 +2521,7 @@ function Learn() {
   const difficultyColor = 
     sectionDifficulty === "foundational" ? "#10b981" : 
     sectionDifficulty === "advanced" ? "#f59e0b" : 
-    "#fce072";
+    "#3b82f6";
 
   // Topic title: use structured heading if available, otherwise first line
   const sectionTopic =
@@ -2676,7 +2544,7 @@ function Learn() {
             style={{
               marginBottom: 16,
               padding: "16px 20px",
-              background: "linear-gradient(135deg, #f0fdf4 0%, rgba(252, 224, 114, 0.15) 100%)",
+              background: "linear-gradient(135deg, #f0fdf4 0%, #eff6ff 100%)",
               border: "2px solid #86efac",
               borderRadius: 14,
               display: "flex",
@@ -2791,21 +2659,21 @@ function Learn() {
                   </span>
                   <span 
                     style={{ 
-                      color: difficultyColor === "#fce072" ? "#713f12" : difficultyColor, 
+                      color: difficultyColor, 
                       fontSize: 11, 
                       fontWeight: 700, 
                       letterSpacing: "0.05em",
                       padding: "2px 8px",
                       borderRadius: "4px",
-                      backgroundColor: difficultyColor === "#fce072" ? "#fef9c3" : `${difficultyColor}15`,
-                      border: `1px solid ${difficultyColor === "#fce072" ? "#fce072" : `${difficultyColor}40`}`
+                      backgroundColor: `${difficultyColor}15`,
+                      border: `1px solid ${difficultyColor}40`
                     }}
                   >
                     {difficultyLabel}
                   </span>
                   {sectionTopic && (
                     <>
-                      <span style={{ color: "rgba(113, 63, 18, 0.4)", fontSize: 12 }}>›</span>
+                      <span style={{ color: "#c7d2fe", fontSize: 12 }}>›</span>
                       <span className="lesson-card-topic">{sectionTopic}</span>
                     </>
                   )}
@@ -2872,6 +2740,15 @@ function Learn() {
                     >
                       <I.Volume2 size={13} />
                       <span>Read aloud</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="audio-tool-btn"
+                      onClick={() => recordRereadAction(activeSection, currentSection?.paragraph)}
+                      title="Re-read this section"
+                    >
+                      <I.RotateCcw size={13} />
+                      <span>Re-read</span>
                     </button>
 
                     <span className="audio-ribbon-divider" />
@@ -2974,7 +2851,7 @@ function Learn() {
                               const tier = section.meta?.difficulty_tier || resolveSectionDifficulty(section, index, sections.length);
                               const tierColor =
                                 tier === "foundational" ? "#10b981" :
-                                tier === "advanced" ? "#f59e0b" : "#fce072";
+                                tier === "advanced" ? "#f59e0b" : "#3b82f6";
 
                               return (
                                 <button
@@ -2998,9 +2875,9 @@ function Learn() {
                                   <span
                                     className="popover-diff-chip"
                                     style={{
-                                      color: tierColor === "#fce072" ? "#713f12" : tierColor,
-                                      backgroundColor: tierColor === "#fce072" ? "#fef9c3" : `${tierColor}15`,
-                                      borderColor: tierColor === "#fce072" ? "#fce072" : `${tierColor}35`,
+                                      color: tierColor,
+                                      backgroundColor: `${tierColor}15`,
+                                      borderColor: `${tierColor}35`,
                                     }}
                                   >
                                     {tier.toUpperCase()}
@@ -3373,7 +3250,7 @@ function Learn() {
               padding: 32,
               textAlign: "center",
               boxShadow: "0 25px 50px -12px rgba(0,0,0,0.3)",
-              border: "2px solid #fce072",
+              border: "2px solid #818cf8",
               background: "#ffffff",
               borderRadius: 20,
             }}
@@ -3383,11 +3260,11 @@ function Learn() {
                 width: 58,
                 height: 58,
                 borderRadius: "50%",
-                background: "linear-gradient(135deg, #fce072, #f59e0b)",
+                background: "linear-gradient(135deg, #6366f1, #818cf8)",
                 margin: "0 auto 16px",
                 display: "grid",
                 placeItems: "center",
-                color: "#451a03",
+                color: "#fff",
               }}
             >
               <I.Trophy size={30} />
@@ -3412,9 +3289,7 @@ function Learn() {
                 id="take-practice-quiz-btn"
                 className="primary-action"
                 style={{
-                  background: "linear-gradient(135deg, #fce072 0%, #f59e0b 100%)",
-                  color: "#451a03",
-                  fontWeight: 800,
+                  background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
                   fontSize: 15,
                   padding: "12px 20px",
                   display: "flex",
@@ -3485,15 +3360,15 @@ function PracticeQuizView({ questions, onDone, onExit }) {
     const wrong = answers.filter((a) => !a.correct);
     const pct = Math.round((correct / total) * 100);
     const grade = pct >= 80 ? "Excellent" : pct >= 60 ? "Good" : "Keep Practising";
-    const gradeColor = pct >= 80 ? "#059669" : pct >= 60 ? "#fce072" : "#dc2626";
+    const gradeColor = pct >= 80 ? "#059669" : pct >= 60 ? "#2563eb" : "#dc2626";
 
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         {/* Score hero */}
-        <section className="card" style={{ padding: "clamp(18px, 2.5vw, 28px)", textAlign: "center", background: "linear-gradient(135deg,#f0fdf4 0%,rgba(252,224,114,0.15) 100%)", border: "2px solid #bbf7d0" }}>
+        <section className="card" style={{ padding: 28, textAlign: "center", background: "linear-gradient(135deg,#f0fdf4 0%,#eff6ff 100%)", border: "2px solid #bbf7d0" }}>
           <div style={{ fontSize: 11, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Practice Quiz Complete</div>
-          <div style={{ position: "relative", width: "clamp(100px, 12vmin, 130px)", height: "clamp(100px, 12vmin, 130px)", margin: "0 auto clamp(8px, 1.2vh, 14px)" }}>
-            <svg viewBox="0 0 110 110" style={{ width: "100%", height: "100%", transform: "rotate(-90deg)", shapeRendering: "geometricPrecision" }}>
+          <div style={{ position: "relative", width: 110, height: 110, margin: "0 auto 14px" }}>
+            <svg viewBox="0 0 110 110" style={{ width: 110, height: 110, transform: "rotate(-90deg)" }}>
               <circle cx="55" cy="55" r="46" fill="none" stroke="#e2e8f0" strokeWidth="10" />
               <circle cx="55" cy="55" r="46" fill="none" stroke={gradeColor} strokeWidth="10"
                 strokeDasharray={`${2 * Math.PI * 46}`}
@@ -3501,11 +3376,11 @@ function PracticeQuizView({ questions, onDone, onExit }) {
                 style={{ transition: "stroke-dashoffset 1s ease" }} />
             </svg>
             <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-              <div style={{ fontSize: "clamp(20px, 2.5vw, 26px)", fontWeight: 900, color: gradeColor === "#fce072" ? "#713f12" : gradeColor, fontFamily: "var(--font-heading)" }}>{pct}%</div>
-              <div style={{ fontSize: "clamp(9px, 1vw, 10.5px)", color: "var(--muted)", fontWeight: 700, letterSpacing: "0.05em" }}>SCORE</div>
+              <div style={{ fontSize: 26, fontWeight: 900, color: gradeColor, fontFamily: "var(--font-heading)" }}>{pct}%</div>
+              <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>SCORE</div>
             </div>
           </div>
-          <div style={{ fontSize: "clamp(18px, 2.2vw, 22px)", fontWeight: 800, color: gradeColor === "#fce072" ? "#713f12" : gradeColor, fontFamily: "var(--font-heading)", marginBottom: 4 }}>{grade}!</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: gradeColor, fontFamily: "var(--font-heading)", marginBottom: 4 }}>{grade}!</div>
           <div style={{ fontSize: 14, color: "var(--muted)" }}>
             <span style={{ fontWeight: 700, color: "#059669" }}>{correct} correct</span>
             {" "}·{" "}
@@ -3575,7 +3450,7 @@ function PracticeQuizView({ questions, onDone, onExit }) {
       {/* Progress bar */}
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <div style={{ flex: 1, height: 6, background: "#e2e8f0", borderRadius: 99, overflow: "hidden" }}>
-          <div style={{ width: `${progress}%`, height: "100%", background: "linear-gradient(90deg,#fce072,#f59e0b)", borderRadius: 99, transition: "width 0.4s ease" }} />
+          <div style={{ width: `${progress}%`, height: "100%", background: "linear-gradient(90deg,#6366f1,#818cf8)", borderRadius: 99, transition: "width 0.4s ease" }} />
         </div>
         <span style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", whiteSpace: "nowrap" }}>{currentIndex + 1} / {total}</span>
       </div>
@@ -3786,7 +3661,7 @@ function Practice() {
               <div>
                 <div style={{ fontWeight: 800, fontSize: 17, color: "var(--ink)" }}>Generating your practice quiz…</div>
                 <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 6 }}>
-                  Asking Groq AI to extract and formulate the most important and relevant questions from your lesson.
+                  Asking AI to extract and formulate the most important and relevant questions from your lesson.
                 </div>
               </div>
             </div>
@@ -3814,16 +3689,16 @@ function Practice() {
               /* ── Start card shown when all sections done ───────────────── */
               <section className="card" style={{
                 marginBottom: 16, padding: 28,
-                background: "linear-gradient(135deg, rgba(252, 224, 114, 0.15) 0%, #f0fdf4 100%)",
-                border: "2px solid #fce072"
+                background: "linear-gradient(135deg, #eef2ff 0%, #f0fdf4 100%)",
+                border: "2px solid #c7d2fe"
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
                   <div style={{
                     width: 44, height: 44, borderRadius: "50%",
-                    background: "linear-gradient(135deg, #fce072, #f59e0b)",
+                    background: "linear-gradient(135deg, #6366f1, #818cf8)",
                     display: "flex", alignItems: "center", justifyContent: "center"
                   }}>
-                    <I.Trophy size={22} style={{ color: "#451a03" }} />
+                    <I.Trophy size={22} style={{ color: "#fff" }} />
                   </div>
                   <div>
                     <div style={{ fontWeight: 800, fontSize: 16, color: "var(--ink)", fontFamily: "var(--font-heading)" }}>All Sections Complete!</div>
@@ -3831,14 +3706,14 @@ function Practice() {
                   </div>
                 </div>
                 <p style={{ fontSize: 14, color: "#334155", lineHeight: 1.6, marginBottom: 18 }}>
-                  Great work completing every section. Now take the <strong>Practice Quiz</strong> — Groq AI will formulate important questions from your lesson material to evaluate your mastery.
+                  Great work completing every section. Now take the <strong>Practice Quiz</strong> — AI will formulate important questions from your lesson material to evaluate your mastery.
                 </p>
                 <button
                   id="start-practice-quiz-btn"
                   className="primary-action"
                   disabled={busy === "practiceQuiz" || !session.text}
                   onClick={startPracticeQuiz}
-                  style={{ background: "linear-gradient(135deg, #fce072 0%, #f59e0b 100%)", color: "#451a03", fontWeight: 800, fontSize: 15 }}
+                  style={{ background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)", fontSize: 15 }}
                 >
                   {busy === "practiceQuiz" ? "Generating quiz with Groq…" : "Start Practice Quiz"}
                   <I.ClipboardCheck size={18} />
@@ -3892,9 +3767,9 @@ function Practice() {
 
         {/* ── REWIRE Adaptive Question Card ─────────────────────────────── */}
         {isRewireActive && (
-          <section className="card" style={{ marginBottom: 16, padding: 20, border: "2px solid #fce072" }}>
+          <section className="card" style={{ marginBottom: 16, padding: 20, border: "2px solid #a855f7" }}>
             <div style={{
-              background: "#fef9c3", color: "#713f12", border: "1px solid #fce072",
+              background: "#f3e8ff", color: "#7e22ce",
               padding: "6px 12px", borderRadius: 9999,
               fontSize: 12, fontWeight: 700,
               display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 12,
@@ -3960,7 +3835,7 @@ function Practice() {
           <div className="practice-stats-grid" style={{ marginTop: 12 }}>
             <div className="stat practice-stat-card">
               <div className="practice-stat-header">
-                <div className="practice-stat-icon" style={{ background: "#fef9c3", color: "#713f12", borderColor: "#fce072" }}>
+                <div className="practice-stat-icon" style={{ background: "#eff6ff", color: "#2563eb", borderColor: "#bfdbfe" }}>
                   <I.FileEdit size={16} />
                 </div>
               </div>
@@ -3987,7 +3862,7 @@ function Practice() {
             </div>
             <div className="stat practice-stat-card">
               <div className="practice-stat-header">
-                <div className="practice-stat-icon" style={{ background: "#fef9c3", color: "#713f12", borderColor: "#fce072" }}>
+                <div className="practice-stat-icon" style={{ background: "#f3e8ff", color: "#7e22ce", borderColor: "#e9d5ff" }}>
                   <I.BookOpen size={16} />
                 </div>
               </div>
@@ -4211,7 +4086,7 @@ function getCognitiveMood(score = 0, isTransformed = true) {
       label: "CALM",
       emoji: "🧘",
       color: "#1f5e63",
-      glow: "rgba(252, 224, 114, 0.45)",
+      glow: "rgba(139, 92, 246, 0.45)",
     };
   }
 
@@ -4242,7 +4117,7 @@ function getCognitiveMood(score = 0, isTransformed = true) {
       label: "CALM",
       emoji: "🧘",
       color: "#1f5e63",
-      glow: "rgba(252, 224, 114, 0.45)",
+      glow: "rgba(139, 92, 246, 0.45)",
     };
   }
 }
@@ -4261,7 +4136,7 @@ function ReactiveOrb({ struggleScore = 0 }) {
       <svg className="reactive-orb-svg" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <radialGradient id="orb-grad-calm" cx="35%" cy="35%" r="65%">
-            <stop offset="0%" stopColor="#fce072" />
+            <stop offset="0%" stopColor="#c084fc" />
             <stop offset="50%" stopColor="#1f5e63" />
             <stop offset="100%" stopColor="#fbbf24" />
           </radialGradient>
@@ -4374,7 +4249,7 @@ function SliderFace({ tierKey, size = 44 }) {
         {/* Subtle frown — turned down at edges */}
         <path d="M15 29 Q22 25, 29 29" stroke="#9a3412" strokeWidth="2" strokeLinecap="round" fill="none" />
         {/* Sweat drop */}
-        <ellipse cx="34" cy="14" rx="1.5" ry="2.2" fill="#fce072" opacity="0.8" />
+        <ellipse cx="34" cy="14" rx="1.5" ry="2.2" fill="#93c5fd" opacity="0.7" />
       </svg>
     );
   }
@@ -4397,7 +4272,7 @@ function SliderFace({ tierKey, size = 44 }) {
       {/* Deep frown — downcast sadness */}
       <path d="M14 31 Q22 26, 30 31" stroke="#7f1d1d" strokeWidth="2" strokeLinecap="round" fill="none" />
       {/* Tear drop */}
-      <ellipse cx="12" cy="25" rx="1.3" ry="2" fill="#fce072" opacity="0.8" />
+      <ellipse cx="12" cy="25" rx="1.3" ry="2" fill="#93c5fd" opacity="0.65" />
     </svg>
   );
 }
@@ -4499,10 +4374,10 @@ function HeartbeatLine({ struggleScore = 0, isTransformed = false }) {
 
 /* ── Mastery Ring ─────────────────────────────────────────────────────────── */
 const MASTERY_LEGEND = [
-  { color: "#1f5e63", strokeColor: "#1f5e63", bg: "#dfeae5", label: "Getting Started" },
-  { color: "#713f12", strokeColor: "#fce072", bg: "#fef9c3", border: "1px solid #fce072", label: "Building Momentum" },
-  { color: "#34D399", strokeColor: "#34D399", bg: "#d1fae5", label: "Almost Mastered" },
-  { color: "#FBBF24", strokeColor: "#FBBF24", bg: "#fef3c7", label: "Mastered" },
+  { color: "#1f5e63", bg: "#dfeae5", label: "Getting Started" },
+  { color: "#60A5FA", bg: "#dbeafe", label: "Building Momentum" },
+  { color: "#34D399", bg: "#d1fae5", label: "Almost Mastered" },
+  { color: "#FBBF24", bg: "#fef3c7", label: "Mastered" },
 ];
 
 function MasteryRing({ masteryPct = 0, xpTotal = 0, struggleScore = 0 }) {
@@ -4572,14 +4447,14 @@ function MasteryRing({ masteryPct = 0, xpTotal = 0, struggleScore = 0 }) {
       {toast && <div className="mastery-xp-toast">{toast}</div>}
 
       <div className={`mastery-ring-svg-wrap${masteryPct >= 100 && animFraction >= 0.9 ? " mastery-ring--gold" : ""}`}>
-        <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="mastery-ring-svg" style={{ width: "100%", height: "100%", shapeRendering: "geometricPrecision" }}>
+        <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
           {/* Track */}
           <circle cx={SIZE / 2} cy={SIZE / 2} r={R}
             fill="none" stroke="#E5E7EB" strokeWidth={STROKE} />
           {/* Filled arc */}
           <circle cx={SIZE / 2} cy={SIZE / 2} r={R}
             fill="none"
-            stroke={tier.strokeColor || tier.color}
+            stroke={tier.color}
             strokeWidth={STROKE}
             strokeLinecap="round"
             strokeDasharray={`${CIRC} ${CIRC}`}
@@ -4611,8 +4486,8 @@ function MasteryRing({ masteryPct = 0, xpTotal = 0, struggleScore = 0 }) {
       <div className="mastery-legend">
         {MASTERY_LEGEND.map((l) => (
           <span key={l.label} className="mastery-legend-pill"
-            style={{ background: l.bg, color: l.color, border: l.border || "none" }}>
-            <span className="mastery-legend-dot" style={{ background: l.strokeColor || l.color }} />
+            style={{ background: l.bg, color: l.color }}>
+            <span className="mastery-legend-dot" style={{ background: l.color }} />
             {l.label}
           </span>
         ))}
@@ -4818,8 +4693,8 @@ function Progress() {
         {/* Section 4: SCALE Engine Cognitive Telemetry Card */}
         <section className="card scale-telemetry-card animate-stagger-4">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span className="pill" style={{ background: "#fef9c3", color: "#713f12", border: "1px solid #fce072" }}>
-              <I.Activity size={13} color="#713f12" /> SCALE Cognitive Telemetry
+            <span className="pill" style={{ background: "#f3e8ff", color: "#7e22ce" }}>
+              <I.Activity size={13} /> SCALE Cognitive Telemetry
             </span>
             <span style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>
               Variant Level: {session.sessionMeta.currentVariantLevel}
@@ -4827,8 +4702,8 @@ function Progress() {
           </div>
 
           {/* Current Struggle Score Section */}
-          <div style={{ marginTop: "clamp(4px, 0.8vh, 10px)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <div style={{ marginTop: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
               <span style={{ fontSize: 13, fontWeight: 700 }}>Current Struggle Score</span>
               {/* Status Pill */}
               {(() => {
@@ -4862,7 +4737,7 @@ function Progress() {
             <HeartbeatLine struggleScore={struggleScore} isTransformed={transformed} />
 
             {/* Score Readout with Tier Color & Current Score */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4, fontSize: 12, fontWeight: 700 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6, fontSize: 12, fontWeight: 700 }}>
               <span style={{ color: getStruggleTier(struggleScore, transformed).color }}>
                 {transformed ? `Struggle: ${(struggleScore * 100).toFixed(0)}% / 100%` : "Not started"}
               </span>
@@ -4879,26 +4754,26 @@ function Progress() {
           </div>
 
           {/* Total Adaptations & Latest Outcome Delta */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "clamp(6px, 1vw, 10px)", marginTop: "clamp(6px, 0.8vh, 10px)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
             {/* Total Adaptations */}
-            <div style={{ background: "#f3f1eb", padding: "clamp(6px, 0.8vh, 10px) clamp(10px, 1vw, 14px)", borderRadius: 12, border: "1px solid var(--border-color)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                <span style={{ fontSize: 15 }}>🛡️</span>
+            <div style={{ background: "#f3f1eb", padding: "10px 14px", borderRadius: 12, border: "1px solid var(--border-color)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                <span style={{ fontSize: 16 }}>🛡️</span>
                 <div style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", fontWeight: 800 }}>
                   Total Adaptations
                 </div>
               </div>
-              <div style={{ fontSize: "clamp(16px, 1.8vw, 20px)", fontWeight: 800, color: "var(--ink)", fontFamily: "var(--font-heading)" }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "var(--ink)", fontFamily: "var(--font-heading)" }}>
                 {session.sessionMeta.totalAdaptations}
               </div>
             </div>
 
             {/* Latest Outcome Delta */}
-            <div style={{ background: "#f3f1eb", padding: "clamp(6px, 0.8vh, 10px) clamp(10px, 1vw, 14px)", borderRadius: 12, border: "1px solid var(--border-color)" }}>
-              <div style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", fontWeight: 800, marginBottom: 2 }}>
+            <div style={{ background: "#f3f1eb", padding: "10px 14px", borderRadius: 12, border: "1px solid var(--border-color)" }}>
+              <div style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", fontWeight: 800, marginBottom: 4 }}>
                 Latest Outcome Delta
               </div>
-              <div style={{ fontSize: "clamp(16px, 1.8vw, 20px)", fontWeight: 800, fontFamily: "var(--font-heading)", display: "flex", alignItems: "baseline", gap: 4 }}>
+              <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "var(--font-heading)", display: "flex", alignItems: "baseline", gap: 4 }}>
                 {latestOutcome ? (
                   <>
                     <span style={{ color: latestOutcome.outcomeDelta > 0 ? "#16a34a" : "#dc2626" }}>
