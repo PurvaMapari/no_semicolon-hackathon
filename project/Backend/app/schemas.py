@@ -172,3 +172,28 @@ class PracticeQuizRequest(BaseModel):
     profile: str = Field(default="cognitive_load", description="Learner profile")
     question_count: int = Field(default=8, ge=3, le=15, description="Number of questions to generate")
 
+
+# ── Topic Assistant / AI Tutor ───────────────────────────────────────────────
+
+
+class TopicChatMessage(BaseModel):
+    role: str = Field(description="user | assistant | system")
+    content: str = Field(description="Message content")
+
+
+class TopicChatRequest(BaseModel):
+    messages: List[TopicChatMessage] = Field(min_length=1, description="Conversation history")
+    current_topic: Optional[str] = Field(default=None, description="Current identified topic")
+    profile: str = Field(default="cognitive_load", description="Target learner profile")
+    force_generate: bool = Field(default=False, description="If true, immediately finalize and generate lesson text")
+
+
+class TopicChatResponse(BaseModel):
+    reply: str = Field(description="AI conversational reply")
+    suggested_replies: List[str] = Field(default=[], description="Quick action chips for learner")
+    topic_title: Optional[str] = Field(default=None, description="Topic title")
+    ready_lesson_text: Optional[str] = Field(default=None, description="Generated comprehensive lesson text")
+    is_complete: bool = Field(default=False, description="Whether lesson material has been finalized")
+    sections_preview: List[str] = Field(default=[], description="Preview list of generated section titles")
+
+

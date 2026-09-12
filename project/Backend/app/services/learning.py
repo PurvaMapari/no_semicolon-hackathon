@@ -3,7 +3,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from app.config import GROQ_API_KEY, VOICE_GROQ_API_KEY
-from app.services.llm import call_llm, call_voice_llm, parse_json_response
+from app.services.llm import call_llm, call_llm_chat, call_voice_llm, parse_json_response
 
 
 DYSLEXIA_PROMPT = """You are an expert educational content designer helping a learner with dyslexia. Words can appear to move or blur for this learner, so they need clear, simple text.
@@ -904,4 +904,170 @@ def generate_practice_quiz(
             "explanation": "The lesson focuses on the content provided.",
         }
     ]
+
+
+# ── AI Topic Assistant & Curriculum Builder ───────────────────────────────────
+
+TOPIC_ASSISTANT_SYSTEM = """You are AdaptLearn's AI Curriculum Architect and Learning Guide.
+Your purpose is to help a learner who wants to study a topic (for example: "Can you teach me JavaScript?", "Teach me Python", "Explain Quantum Mechanics", "World History overview") when they do not have a PDF document to upload.
+
+BEHAVIOR MODES:
+1. EXPLORATION & DIAGNOSTIC MODE (Turn 1 or when topic scope is broad):
+   - Acknowledge their topic enthusiastically and briefly explain why it's great to learn.
+   - Ask 1 or 2 friendly, high-yield diagnostic questions (e.g. current level: beginner vs intermediate, or specific goal/interest).
+   - Provide 3-4 clickable `suggested_replies` (e.g. ["Complete beginner (from scratch)", "I know some basics", "Fast-paced overview", "Generate full lesson now"]).
+   - Set `is_complete` to false, `ready_lesson_text` to null, `sections_preview` to [].
+
+2. CURRICULUM GENERATION MODE (When learner specifies their level/goal, OR says "generate", OR when force_generate is true, OR after 1-2 turns):
+   - Synthesize a comprehensive, high-quality, structured learning text (600 to 1200 words) tailored to their level.
+   - The lesson text MUST have distinct, clear section headings (e.g. "### Section 1: ...", "### Section 2: ...") so our system can cleanly split it into interactive sections.
+   - Include clear concepts, intuitive analogies, concrete examples, and key takeaways in each section.
+   - Set `is_complete` to true.
+   - Set `ready_lesson_text` to the complete formatted text.
+   - Set `sections_preview` to the list of section titles (e.g. ["1. What is JavaScript?", "2. Variables & Types", "3. Control Flow", "4. Functions", "5. The DOM"]).
+   - Set `reply` to an encouraging message summarizing what was created and inviting them to start learning.
+   - Provide `suggested_replies` like ["Looks great, let's learn!", "Add more examples", "Make it simpler"].
+
+PROFILE GUIDANCE:
+- For dyslexia: write short sentences (max 15 words), clear headings, straightforward vocabulary.
+- For cognitive_load: focus on one core idea per section, clear step-by-step logic.
+- For low_vision: clear descriptive phrasing.
+
+OUTPUT FORMAT:
+Return ONLY valid JSON matching this schema:
+{
+  "reply": "string (conversational text for the chat bubble)",
+  "suggested_replies": ["string", "string"],
+  "topic_title": "string (clean title, e.g. 'JavaScript Fundamentals')",
+  "ready_lesson_text": "string or null (the comprehensive multi-section lesson text)",
+  "is_complete": boolean,
+  "sections_preview": ["string", "string"]
+}
+"""
+
+
+def generate_topic_lesson(
+    topic: str,
+    profile: str = "cognitive_load",
+    level: str = "beginner",
+) -> Dict[str, Any]:
+    """Directly generate a comprehensive structured lesson text for a given topic."""
+    prompt = f"""You are an expert instructional designer. Create a comprehensive, well-structured educational lesson for a {level} student wanting to learn: "{topic}".
+
+STRICT RULES:
+- Write between 700 and 1200 words.
+- Divide the lesson into 4 to 6 logical sequential sections.
+- Format each section with a clear markdown heading: "### Section N: Title".
+- Each section must be self-contained, educational, rich with clear explanations, concrete examples, and practical analogies.
+- Tailor language complexity for the {profile} learning profile.
+- Return ONLY valid SECTION_JSON:
+{{
+  "topic_title": "{topic.title()}",
+  "sections_preview": ["Section 1 Title", "Section 2 Title", ...],
+  "lesson_text": "The entire comprehensive lesson text here..."
+}}
+"""
+    try:
+        raw = call_llm(prompt)
+        parsed = parse_json_response(raw)
+        if isinstance(parsed, dict) and parsed.get("lesson_text"):
+            return {
+                "topic_title": parsed.get("topic_title", topic.title()),
+                "sections_preview": parsed.get("sections_preview", []),
+                "lesson_text": parsed.get("lesson_text", ""),
+            }
+    except Exception:
+        pass
+
+    fallback_text = f"""### Section 1: Introduction to {topic.title()}
+{topic.title()} is an essential and fascinating subject. It provides foundational principles that help us understand key mechanisms and practical applications in real-world scenarios.
+
+### Section 2: Core Concepts and Foundations
+To master {topic.title()}, we first examine its fundamental building blocks. These core principles govern how components interact, process information, and establish consistent outcomes across various contexts.
+
+### Section 3: Practical Applications and Examples
+In practice, {topic.title()} is applied in diverse situations. By examining concrete real-world use cases, we observe how theoretical ideas translate into tangible results and problem-solving strategies.
+
+### Section 4: Key Insights and Summary
+Understanding {topic.title()} gives you the ability to analyze problems systematically and apply proven techniques. Reviewing these key concepts ensures long-term mastery and confidence.
+"""
+    return {
+        "topic_title": topic.title(),
+        "sections_preview": [
+            f"1. Introduction to {topic.title()}",
+            "2. Core Concepts and Foundations",
+            "3. Practical Applications and Examples",
+            "4. Key Insights and Summary",
+        ],
+        "lesson_text": fallback_text,
+    }
+
+
+def chat_topic_assistant(
+    messages: List[Dict[str, str]],
+    current_topic: Optional[str] = None,
+    profile: str = "cognitive_load",
+    force_generate: bool = False,
+) -> Dict[str, Any]:
+    """Interactive multi-turn conversation with Groq to scaffold and generate lesson material."""
+    if not messages:
+        return {
+            "reply": "Hi! What topic would you like to learn today? You can ask me anything, like 'Teach me JavaScript' or 'Explain cell biology'.",
+            "suggested_replies": ["Teach me JavaScript", "Python Basics", "Photosynthesis", "Machine Learning Intro"],
+            "topic_title": None,
+            "ready_lesson_text": None,
+            "is_complete": False,
+            "sections_preview": [],
+        }
+
+    last_message = messages[-1].get("content", "").lower()
+    auto_generate = (
+        force_generate
+        or "generate" in last_message
+        or "start learning" in last_message
+        or "create lesson" in last_message
+        or len(messages) >= 4
+    )
+
+    system_prompt = TOPIC_ASSISTANT_SYSTEM
+    if auto_generate:
+        system_prompt += "\nNOTE: The learner is ready! You MUST now finalize the curriculum, set `is_complete` to true, and generate the full `ready_lesson_text`."
+
+    try:
+        raw = call_llm_chat(messages, system_prompt=system_prompt, json_mode=True)
+        parsed = parse_json_response(raw)
+
+        if isinstance(parsed, dict) and "reply" in parsed:
+            # If auto_generate was requested but ready_lesson_text was omitted, generate it directly
+            if auto_generate and not parsed.get("ready_lesson_text"):
+                topic = parsed.get("topic_title") or current_topic or last_message[:40]
+                gen = generate_topic_lesson(topic, profile=profile)
+                parsed["ready_lesson_text"] = gen["lesson_text"]
+                parsed["topic_title"] = gen["topic_title"]
+                parsed["sections_preview"] = gen["sections_preview"]
+                parsed["is_complete"] = True
+                parsed["reply"] = parsed.get("reply") or f"I've built a comprehensive learning guide for {gen['topic_title']}. Let's get started!"
+
+            return {
+                "reply": parsed.get("reply", "Here is your learning material!"),
+                "suggested_replies": parsed.get("suggested_replies", []),
+                "topic_title": parsed.get("topic_title", current_topic),
+                "ready_lesson_text": parsed.get("ready_lesson_text"),
+                "is_complete": bool(parsed.get("is_complete")),
+                "sections_preview": parsed.get("sections_preview", []),
+            }
+    except Exception:
+        pass
+
+    topic = current_topic or "Your Selected Topic"
+    gen = generate_topic_lesson(topic, profile=profile)
+    return {
+        "reply": f"I've prepared a comprehensive study guide on {gen['topic_title']} for you!",
+        "suggested_replies": ["Start Learning Now", "Review Topics"],
+        "topic_title": gen["topic_title"],
+        "ready_lesson_text": gen["lesson_text"],
+        "is_complete": True,
+        "sections_preview": gen["sections_preview"],
+    }
+
 

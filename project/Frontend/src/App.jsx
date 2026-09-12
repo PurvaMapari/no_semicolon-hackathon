@@ -19,6 +19,7 @@ import {
   transformText,
   rewireContent,
   generateAdaptiveQuiz,
+  chatTopicAssistant,
 } from "./api/client";
 import VisualInfographic from "./components/VisualInfographic";
 import VoiceAssistant from "./components/VoiceAssistant";
@@ -114,10 +115,10 @@ export function SessionProvider({ children }) {
     });
   }
 
-  function setText(text) {
+  function setText(text, customFileName = null) {
     setSession((current) => ({
       ...current,
-      fileName: "Pasted lesson",
+      fileName: customFileName || "AI Generated Lesson",
       text,
       wordCount: text.trim() ? text.trim().split(/\s+/).length : 0,
       transformed: null,
@@ -132,6 +133,72 @@ export function SessionProvider({ children }) {
       rewireState: { active: false, adaptedContent: null, evaluation: null, chunkIndex: 0 },
       latestOutcome: null,
     }));
+  }
+
+  async function startLearningFromTopic(text, topicTitle = "AI Lesson") {
+    const profile = session.profile || "cognitive_load";
+    return run("transform", async () => {
+      let result = null;
+      try {
+        result = await transformText(text, profile);
+      } catch (err) {
+        console.warn("transformText failed, using local section parser fallback:", err);
+      }
+
+      if (!result || !Array.isArray(result.sections) || result.sections.length === 0) {
+        // Fallback: parse sections directly from markdown headings in lesson text
+        const rawBlocks = text.split(/(?=###\s+Section|\n(?=###\s+))/i).map((s) => s.trim()).filter(Boolean);
+        const sectionsList = [];
+        if (rawBlocks.length > 1) {
+          rawBlocks.forEach((block, idx) => {
+            const lines = block.split("\n");
+            const heading = lines[0].replace(/^###\s*/, "").replace(/^Section\s*\d+:\s*/i, "").trim();
+            const content = lines.slice(1).join("\n").trim();
+            sectionsList.push({
+              heading: heading || `Section ${idx + 1}`,
+              content: content || block,
+            });
+          });
+        } else {
+          sectionsList.push({
+            heading: topicTitle,
+            content: text,
+          });
+        }
+
+        result = {
+          profile,
+          sections: sectionsList,
+          chunks: sectionsList.map((s) => s.content),
+          chunk_meta: sectionsList.map((s) => ({
+            difficulty_tier: "intermediate",
+            estimated_seconds: Math.max(30, Math.round((s.content || "").split(/\s+/).length / 3)),
+            word_count: (s.content || "").split(/\s+/).length,
+          })),
+          text,
+          formatting: {},
+        };
+      }
+
+      setSession((current) => ({
+        ...current,
+        fileName: topicTitle,
+        lessonTitle: topicTitle,
+        text,
+        wordCount: text.trim() ? text.trim().split(/\s+/).length : 0,
+        profile,
+        transformed: result,
+        completed: 0,
+        completedSections: [],
+        practiceReport: { answered: [], failed: [], masteredSections: [] },
+        wholeTest: null,
+        signals: createSignalState(),
+        sessionMeta: createSessionMeta(),
+        rewireState: { active: false, adaptedContent: null, evaluation: null, chunkIndex: 0 },
+        latestOutcome: null,
+      }));
+      return result;
+    });
   }
 
   async function chooseProfile(profile) {
@@ -465,6 +532,7 @@ export function SessionProvider({ children }) {
         dismissRewire,
         updateActiveDwell,
         resetDwellForNewSection,
+        startLearningFromTopic,
       }}
     >
       {children}
@@ -641,12 +709,458 @@ function ErrorNotice() {
   ) : null;
 }
 
+function TopicChatAssistant({ onStartLearning, busy }) {
+  const { session } = useSession();
+  const [topicInput, setTopicInput] = useState("");
+  const [currentTopic, setCurrentTopic] = useState("");
+  const [step, setStep] = useState("ask"); // "ask" | "clarify" | "building"
+  const [clarifyQuestion, setClarifyQuestion] = useState("");
+  const [clarifyOptions, setClarifyOptions] = useState([]);
+  const [buildStatus, setBuildStatus] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const suggestedTopics = [
+    { label: "🚀 Teach me JavaScript from scratch", topic: "JavaScript Fundamentals & DOM" },
+    { label: "🐍 Python for Beginners", topic: "Python Basics & Data Structures" },
+    { label: "⚛️ Modern React & State Management", topic: "Modern React & State Management" },
+    { label: "🧠 Neural Networks & Deep Learning", topic: "Neural Networks & Deep Learning" },
+    { label: "💻 System Design & Microservices", topic: "System Design & Microservices" },
+  ];
+
+  const handleStartClarification = (topicStr) => {
+    const topic = topicStr || topicInput.trim();
+    if (!topic) return;
+
+    setCurrentTopic(topic);
+    setErrorMsg("");
+    setStep("clarify");
+    setClarifyQuestion(`Great choice! To build the best lesson for "${topic}", choose your experience level or focus:`);
+    setClarifyOptions([
+      `🌱 Complete Beginner (Start from scratch with clear analogies)`,
+      `💡 Practical & Hands-on (Code examples & real-world use cases)`,
+      `⚡ Quick Crash Course (Core concepts, syntax & takeaways)`,
+    ]);
+  };
+
+  const handleBuildAndLearn = async (topicStr, contextDetail = "") => {
+    const finalTopic = topicStr || currentTopic || topicInput.trim();
+    if (!finalTopic) return;
+
+    setCurrentTopic(finalTopic);
+    setStep("building");
+    setBuildStatus(`Consulting Groq AI to design your curriculum for "${finalTopic}"...`);
+    setErrorMsg("");
+
+    try {
+      const messages = [
+        {
+          role: "user",
+          content: `I want to learn: ${finalTopic}. ${contextDetail ? `Level / Focus: ${contextDetail}.` : ""} Please build a comprehensive, multi-section lesson for me with clear sections.`,
+        },
+      ];
+
+      setBuildStatus(`Groq AI is generating your structured interactive modules...`);
+      const response = await chatTopicAssistant(messages, finalTopic, session.profile, true);
+
+      const lessonText = response.ready_lesson_text;
+      const topicTitle = response.topic || finalTopic;
+
+      if (!lessonText) {
+        throw new Error("Could not generate curriculum text. Please try again.");
+      }
+
+      setBuildStatus(`Adapting sections for ${session.profile || "your learning profile"} & launching Learn page...`);
+
+      // Store generated text, adapt into sections, and automatically navigate to /learn
+      await onStartLearning(lessonText, topicTitle);
+    } catch (err) {
+      console.error("Build lesson error:", err);
+      setErrorMsg(err.message || "Failed to generate lesson with Groq. Please try again.");
+      setStep("ask");
+    }
+  };
+
+  const handleReset = () => {
+    setStep("ask");
+    setCurrentTopic("");
+    setTopicInput("");
+    setErrorMsg("");
+    setBuildStatus("");
+  };
+
+  if (step === "building") {
+    return (
+      <div
+        style={{
+          padding: "36px 20px",
+          textAlign: "center",
+          background: "linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(168, 85, 247, 0.05) 100%)",
+          border: "2px solid rgba(99, 102, 241, 0.2)",
+          borderRadius: 16,
+          marginTop: 14,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 16,
+        }}
+      >
+        <div
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: "50%",
+            background: "var(--primary-gradient)",
+            color: "#fff",
+            display: "grid",
+            placeItems: "center",
+            boxShadow: "0 8px 20px rgba(99, 102, 241, 0.3)",
+          }}
+        >
+          <I.Sparkles size={26} className="spin-slow" />
+        </div>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: 17, color: "var(--ink)" }}>
+            Building Your Lesson: {currentTopic}
+          </div>
+          <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 6 }}>
+            {buildStatus}
+          </div>
+        </div>
+        <div className="progressbar" style={{ width: "80%", maxWidth: 360, marginTop: 4 }}>
+          <div className="progressfill" style={{ width: "85%", animation: "pulse 1.5s infinite" }} />
+        </div>
+        <div style={{ fontSize: 12, color: "var(--primary)", fontWeight: 700 }}>
+          🚀 Automatically taking you to the Learn page once ready...
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 14 }}>
+      {/* Header bar */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          background: "rgba(99, 102, 241, 0.04)",
+          border: "1px solid rgba(99, 102, 241, 0.15)",
+          borderRadius: 12,
+          padding: "8px 14px",
+          fontSize: 13,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, color: "var(--primary)" }}>
+          <I.Bot size={18} />
+          <span>Groq AI Curriculum Assistant</span>
+          {currentTopic && (
+            <span
+              style={{
+                background: "var(--primary-light)",
+                color: "var(--primary)",
+                padding: "2px 8px",
+                borderRadius: 999,
+                fontSize: 11,
+                fontWeight: 700,
+              }}
+            >
+              Topic: {currentTopic}
+            </span>
+          )}
+        </div>
+        {step !== "ask" && (
+          <button
+            type="button"
+            onClick={handleReset}
+            style={{
+              background: "none",
+              border: "none",
+              color: "var(--muted)",
+              fontSize: 12,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            <I.RotateCcw size={13} /> Change Topic
+          </button>
+        )}
+      </div>
+
+      {errorMsg && (
+        <div
+          style={{
+            background: "#fee2e2",
+            border: "1px solid #fca5a5",
+            color: "#991b1b",
+            padding: "10px 14px",
+            borderRadius: 10,
+            fontSize: 13,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <span>{errorMsg}</span>
+          <button
+            type="button"
+            onClick={() => handleBuildAndLearn(currentTopic)}
+            style={{
+              background: "none",
+              border: "none",
+              color: "#991b1b",
+              fontWeight: 700,
+              cursor: "pointer",
+              textDecoration: "underline",
+              fontSize: 12,
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {step === "ask" ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div
+            style={{
+              background: "#ffffff",
+              border: "1px solid var(--border-color)",
+              borderRadius: 14,
+              padding: 16,
+            }}
+          >
+            <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)", marginBottom: 4 }}>
+              What would you like to learn today?
+            </div>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
+              Don't have a document or PDF? Tell Groq AI any skill or concept (e.g. <i>"Can you teach me JavaScript?"</i>), and we'll generate the full lesson in interactive sections and take you straight into the Learn page!
+            </div>
+
+            {/* Input Form */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (topicInput.trim()) {
+                  handleBuildAndLearn(topicInput.trim());
+                }
+              }}
+              style={{ display: "flex", gap: 8, alignItems: "center" }}
+            >
+              <input
+                type="text"
+                value={topicInput}
+                onChange={(e) => setTopicInput(e.target.value)}
+                placeholder="e.g. Can you teach me JavaScript from scratch?"
+                style={{
+                  flex: 1,
+                  padding: "11px 14px",
+                  borderRadius: 12,
+                  border: "1px solid var(--border-color)",
+                  fontSize: 13,
+                  outline: "none",
+                  background: "#fafbfc",
+                }}
+              />
+              <button
+                type="button"
+                disabled={!topicInput.trim()}
+                onClick={() => handleStartClarification(topicInput.trim())}
+                style={{
+                  background: "var(--secondary-bg)",
+                  color: "var(--secondary-ink)",
+                  border: "1px solid var(--border-color)",
+                  borderRadius: 12,
+                  padding: "11px 14px",
+                  cursor: !topicInput.trim() ? "not-allowed" : "pointer",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Customize
+              </button>
+              <button
+                type="submit"
+                disabled={!topicInput.trim()}
+                style={{
+                  background: !topicInput.trim() ? "var(--secondary-bg)" : "var(--primary-gradient)",
+                  color: !topicInput.trim() ? "var(--muted)" : "#ffffff",
+                  border: "none",
+                  borderRadius: 12,
+                  padding: "11px 16px",
+                  cursor: !topicInput.trim() ? "not-allowed" : "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  whiteSpace: "nowrap",
+                  boxShadow: topicInput.trim() ? "0 4px 12px rgba(79, 70, 229, 0.25)" : "none",
+                }}
+              >
+                <span>Build & Learn</span>
+                <I.ArrowRight size={15} />
+              </button>
+            </form>
+          </div>
+
+          {/* Quick topic suggestion pills */}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Or choose a popular topic:
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {suggestedTopics.map((item, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleBuildAndLearn(item.topic)}
+                  style={{
+                    background: "#ffffff",
+                    border: "1px solid rgba(99, 102, 241, 0.25)",
+                    color: "var(--primary)",
+                    borderRadius: 999,
+                    padding: "6px 14px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    boxShadow: "0 2px 4px rgba(15, 23, 42, 0.03)",
+                    transition: "all 0.15s ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "var(--primary-light)";
+                    e.currentTarget.style.borderColor = "var(--primary)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "#ffffff";
+                    e.currentTarget.style.borderColor = "rgba(99, 102, 241, 0.25)";
+                  }}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* Clarification Step */
+        <div
+          style={{
+            background: "#ffffff",
+            border: "1.5px solid rgba(99, 102, 241, 0.3)",
+            borderRadius: 14,
+            padding: 18,
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: "50%",
+                background: "var(--primary-gradient)",
+                color: "#fff",
+                display: "grid",
+                placeItems: "center",
+                flexShrink: 0,
+              }}
+            >
+              <I.Bot size={18} />
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>
+                {clarifyQuestion}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                Click an option below to immediately generate your lesson and launch into the Learn page.
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {clarifyOptions.map((opt, oIdx) => (
+              <button
+                key={oIdx}
+                type="button"
+                onClick={() => handleBuildAndLearn(currentTopic, opt)}
+                style={{
+                  background: "#f8fafc",
+                  border: "1px solid var(--border-color)",
+                  borderRadius: 10,
+                  padding: "10px 14px",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "var(--ink)",
+                  textAlign: "left",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  transition: "all 0.15s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "var(--primary-light)";
+                  e.currentTarget.style.borderColor = "var(--primary)";
+                  e.currentTarget.style.color = "var(--primary)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "#f8fafc";
+                  e.currentTarget.style.borderColor = "var(--border-color)";
+                  e.currentTarget.style.color = "var(--ink)";
+                }}
+              >
+                <span>{opt}</span>
+                <I.ArrowRight size={14} />
+              </button>
+            ))}
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--border-color)", paddingTop: 12 }}>
+            <button
+              type="button"
+              onClick={() => setStep("ask")}
+              style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 12 }}
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              className="primary-action"
+              style={{ padding: "8px 16px", fontSize: 12 }}
+              onClick={() => handleBuildAndLearn(currentTopic)}
+            >
+              <I.Zap size={14} /> Build Lesson & Start Learning Now
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Upload() {
-  const { session, busy, upload, setText } = useSession();
+  const { session, busy, upload, setText, startLearningFromTopic } = useSession();
   const navigate = useNavigate();
   const [tab, setTab] = useState("upload");
-  const [draft, setDraft] = useState(session.text);
   const ready = Boolean(session.text.trim());
+
+  function handleLessonReady(lessonText, topicTitle) {
+    setText(lessonText, topicTitle);
+  }
+
+  async function handleStartLearning(lessonText, topicTitle) {
+    await startLearningFromTopic(lessonText, topicTitle);
+    navigate("/learn");
+  }
 
   return (
     <Layout section="Upload">
@@ -658,22 +1172,27 @@ function Upload() {
         <h1 className="page-title">Add learning material</h1>
 
         <section className="hero-card">
-          <b>Smart Document Reader</b>
+          <b>Adaptive Content Hub</b>
           <p>
-            Upload your document or paste lesson text. AdaptLearn automatically extracts content, preserves context, and transforms it according to your accessibility preferences.
+            Upload a document (PDF, EPUB, DOCX) or converse with our AI Topic Assistant to generate a personalized, section-by-section curriculum on any topic.
           </p>
         </section>
 
         <div className="segmented">
           {[
             ["upload", "Upload File"],
-            ["text", "Paste Raw Text"],
+            ["chat", "AI Topic Assistant (Groq)"],
           ].map(([value, label]) => (
             <button
               key={value}
               onClick={() => setTab(value)}
               className={tab === value ? "selected" : ""}
             >
+              {value === "chat" ? (
+                <I.Bot size={15} style={{ display: "inline", marginRight: 6, verticalAlign: "middle" }} />
+              ) : (
+                <I.UploadCloud size={15} style={{ display: "inline", marginRight: 6, verticalAlign: "middle" }} />
+              )}
               {label}
             </button>
           ))}
@@ -682,11 +1201,11 @@ function Upload() {
         <section className="card" style={{ marginTop: 16, padding: 20 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
             <span className="pill">
-              <I.Zap size={13} /> OCR Fallback & Intelligent Extractor
+              <I.Zap size={13} /> {tab === "chat" ? "Interactive Groq Curriculum Builder" : "OCR Fallback & Intelligent Extractor"}
             </span>
             {ready && (
               <span className="pill" style={{ background: "var(--emerald-light)", color: "#047857" }}>
-                <I.Check size={13} /> Content Loaded
+                <I.Check size={13} /> Content Loaded ({session.fileName || "Ready"})
               </span>
             )}
           </div>
@@ -705,15 +1224,10 @@ function Upload() {
               <strong>Select from device</strong>
             </label>
           ) : (
-            <textarea
-              value={draft}
-              onChange={(event) => {
-                setDraft(event.target.value);
-                setText(event.target.value);
-              }}
-              onBlur={() => setText(draft)}
-              placeholder="Paste raw text here..."
-              style={{ width: "100%", minHeight: 180, marginTop: 14 }}
+            <TopicChatAssistant
+              onLessonReady={handleLessonReady}
+              onStartLearning={handleStartLearning}
+              busy={busy}
             />
           )}
 
@@ -728,12 +1242,14 @@ function Upload() {
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
-              <span style={{ color: busy === "extract" ? "var(--primary)" : "var(--ink)" }}>
+              <span style={{ color: busy === "extract" || busy === "transform" ? "var(--primary)" : "var(--ink)" }}>
                 {busy === "extract"
                   ? "Extracting document content..."
-                  : ready
-                    ? "Ready for adaptation"
-                    : "Waiting for content"}
+                  : busy === "transform"
+                    ? "Generating adaptive lesson sections..."
+                    : ready
+                      ? `Ready: ${session.fileName || "Curriculum loaded"}`
+                      : "Waiting for content"}
               </span>
               <span style={{ color: "var(--muted)" }}>{session.wordCount} words</span>
             </div>
@@ -742,7 +1258,7 @@ function Upload() {
               <div
                 className="progressfill"
                 style={{
-                  width: busy === "extract" ? "55%" : ready ? "100%" : "0%",
+                  width: busy === "extract" || busy === "transform" ? "65%" : ready ? "100%" : "0%",
                 }}
               />
             </div>
@@ -2567,7 +3083,18 @@ function Practice() {
           />
         ) : (
           <>
-            {allSectionsComplete ? (
+            {!session.text ? (
+              <section className="card" style={{ padding: 36, textAlign: "center", marginBottom: 16 }}>
+                <I.BookOpen size={36} style={{ color: "var(--muted)", margin: "0 auto 12px", display: "block" }} />
+                <div style={{ fontWeight: 700, fontSize: 16, color: "var(--ink)", marginBottom: 6 }}>No lesson content loaded</div>
+                <p style={{ fontSize: 13, color: "var(--muted)", maxWidth: 460, margin: "0 auto 16px" }}>
+                  To take a practice quiz, add learning material by uploading a document or asking the AI Course Builder on the Upload page.
+                </p>
+                <button className="primary-action" onClick={() => navigate("/")} style={{ maxWidth: 220, margin: "0 auto" }}>
+                  Add Learning Material <I.ArrowRight size={15} />
+                </button>
+              </section>
+            ) : allSectionsComplete ? (
               /* ── Start card shown when all sections done ───────────────── */
               <section className="card" style={{
                 marginBottom: 16, padding: 28,
@@ -2584,11 +3111,11 @@ function Practice() {
                   </div>
                   <div>
                     <div style={{ fontWeight: 800, fontSize: 16, color: "var(--ink)", fontFamily: "var(--font-heading)" }}>All Sections Complete!</div>
-                    <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 2 }}>Ready to test your full knowledge of the lesson.</div>
+                    <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 2 }}>Ready to test your full knowledge of: <strong>{session.fileName || session.lessonTitle || "the lesson"}</strong></div>
                   </div>
                 </div>
                 <p style={{ fontSize: 14, color: "#334155", lineHeight: 1.6, marginBottom: 18 }}>
-                  Great work completing every section. Now take a <strong>Practice Quiz</strong> — Groq AI will pick the most important questions from your lesson to test your understanding.
+                  Great work completing every section. Now take the <strong>Practice Quiz</strong> — Groq AI will formulate important questions from your lesson material to evaluate your mastery.
                 </p>
                 <button
                   id="start-practice-quiz-btn"
@@ -2597,7 +3124,7 @@ function Practice() {
                   onClick={startPracticeQuiz}
                   style={{ background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)", fontSize: 15 }}
                 >
-                  {busy === "practiceQuiz" ? "Generating quiz…" : "Start Practice Quiz"}
+                  {busy === "practiceQuiz" ? "Generating quiz with Groq…" : "Start Practice Quiz"}
                   <I.ClipboardCheck size={18} />
                 </button>
               </section>
@@ -2617,11 +3144,13 @@ function Practice() {
                   </div>
                   <div>
                     <div style={{ fontWeight: 800, fontSize: 15, color: "var(--ink)" }}>Practice Quiz Available</div>
-                    <div style={{ fontSize: 12, color: "var(--muted)" }}>{completedCount} of {totalSectionsCount} sections completed in Learn</div>
+                    <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                      Topic: <strong>{session.fileName || session.lessonTitle || "Active Lesson"}</strong> • {completedCount} of {totalSectionsCount} sections completed in Learn
+                    </div>
                   </div>
                 </div>
                 <p style={{ fontSize: 13, color: "#475569", lineHeight: 1.5, marginBottom: 16 }}>
-                  You can finish all sections in Learn to unlock the full mastery quiz, or start a practice quiz right now covering key concepts in the lesson.
+                  You can finish all sections in Learn to unlock the full mastery review, or start a practice quiz right now covering key concepts in this lesson.
                 </p>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                   <button
@@ -2631,7 +3160,7 @@ function Practice() {
                     onClick={startPracticeQuiz}
                     style={{ flex: 1 }}
                   >
-                    {busy === "practiceQuiz" ? "Generating quiz…" : "Start Practice Quiz Now"}
+                    {busy === "practiceQuiz" ? "Generating quiz with Groq…" : "Start Practice Quiz Now"}
                     <I.ClipboardCheck size={16} />
                   </button>
                   <button

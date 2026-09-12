@@ -146,4 +146,17 @@ export function generatePracticeQuiz(text, profile, questionCount = 8) {
   });
 }
 
+export function chatTopicAssistant(messages, currentTopic = null, profile = "cognitive_load", forceGenerate = false) {
+  return request("/api/topic/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messages,
+      current_topic: currentTopic,
+      profile,
+      force_generate: forceGenerate,
+    }),
+  });
+}
+
 export { API_BASE_URL };
