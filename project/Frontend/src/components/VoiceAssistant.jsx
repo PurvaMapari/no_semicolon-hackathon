@@ -260,7 +260,7 @@ export default function VoiceAssistant({
               background: isListening
                 ? "#fee2e2"
                 : voiceSupported
-                ? "#e0e7ff"
+                ? "rgba(252, 224, 114, 0.4)"
                 : "#f1f5f9",
               color: isListening
                 ? "#dc2626"

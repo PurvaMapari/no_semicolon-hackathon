@@ -133,18 +133,65 @@ export default function UploadPage() {
         <div className="up-ocr-badge">✓ Client-side PDF.js + /extract with OCR fallback</div>
 
         {tab === "upload" ? (
-          <label className="up-dropzone">
-            <input
-              type="file"
-              className="hidden"
-              accept=".pdf,.docx,.epub,.txt"
-              onChange={handleFileChange}
-            />
-            <div className="up-drop-icon">▱</div>
-            <b className="up-drop-title">{fileName || "Drag file or tap to browse"}</b>
-            <span className="up-drop-hint">Supports PDF, DOCX, EPUB, TXT (up to 45MB)</span>
-            <span className="up-select-btn">⊕ &nbsp; Select From Device</span>
-          </label>
+          !fileName ? (
+            <label
+              className="up-dropzone"
+              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const f = e.dataTransfer?.files?.[0];
+                if (f) handleFileChange({ target: { files: [f] } });
+              }}
+            >
+              <input
+                type="file"
+                className="hidden"
+                accept=".pdf,.docx,.epub,.txt"
+                onChange={handleFileChange}
+              />
+              <div className="up-drop-icon">▱</div>
+              <b className="up-drop-title">Choose or drag doc</b>
+              <span className="up-drop-hint">Supports PDF, DOCX, EPUB, TXT (up to 45MB)</span>
+              <span className="up-select-btn">⊕ &nbsp; Select From Device</span>
+            </label>
+          ) : (
+            <div className="up-dropzone up-dropzone--loaded" style={{ cursor: "default" }}>
+              <div className="up-drop-icon">▣</div>
+              <b className="up-drop-title">{fileName}</b>
+              <span className="up-drop-hint">{diag?.wordCount ? `~${diag.wordCount.toLocaleString()} words` : "Document Loaded"}</span>
+              <button
+                type="button"
+                id="up-remove-doc-btn"
+                onClick={() => { setFileName(""); setDiag(null); }}
+                style={{
+                  color: "#dc2626",
+                  background: "rgba(220, 38, 38, 0.08)",
+                  border: "1.5px solid #dc2626",
+                  borderRadius: 8,
+                  padding: "8px 18px",
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  marginTop: 6,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  transition: "all 0.15s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "#dc2626";
+                  e.currentTarget.style.color = "#ffffff";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "rgba(220, 38, 38, 0.08)";
+                  e.currentTarget.style.color = "#dc2626";
+                }}
+              >
+                ✕ &nbsp; Remove doc
+              </button>
+            </div>
+          )
         ) : (
           <textarea
             className="up-textarea"

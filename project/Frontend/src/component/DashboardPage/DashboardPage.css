@@ -128,7 +128,7 @@
 }
 
 .db-card-name--blue {
-  color: #2742c7;
+  color: #713f12;
 }
 
 .db-card-desc {
@@ -150,12 +150,14 @@
 }
 
 .db-groq-banner {
-  background: #e7e9fb;
+  background: #fefce8;
+  border: 1px solid #fce072;
   border-radius: 8px;
   padding: 12px;
   margin-top: 14px;
   font-size: 9px;
   font-weight: 700;
+  color: #713f12;
 }
 
 .db-groq-sub {

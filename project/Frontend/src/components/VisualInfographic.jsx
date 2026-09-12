@@ -61,15 +61,15 @@ const SEMANTIC_THEMES = {
     glow: "rgba(34, 197, 94, 0.2)",
   },
   process: {
-    bg: "#f5f3ff",
-    border: "#8b5cf6",
-    text: "#5b21b6",
-    subtext: "#6d28d9",
-    badgeBg: "#ede9fe",
-    badgeText: "#5b21b6",
-    iconBg: "#ddd6fe",
-    iconColor: "#7c3aed",
-    glow: "rgba(139, 92, 246, 0.25)",
+    bg: "#fefce8",
+    border: "#fce072",
+    text: "#713f12",
+    subtext: "#854d0e",
+    badgeBg: "#fef9c3",
+    badgeText: "#713f12",
+    iconBg: "#fce072",
+    iconColor: "#713f12",
+    glow: "rgba(252, 224, 114, 0.4)",
   },
   product: {
     bg: "#fdf4ff",
@@ -117,14 +117,14 @@ const SEMANTIC_THEMES = {
   },
   default: {
     bg: "#f8fafc",
-    border: "#6366f1",
-    text: "#312e81",
-    subtext: "#4338ca",
-    badgeBg: "#e0e7ff",
-    badgeText: "#312e81",
-    iconBg: "#c7d2fe",
-    iconColor: "#4f46e5",
-    glow: "rgba(99, 102, 241, 0.2)",
+    border: "#fce072",
+    text: "#713f12",
+    subtext: "#854d0e",
+    badgeBg: "#fef9c3",
+    badgeText: "#713f12",
+    iconBg: "rgba(252, 224, 114, 0.35)",
+    iconColor: "#713f12",
+    glow: "rgba(252, 224, 114, 0.3)",
   },
 };
 
@@ -247,7 +247,7 @@ function DirectionalConnector({ label, direction = "down", highlight = false }) 
           width: isDown ? 2 : 16,
           height: isDown ? 10 : 2,
           background: highlight
-            ? "linear-gradient(to bottom, #818cf8, #4f46e5)"
+            ? "linear-gradient(to bottom, #fce072, #eab308)"
             : "linear-gradient(to bottom, #cbd5e1, #94a3b8)",
         }}
       />
@@ -261,13 +261,13 @@ function DirectionalConnector({ label, direction = "down", highlight = false }) 
             fontWeight: 800,
             letterSpacing: "0.02em",
             textTransform: "lowercase",
-            color: highlight ? "#3730a3" : "#4338ca",
-            background: highlight ? "#e0e7ff" : "#eef2ff",
-            border: `1.5px solid ${highlight ? "#a5b4fc" : "#c7d2fe"}`,
+            color: "#713f12",
+            background: highlight ? "#fef9c3" : "#fefce8",
+            border: `1.5px solid ${highlight ? "#fce072" : "rgba(252, 224, 114, 0.5)"}`,
             padding: "2px 10px",
             borderRadius: 999,
             whiteSpace: "nowrap",
-            boxShadow: "0 1px 4px rgba(79, 70, 229, 0.12)",
+            boxShadow: "0 1px 4px rgba(252, 224, 114, 0.25)",
             zIndex: 2,
           }}
         >
@@ -277,9 +277,9 @@ function DirectionalConnector({ label, direction = "down", highlight = false }) 
 
       {/* Arrowhead */}
       {isDown ? (
-        <I.ArrowDown size={17} style={{ color: highlight ? "#4f46e5" : "#6366f1", marginTop: -2 }} />
+        <I.ArrowDown size={17} style={{ color: "#713f12", marginTop: -2 }} />
       ) : (
-        <I.ArrowRight size={17} style={{ color: highlight ? "#4f46e5" : "#6366f1", marginLeft: -2 }} />
+        <I.ArrowRight size={17} style={{ color: "#713f12", marginLeft: -2 }} />
       )}
     </div>
   );
@@ -332,14 +332,14 @@ function DiagramNodeCard({
       style={{
         background: isCoreHero ? "#ffffff" : isOutcome ? "#f0fdf4" : safeTheme.bg,
         border: isCoreHero
-          ? "2.5px solid #4f46e5"
-          : `1.5px solid ${isSelected ? "#4f46e5" : isOutcome ? "#22c55e" : safeTheme.border}`,
+          ? "2.5px solid #fce072"
+          : `1.5px solid ${isSelected ? "#fce072" : isOutcome ? "#22c55e" : safeTheme.border}`,
         borderRadius: isCoreHero ? 16 : 12,
         padding: isCoreHero ? "14px 18px" : "10px 14px",
         boxShadow: isCoreHero
-          ? "0 8px 24px rgba(79, 70, 229, 0.16), 0 2px 6px rgba(0,0,0,0.04)"
+          ? "0 8px 24px rgba(252, 224, 114, 0.35), 0 2px 6px rgba(0,0,0,0.04)"
           : isSelected
-          ? "0 4px 14px rgba(79, 70, 229, 0.2)"
+          ? "0 4px 14px rgba(252, 224, 114, 0.4)"
           : "0 1px 4px rgba(0,0,0,0.03)",
         cursor: "pointer",
         transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
@@ -360,12 +360,12 @@ function DiagramNodeCard({
           width: isCoreHero ? 42 : 30,
           height: isCoreHero ? 42 : 30,
           borderRadius: 10,
-          background: isCoreHero ? "linear-gradient(135deg, #4f46e5, #6366f1)" : safeTheme.iconBg,
-          color: isCoreHero ? "#ffffff" : safeTheme.iconColor,
+          background: isCoreHero ? "linear-gradient(135deg, #fce072, #f59e0b)" : safeTheme.iconBg,
+          color: isCoreHero ? "#451a03" : safeTheme.iconColor,
           display: "grid",
           placeItems: "center",
           flexShrink: 0,
-          boxShadow: isCoreHero ? "0 4px 12px rgba(79, 70, 229, 0.3)" : "none",
+          boxShadow: isCoreHero ? "0 4px 12px rgba(252, 224, 114, 0.45)" : "none",
         }}
       >
         <Icon size={isCoreHero ? 22 : 16} />
@@ -381,8 +381,9 @@ function DiagramNodeCard({
                 fontWeight: 900,
                 letterSpacing: "0.08em",
                 textTransform: "uppercase",
-                background: "#e0e7ff",
-                color: "#3730a3",
+                background: "#fef9c3",
+                color: "#713f12",
+                border: "1px solid #fce072",
                 padding: "1px 6px",
                 borderRadius: 4,
               }}
@@ -396,7 +397,7 @@ function DiagramNodeCard({
               fontWeight: 700,
               letterSpacing: "0.04em",
               textTransform: "uppercase",
-              color: isCoreHero ? "#4f46e5" : isOutcome ? "#15803d" : theme.badgeText,
+              color: isCoreHero ? "#713f12" : isOutcome ? "#15803d" : theme.badgeText,
             }}
           >
             {badgeOverride || category}
@@ -813,7 +814,7 @@ function ComparisonInfographic({ nodes, activeNodeId, onSelectNode }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 12, alignItems: "center" }}>
         {/* Side A */}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: "#4f46e5", textTransform: "uppercase", textAlign: "center" }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "#713f12", textTransform: "uppercase", textAlign: "center" }}>
             Paradigm A
           </div>
           {sideA.map((n) => (
@@ -827,13 +828,13 @@ function ComparisonInfographic({ nodes, activeNodeId, onSelectNode }) {
             width: 34,
             height: 34,
             borderRadius: "50%",
-            background: "#ede9fe",
-            color: "#6d28d9",
+            background: "#fef9c3",
+            color: "#713f12",
             fontWeight: 900,
             fontSize: 12,
             display: "grid",
             placeItems: "center",
-            border: "2px solid #c4b5fd",
+            border: "2px solid #fce072",
           }}
         >
           VS
@@ -1056,8 +1057,8 @@ function VisualInfographicInner({
           style={{
             position: "relative",
             marginTop: 14,
-            background: "#eff6ff",
-            border: "1px solid #bfdbfe",
+            background: "rgba(252, 224, 114, 0.15)",
+            border: "1px solid #fce072",
             borderRadius: 12,
             padding: "12px 36px 12px 14px",
             animation: "fade 0.2s ease-in-out",
@@ -1079,7 +1080,7 @@ function VisualInfographicInner({
           >
             ✕
           </button>
-          <div style={{ fontWeight: 800, fontSize: 13, color: "#1e1b4b", marginBottom: 2 }}>
+          <div style={{ fontWeight: 800, fontSize: 13, color: "#713f12", marginBottom: 2 }}>
             🔍 {activeNode.label}
           </div>
           <div style={{ fontSize: 12, color: "#374151", lineHeight: 1.55 }}>
