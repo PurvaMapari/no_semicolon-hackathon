@@ -95,9 +95,16 @@ export function recordQuizAnswer(signals, isCorrect, latencyMs) {
 
 /**
  * Evaluate current signals against SCALE engine.
- * Returns the full SCALE evaluation result.
+ *
+ * Optional webcamContext parameter blends webcam-derived signals as
+ * supporting evidence — it modulates the final score but cannot independently
+ * trigger REWIRE. Max webcam contribution is capped at +0.12 (12 points).
+ *
+ * webcamContext shape:
+ *   { presenceRatio: 0–1, tabFocused: bool, headStable: bool }
+ *   All fields are optional — missing fields contribute 0.
  */
-export function evaluateSignals(signals, sessionMeta) {
+export function evaluateSignals(signals, sessionMeta, webcamContext = null) {
   const rawSignals = {
     dwellTime: signals.dwellTime,
     rereadCount: signals.rereadCount,
@@ -109,7 +116,56 @@ export function evaluateSignals(signals, sessionMeta) {
     voiceHelpRequests: signals.voiceHelpRequests,
   };
 
-  return scaleEvaluate(rawSignals, sessionMeta.currentVariantLevel, sessionMeta);
+  const baseResult = scaleEvaluate(rawSignals, sessionMeta.currentVariantLevel, sessionMeta);
+
+  // ── Webcam signal boost (supporting evidence only) ─────────────────────────
+  if (!webcamContext) return baseResult;
+
+  const presenceRatio = webcamContext.presence_ratio ?? webcamContext.presenceRatio ?? 1;
+  const tabFocused = webcamContext.tab_focused_now ?? webcamContext.tabFocused ?? true;
+  const headStable = webcamContext.head_stable_now ?? webcamContext.headStable ?? true;
+  const facePresentNow = webcamContext.face_present_now ?? webcamContext.facePresentNow ?? true;
+  const scrollConsistent = webcamContext.scroll_consistent_now ?? webcamContext.scrollConsistentNow ?? true;
+
+  console.log('[SCALE] Evaluation with signals:', {
+    learningSignals: rawSignals,
+    webcamContext: {
+      presence_ratio: presenceRatio,
+      face_present_now: facePresentNow,
+      head_stable_now: headStable,
+      tab_focused_now: tabFocused,
+      scroll_consistent_now: scrollConsistent,
+    },
+  });
+
+  // Each signal contributes a small weight — total cap is 0.12
+  // Low presence ratio or face absent = more likely to be disengaged
+  const presenceBoost  = (!facePresentNow || presenceRatio < 0.5) ? (0.5 - Math.min(0.5, presenceRatio)) * 0.12 : 0;
+  // Tab not focused = mild signal of disengagement
+  const tabBoost       = !tabFocused ? 0.04 : 0;
+  // Head unstable = learner moving around = mild distraction signal
+  const stabilityBoost = !headStable ? 0.02 : 0;
+  // Scroll inconsistent = jumping back and forth
+  const scrollBoost    = !scrollConsistent ? 0.02 : 0;
+
+  const webcamBoost = Math.min(0.12, presenceBoost + tabBoost + stabilityBoost + scrollBoost);
+
+  if (webcamBoost === 0) return baseResult;
+
+  const boostedScore = Math.min(1.0, baseResult.struggleScore + webcamBoost);
+
+  return {
+    ...baseResult,
+    struggleScore: boostedScore,
+    webcamBoost,
+    webcamContext: {
+      presence_ratio: presenceRatio,
+      face_present_now: facePresentNow,
+      head_stable_now: headStable,
+      tab_focused_now: tabFocused,
+      scroll_consistent_now: scrollConsistent,
+    },
+  };
 }
 
 /**
