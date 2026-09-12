@@ -171,54 +171,25 @@ The demo is designed so the learner struggles on **Concept 3 (Textile Industry)*
 
 ## Expected Struggle Score (Concept 3)
 
-Using the weights from `07-ADAPTIVE-ENGINE-LOGIC.md`:
+Using the authoritative weights and section-specific normalization from `07-ADAPTIVE-ENGINE-LOGIC.md`:
 
 ```
-dwellTime:        normalize(42000, 15000, 60000) = 0.60    × 0.10 = 0.060
-rereadCount:      normalize(3, 0, 5) = 0.60                × 0.20 = 0.120
-scrollBack:       normalize(1, 0, 3) = 0.33                × 0.10 = 0.033
-helpRequests:     normalize(1, 0, 3) = 0.33                × 0.15 = 0.050
-questionAccuracy: normalizeInv(0.33, 0.8, 0.2) = 0.78      × 0.25 = 0.196
-answerLatency:    normalize(9000, 5000, 20000) = 0.27       × 0.05 = 0.013
-retryCount:       normalize(1, 0, 3) = 0.33                × 0.05 = 0.017
-voiceHelpRequests: normalize(0, 0, 2) = 0.00               × 0.10 = 0.000
-
-STRUGGLE SCORE = 0.489... ≈ 0.49
+Concept 3 baseline: ~70 words @ 180 WPM = 25–30 sec expected reading time
+Active dwell:       50,000 ms (50 sec) -> dwell_ratio = 1.67
 ```
 
-**Wait — this is below the 0.6 threshold.** Let's adjust the fixture signals to ensure REWIRE triggers:
-
-### Adjusted Signals (Demo-Calibrated)
-
-```json
-{
-  "conceptId": "con_003",
-  "signals": {
-    "dwellTime": 50000,
-    "rereadCount": 4,
-    "scrollBack": 2,
-    "helpRequests": 2,
-    "questionAccuracy": 0.0,
-    "answerLatency": 12000,
-    "retryCount": 2,
-    "voiceHelpRequests": 1
-  }
-}
-```
-
-### Recalculated Struggle Score
+### Signal Breakdown & Normalized Contribution
 
 ```
-dwellTime:        normalize(50000, 15000, 60000) = 0.78    × 0.10 = 0.078
-rereadCount:      normalize(4, 0, 5) = 0.80                × 0.20 = 0.160
-scrollBack:       normalize(2, 0, 3) = 0.67                × 0.10 = 0.067
-helpRequests:     normalize(2, 0, 3) = 0.67                × 0.15 = 0.100
-questionAccuracy: normalizeInv(0.0, 0.8, 0.2) = 1.00       × 0.25 = 0.250
-answerLatency:    normalize(12000, 5000, 20000) = 0.47      × 0.05 = 0.023
-retryCount:       normalize(2, 0, 3) = 0.67                × 0.05 = 0.033
-voiceHelpRequests: normalize(1, 0, 2) = 0.50               × 0.10 = 0.050
+dwellTime:        ratio 1.67 on 30s expected = 0.333   × 0.30 = 0.1000
+questionAccuracy: accuracy 0.0 (inverted)   = 1.000   × 0.30 = 0.3000
+helpRequests:     2 text + 1 voice = 3 total = 1.000   × 0.15 = 0.1500
+answerLatency:    12,000 ms in [5k, 20k]     = 0.467   × 0.10 = 0.0467
+scrollBack:       2 reversals on [0, 3]      = 0.667   × 0.05 = 0.0333
+audioReplay:      4 replays on [0, 4]        = 1.000   × 0.05 = 0.0500
+webcamContext:    none active / neutral      = 0.000   × 0.05 = 0.0000
 
-STRUGGLE SCORE = 0.761 ✅ (above 0.6 threshold)
+STRUGGLE SCORE = 0.680 ✅ (above 0.60 threshold -> REWIRE Activated)
 ```
 
 ---
@@ -228,9 +199,9 @@ STRUGGLE SCORE = 0.761 ✅ (above 0.6 threshold)
 ```json
 {
   "shouldAdapt": true,
-  "struggleScore": 0.761,
+  "struggleScore": 0.680,
   "threshold": 0.6,
-  "reason": "Struggle score 0.76 exceeds threshold 0.6",
+  "reason": "Struggle score 0.68 exceeds threshold 0.6",
   "thresholdsMet": [
     "rereadCount (4) > baseline (0)",
     "questionAccuracy (0.0) < baseline (0.8)",

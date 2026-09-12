@@ -1,379 +1,345 @@
-# PRISM — Adaptive Engine Logic
+# PRISM — Adaptive Engine Logic (SCALE)
 
-**Owner:** M2 (SCALE + Adaptive Intelligence)
-**Architecture:** Deterministic, rule-based. No ML classifier. No LLM calls.
+**Authoritative Specification — Current Implementation**  
+**Architecture:** Deterministic, rule-based, client-side. No ML classifier. No LLM calls.  
+**Core Reference:** `Frontend/src/engine/scale.js`, `Frontend/src/engine/signals.js`
 
 ---
 
-## SCALE Overview
+## 1. SCALE Overview & Core Philosophy
 
 **S**ignal → **C**alibrate → **A**dapt → **L**et learner engage → **E**valuate
 
-The SCALE engine runs entirely client-side. It processes behavioral signals, computes a struggle score, applies threshold rules, and determines whether REWIRE should activate.
+The SCALE engine runs entirely client-side. It processes real-time learner behavioral signals, calibrates them against section-specific baselines, computes a normalized struggle score, and triggers **REWIRE** cognitive adaptations when sufficient evidence indicates learner comprehension difficulty.
+
+### The Guiding Principle
+
+$$\text{Expected Learning Time} \neq \text{Page Open Time}$$
+
+A section's reading time is the expected active learning time for that content. It is **not** a timeout, a countdown, or an automatic struggle trigger. Struggling is detected only when active learning time significantly exceeds the expected baseline in combination with other behavioral and assessment evidence.
+
+System overhead, page load delay, PDF extraction, API latency, LLM transformation, visual/quiz generation, and tab-hidden periods are **strictly isolated and excluded** from struggle evaluation.
 
 ---
 
-## 1. Signal Definitions
+## 2. Section-Specific Baselines (Difficulty-Aware Reading Time)
 
-| Signal | Type | Source | Range | Description |
-|--------|------|--------|-------|-------------|
-| `dwellTime` | integer | Timer on chunk render/navigate | 0–∞ ms | Time spent on current concept |
-| `rereadCount` | integer | Scroll-back-to-top or text re-selection | 0–∞ | Times learner re-read the same concept |
-| `scrollBack` | integer | "Previous" navigation events | 0–∞ | Times learner navigated backward |
-| `helpRequests` | integer | "Explain" button clicks | 0–∞ | Explicit help requests via UI |
-| `questionAccuracy` | float | Answer correctness ratio | 0.0–1.0 | Correct answers / total answers |
-| `answerLatency` | integer | Timer from question display to answer | 0–∞ ms | Average time per question |
-| `retryCount` | integer | Re-answers after incorrect | 0–∞ | Answer retry attempts |
-| `voiceHelpRequests` | integer | STT intents: "explain", "simplify", "repeat" | 0–∞ | Voice-based help requests |
+Content difficulty is determined independently by content analysis (foundational, intermediate, advanced) and is never derived from word count alone.
 
----
+Each section has an expected active learning baseline in seconds:
 
-## 2. Normalization
+$$\text{expected\_baseline\_seconds} = \left(\frac{\text{word\_count}}{\text{WPM}_{\text{difficulty}}}\right) \times 60$$
 
-Each signal is normalized to a 0–1 scale using per-signal baselines.
+### Difficulty Reading Speeds
 
-### Baseline Defaults (MVP)
-
-| Signal | Baseline (Normal) | Concern Threshold | Critical Threshold |
-|--------|-------------------|-------------------|--------------------|
-| `dwellTime` | 15,000 ms | 30,000 ms | 60,000 ms |
-| `rereadCount` | 0 | 2 | 5 |
-| `scrollBack` | 0 | 1 | 3 |
-| `helpRequests` | 0 | 1 | 3 |
-| `questionAccuracy` | 0.8 (inverted) | 0.5 | 0.2 |
-| `answerLatency` | 5,000 ms | 10,000 ms | 20,000 ms |
-| `retryCount` | 0 | 1 | 3 |
-| `voiceHelpRequests` | 0 | 1 | 2 |
-
-### Normalization Formula
-
-```javascript
-function normalize(value, baseline, criticalThreshold) {
-  if (value <= baseline) return 0.0;
-  if (value >= criticalThreshold) return 1.0;
-  return (value - baseline) / (criticalThreshold - baseline);
-}
-
-// For inverted signals (questionAccuracy — lower is worse)
-function normalizeInverted(value, baseline, criticalThreshold) {
-  if (value >= baseline) return 0.0;
-  if (value <= criticalThreshold) return 1.0;
-  return (baseline - value) / (baseline - criticalThreshold);
-}
-```
-
-### Example
-
-```javascript
-// dwellTime = 45,000ms
-normalize(45000, 15000, 60000)
-// = (45000 - 15000) / (60000 - 15000) = 0.667
-
-// questionAccuracy = 0.33
-normalizeInverted(0.33, 0.8, 0.2)
-// = (0.8 - 0.33) / (0.8 - 0.2) = 0.783
-```
+| Difficulty Tier | Reading Speed | Rationale |
+|-----------------|---------------|-----------|
+| **Foundational** | **220 WPM** | Core definitions and introductory concepts; reader processes quickly |
+| **Intermediate** | **180 WPM** | Standard explanatory content requiring applied conceptual connections |
+| **Advanced** | **140 WPM** | Dense, abstract, or multi-step reasoning; reader naturally slows down |
 
 ---
 
-## 3. Struggle Score Calculation
+## 3. Active Dwell Time Logic & State Machine
 
-The struggle score is a weighted sum of normalized signals.
+Only time spent in `SECTION_ACTIVE` contributes to active dwell.
 
-### Signal Weights (MVP)
-
-| Signal | Weight | Rationale |
-|--------|--------|-----------|
-| `dwellTime` | 0.10 | Mild indicator — could mean deep reading, not struggle |
-| `rereadCount` | 0.20 | Strong indicator — repeated re-reads signal confusion |
-| `scrollBack` | 0.10 | Moderate — could be review, not struggle |
-| `helpRequests` | 0.15 | Strong — explicit cry for help |
-| `questionAccuracy` | 0.25 | Strongest — direct comprehension measurement |
-| `answerLatency` | 0.05 | Weak — varies by learner speed |
-| `retryCount` | 0.05 | Moderate — retries indicate initial misunderstanding |
-| `voiceHelpRequests` | 0.10 | Strong — voice help is an explicit signal |
-| **Total** | **1.00** | |
-
-### Formula
-
-```javascript
-function computeStruggleScore(normalizedSignals) {
-  const weights = {
-    dwellTime: 0.10,
-    rereadCount: 0.20,
-    scrollBack: 0.10,
-    helpRequests: 0.15,
-    questionAccuracy: 0.25,
-    answerLatency: 0.05,
-    retryCount: 0.05,
-    voiceHelpRequests: 0.10
-  };
-
-  let score = 0;
-  for (const [signal, weight] of Object.entries(weights)) {
-    const value = normalizedSignals[signal] ?? 0;
-    score += value * weight;
-  }
-
-  return Math.min(1.0, Math.max(0.0, score));
-}
 ```
+       [User Navigates / Content Requested]
+                        │
+                        ▼
+               ┌──────────────────┐
+               │ SECTION_LOADING  │ ◄── (Pauses active timer; API / generation)
+               └────────┬─────────┘
+                        │ Content rendered & ready
+                        ▼
+               ┌──────────────────┐
+               │  SECTION_READY   │
+               └────────┬─────────┘
+                        │ Learner viewing & tab focused
+                        ▼
+     ┌───────► ┌──────────────────┐
+(Tab │         │  SECTION_ACTIVE  │ ◄── [DWELL TIMER RUNS]
+resumed)       └────────┬─────────┘
+     │                  │ (Tab hidden / busy async action / modal)
+     │                  ▼
+     └──────── ┌──────────────────┐
+               │  SECTION_PAUSED  │ ◄── (Timer stopped, elapsed time accumulated)
+               └────────┬─────────┘
+                        │ Learner marks complete / navigates away
+                        ▼
+               ┌──────────────────┐
+               │SECTION_COMPLETED │ ◄── (Timer finalized, sent to SCALE)
+               └──────────────────┘
+```
+
+### What is Excluded from Active Dwell:
+- Initial route mounting and navigation transitions
+- PDF extraction and API round-trip latency
+- Content transformation, visual infographic, and quiz generation time
+- Background or hidden browser tabs (`document.hidden === true`)
+- Web camera initialization or permission dialogs
+- Modal dialogs and blocking loading spinners
+
+### Minimum Active-Time Guard
+
+To prevent fleeting navigation or accidental clicks from generating false struggle signals:
+
+$$\text{MIN\_MEANINGFUL\_DWELL\_SECONDS} = 3\text{ seconds}$$
+
+If active dwell is under 3 seconds, `normalized_dwell` is forced to `0.0`.
 
 ---
 
-## 4. Adaptation Threshold
+## 4. Signal Definitions & Conceptual Groups
 
-```javascript
-const STRUGGLE_THRESHOLD = 0.6; // Score above this triggers REWIRE
-```
+Signals are organized into three clear conceptual groups:
 
-| Score Range | Interpretation | Action |
-|-------------|---------------|--------|
-| 0.0–0.3 | Low struggle | Continue normally |
-| 0.3–0.6 | Moderate struggle | Continue, but monitor closely |
-| 0.6–0.8 | High struggle | **REWIRE — increase simplification by 1 level** |
-| 0.8–1.0 | Critical struggle | **REWIRE — increase simplification by 2 levels (or max)** |
+### Group A: Learning Behavior
+| Signal | Type | Description |
+|--------|------|-------------|
+| `activeDwellMs` | ms | Active learning time in current section |
+| `helpRequests` | count | Explicit UI "Request explanation" clicks |
+| `voiceHelpRequests` | count | Spoken help requests ("explain this", "simplify") |
+| `scrollBack` | count | Scroll reversals and navigation backtracking |
+| `audioReplayCount` | count | Audio/TTS replay requests ("Re-read section" button) |
 
----
+### Group B: Assessment
+| Signal | Type | Description |
+|--------|------|-------------|
+| `questionAccuracy` | ratio [0–1] | Check question accuracy: $\frac{\text{correct answers}}{\text{total questions}}$ |
+| `answerLatency` | ms | Average response latency from question render to answer |
+| `retryCount` | count | Answer retry attempts (contextual record; not double-counted with accuracy) |
 
-## 5. Adaptation Rules
-
-```javascript
-function selectAdaptation(struggleScore, currentLevel, maxLevel = 3) {
-  if (struggleScore < 0.6) {
-    return null; // No adaptation needed
-  }
-
-  const levelIncrease = struggleScore >= 0.8 ? 2 : 1;
-  const newLevel = Math.min(currentLevel + levelIncrease, maxLevel);
-
-  if (newLevel === currentLevel) {
-    // Already at max simplification
-    return {
-      action: 'at_maximum',
-      newVariantLevel: currentLevel,
-      additionalActions: ['reduce_chunk_size'],
-      explanation: 'Content is already at maximum simplification. We reduced the section size.'
-    };
-  }
-
-  const actions = ['increase_simplification'];
-  if (struggleScore >= 0.7) actions.push('reduce_chunk_size');
-  if (struggleScore >= 0.8) actions.push('add_visual_description');
-
-  return {
-    action: 'increase_simplification',
-    newVariantLevel: newLevel,
-    additionalActions: actions
-  };
-}
-```
+### Group C: Optional Supporting Context
+| Signal | Type | Description |
+|--------|------|-------------|
+| `presenceRatio` | ratio [0–1] | Fraction of session time learner face was detected |
+| `facePresent` | boolean | Real-time face presence at evaluation moment |
+| `tabFocused` | boolean | Browser tab focus state |
+| `headStable` | boolean | Head stability (indicates steady attention vs. high movement) |
+| `scrollConsistent` | boolean | Smooth unidirectional reading scroll vs. erratic jumping |
 
 ---
 
-## 6. Cooldown Mechanism
+## 5. Audio / TTS Replay Semantics
 
-Prevents adaptation loops (adapting too frequently annoys learners and prevents meaningful measurement).
+The "Re-read section" button in the UI is primarily an **Audio/TTS replay control**.
 
-```javascript
-const COOLDOWN_CHUNKS = 2; // Minimum chunks between adaptations
-
-function isCooldownActive(lastAdaptationChunksAgo) {
-  if (lastAdaptationChunksAgo === null) return false; // Never adapted
-  return lastAdaptationChunksAgo < COOLDOWN_CHUNKS;
-}
-```
-
-**Rules:**
-- After REWIRE fires, skip the next 2 concepts before allowing another adaptation
-- If cooldown is active and struggle persists, log a warning but do NOT adapt
-- Cooldown resets when an adaptation fires
+- It signals: *"The learner wants to hear this section read aloud again."*
+- It is **not** a direct indication of comprehension failure.
+- It receives a small contextual weight (`0.05`), down from the legacy 0.20.
+- Even multiple audio replays can contribute at most $0.05$ to the struggle score, ensuring audio replay alone **never** triggers REWIRE.
 
 ---
 
-## 7. Adaptation Loop Prevention
+## 6. Single Assessment Signal (No Double-Counting)
 
-Beyond cooldown, prevent infinite escalation:
-
-```javascript
-const MAX_ADAPTATIONS_PER_SESSION = 5;
-const MAX_CONSECUTIVE_ADAPTATIONS = 3;
-
-function canAdapt(session) {
-  if (session.totalAdaptations >= MAX_ADAPTATIONS_PER_SESSION) {
-    return { allowed: false, reason: 'Session adaptation limit reached (5)' };
-  }
-  if (session.consecutiveAdaptations >= MAX_CONSECUTIVE_ADAPTATIONS) {
-    return { allowed: false, reason: 'Consecutive adaptation limit reached (3)' };
-  }
-  return { allowed: true };
-}
-```
-
-**Rules:**
-- Maximum 5 adaptations per session
-- Maximum 3 consecutive adaptations without a "normal" (non-adapted) concept
-- If limits are reached, continue session without further adaptation
+Legacy models penalized learners twice by independently weighting `questionAccuracy` (0.25) and `retryCount` (0.05). In the current engine:
+- `questionAccuracy` is the primary assessment signal with weight `0.30`.
+- `retryCount` is logged for analytics and history, but does not independently penalize the struggle score.
 
 ---
 
-## 8. Adaptation History
+## 7. Unified Help Request Signal
 
-Every SCALE evaluation and REWIRE event is recorded:
-
-```javascript
-const adaptationRecord = {
-  adaptationId: 'adapt_001',
-  sessionId: 'session_12345',
-  conceptId: 'con_002',
-  triggerSignalId: 'sig_session12345_con002',
-  struggleScore: 0.78,
-  threshold: 0.6,
-  reason: 'High reread count + low question accuracy',
-  thresholdsMet: ['rereadCount > 2', 'questionAccuracy < 0.5'],
-  previousVariantLevel: 1,
-  newVariantLevel: 2,
-  strategy: 'increase_simplification + reduce_chunk_size',
-  explanation: 'We noticed you re-read this section 3 times and your accuracy was 33%, so we switched to simpler language and shorter sections.',
-  preAccuracy: 0.33,
-  postAccuracy: null,  // Set after learner engages with adapted content
-  outcomeDelta: null,   // Set after measurement
-  adaptedAt: '2026-09-11T14:05:00.000Z'
-};
-```
+Text help (`helpRequests`) and voice help (`voiceHelpRequests`) represent the same underlying behavior: the learner is asking for assistance.
+- Both are unified into a single conceptual help metric:
+  $$\text{totalHelp} = \text{helpRequests} + \text{voiceHelpRequests}$$
+- The unified signal carries weight `0.15`. Modality remains recorded in session metadata to determine the best response format (voice vs. text).
 
 ---
 
-## 9. Outcome Measurement
+## 8. Webcam as Supporting Evidence Only
 
-After REWIRE, the system measures whether the adaptation actually helped.
-
-```javascript
-function measureOutcome(preAccuracy, postAccuracy) {
-  const delta = postAccuracy - preAccuracy;
-  return {
-    outcomeDelta: delta,
-    improved: delta > 0,
-    significantImprovement: delta > 0.2,  // >20% improvement
-    noChange: Math.abs(delta) <= 0.1,     // <10% change
-    declined: delta < -0.1                // >10% worse
-  };
-}
-```
-
-**Outcome is stored in `adaptation_history`** (see `05-DATA-MODEL.md`).
+Webcam attention signals are strictly **supporting evidence**:
+- They modulate the score by at most `0.05` (`WEBCAM_CONTEXT_WEIGHT = 0.05`).
+- Webcam disengagement (e.g. looking away, temporary face absence) **cannot** independently trigger REWIRE.
+- When no camera is active or permission was denied, `webcamContext` normalizes to `0.0`, and the learner progresses normally based on learning and assessment signals.
 
 ---
 
-## 10. Complete SCALE Evaluation Function
+## 9. Authoritative Named Weights (Total = 1.00)
 
-```javascript
-function scaleEvaluate(signals, currentVariantLevel, session) {
-  // Step 1: SIGNAL — raw signals are input
-  
-  // Step 2: CALIBRATE — normalize signals
-  const normalized = {
-    dwellTime: normalize(signals.dwellTime, 15000, 60000),
-    rereadCount: normalize(signals.rereadCount, 0, 5),
-    scrollBack: normalize(signals.scrollBack, 0, 3),
-    helpRequests: normalize(signals.helpRequests, 0, 3),
-    questionAccuracy: normalizeInverted(signals.questionAccuracy, 0.8, 0.2),
-    answerLatency: normalize(signals.answerLatency, 5000, 20000),
-    retryCount: normalize(signals.retryCount, 0, 3),
-    voiceHelpRequests: normalize(signals.voiceHelpRequests, 0, 2)
-  };
-
-  // Compute struggle score
-  const struggleScore = computeStruggleScore(normalized);
-
-  // Check cooldown
-  if (isCooldownActive(session.lastAdaptationChunksAgo)) {
-    return {
-      shouldAdapt: false,
-      struggleScore,
-      reason: 'Cooldown active',
-      cooldownActive: true,
-      cooldownRemainingChunks: COOLDOWN_CHUNKS - session.lastAdaptationChunksAgo
-    };
-  }
-
-  // Check adaptation limits
-  const canAdaptResult = canAdapt(session);
-  if (!canAdaptResult.allowed) {
-    return {
-      shouldAdapt: false,
-      struggleScore,
-      reason: canAdaptResult.reason,
-      cooldownActive: false
-    };
-  }
-
-  // Step 3: ADAPT — decide adaptation
-  if (struggleScore < STRUGGLE_THRESHOLD) {
-    return {
-      shouldAdapt: false,
-      struggleScore,
-      threshold: STRUGGLE_THRESHOLD,
-      reason: 'Signals within normal range',
-      cooldownActive: false
-    };
-  }
-
-  const adaptation = selectAdaptation(struggleScore, currentVariantLevel);
-
-  return {
-    shouldAdapt: true,
-    struggleScore,
-    threshold: STRUGGLE_THRESHOLD,
-    reason: `Struggle score ${struggleScore.toFixed(2)} exceeds threshold ${STRUGGLE_THRESHOLD}`,
-    adaptationStrategy: adaptation,
-    cooldownActive: false
-  };
-
-  // Steps 4 & 5 (LET ENGAGE & EVALUATE) happen after the frontend
-  // renders the adapted content and captures new signals
-}
-```
+| Signal Key | Named Constant | Weight | Conceptual Group | Rationale |
+|------------|----------------|--------|------------------|-----------|
+| `dwellTime` | `DWELL_WEIGHT` | **0.30** | Learning Behavior | Strong signal when normalized against section expected time |
+| `questionAccuracy` | `QUIZ_ACCURACY_WEIGHT` | **0.30** | Assessment | Primary direct measurement of comprehension |
+| `helpRequests` | `HELP_REQUEST_WEIGHT` | **0.15** | Learning Behavior | Unified text + voice explicit help seeking |
+| `answerLatency` | `QUIZ_LATENCY_WEIGHT` | **0.10** | Assessment | Supporting assessment signal for hesitation/uncertainty |
+| `scrollBack` | `SCROLL_BACK_WEIGHT` | **0.05** | Learning Behavior | Backtracking / re-searching for context |
+| `audioReplay` | `AUDIO_REPLAY_WEIGHT` | **0.05** | Learning Behavior | Audio/TTS replay requests (contextual) |
+| `webcamContext` | `WEBCAM_CONTEXT_WEIGHT` | **0.05** | Optional Context | Supporting attention signals (capped at 0.05) |
+| **TOTAL** | | **1.00** | | **Exact sum = 1.000** |
 
 ---
 
-## 11. Configuration Constants
+## 10. Normalization Formulas
 
-```javascript
-const SCALE_CONFIG = {
-  // Thresholds
-  STRUGGLE_THRESHOLD: 0.6,
-  CRITICAL_THRESHOLD: 0.8,
+All normalized values are strictly bounded in $[0.0, 1.0]$.
 
-  // Cooldown
-  COOLDOWN_CHUNKS: 2,
+### 1. Active Dwell Ratio Normalization
+$$\text{dwell\_ratio} = \frac{\text{active\_dwell\_seconds}}{\text{expected\_baseline\_seconds}}$$
 
-  // Limits
-  MAX_ADAPTATIONS_PER_SESSION: 5,
-  MAX_CONSECUTIVE_ADAPTATIONS: 3,
+$$\text{normalized\_dwell} = \begin{cases} 
+0.0 & \text{if active\_dwell\_seconds} < 3 \\
+0.0 & \text{if dwell\_ratio} \le 1.0 \\
+\frac{\text{dwell\_ratio} - 1.0}{3.0 - 1.0} & \text{if } 1.0 < \text{dwell\_ratio} < 3.0 \\
+1.0 & \text{if dwell\_ratio} \ge 3.0 
+\end{cases}$$
 
-  // Signal baselines
-  BASELINES: {
-    dwellTime: { normal: 15000, critical: 60000 },
-    rereadCount: { normal: 0, critical: 5 },
-    scrollBack: { normal: 0, critical: 3 },
-    helpRequests: { normal: 0, critical: 3 },
-    questionAccuracy: { normal: 0.8, critical: 0.2, inverted: true },
-    answerLatency: { normal: 5000, critical: 20000 },
-    retryCount: { normal: 0, critical: 3 },
-    voiceHelpRequests: { normal: 0, critical: 2 }
-  },
+### 2. Question Accuracy Normalization (Inverted)
+$$\text{normalized\_accuracy} = \begin{cases} 
+0.0 & \text{if accuracy} \ge 0.80 \text{ (or no quiz taken)} \\
+\frac{0.80 - \text{accuracy}}{0.80 - 0.20} & \text{if } 0.20 < \text{accuracy} < 0.80 \\
+1.0 & \text{if accuracy} \le 0.20 
+\end{cases}$$
 
-  // Signal weights
-  WEIGHTS: {
-    dwellTime: 0.10,
-    rereadCount: 0.20,
-    scrollBack: 0.10,
-    helpRequests: 0.15,
-    questionAccuracy: 0.25,
-    answerLatency: 0.05,
-    retryCount: 0.05,
-    voiceHelpRequests: 0.10
-  }
-};
-```
+*Mathematical Note:* For a learner with $60\%$ accuracy ($0.60$):
+$$\text{normalized\_accuracy} = \frac{0.80 - 0.60}{0.80 - 0.20} = \frac{0.20}{0.60} = 0.3333\dots$$
+
+### 3. Unified Help Request Normalization
+$$\text{totalHelp} = \text{helpRequests} + \text{voiceHelpRequests}$$
+
+$$\text{normalized\_help} = \begin{cases} 
+0.0 & \text{if totalHelp} \le 0 \\
+\frac{\text{totalHelp}}{3.0} & \text{if } 0 < \text{totalHelp} < 3 \\
+1.0 & \text{if totalHelp} \ge 3 
+\end{cases}$$
+
+### 4. Question Response Latency Normalization
+$$\text{normalized\_latency} = \begin{cases} 
+0.0 & \text{if latency} \le 5{,}000\text{ ms} \\
+\frac{\text{latency} - 5{,}000}{20{,}000 - 5{,}000} & \text{if } 5{,}000\text{ ms} < \text{latency} < 20{,}000\text{ ms} \\
+1.0 & \text{if latency} \ge 20{,}000\text{ ms} 
+\end{cases}$$
+
+### 5. Scroll-Back Normalization
+$$\text{normalized\_scroll} = \begin{cases} 
+0.0 & \text{if scrollBack} \le 0 \\
+\frac{\text{scrollBack}}{3.0} & \text{if } 0 < \text{scrollBack} < 3 \\
+1.0 & \text{if scrollBack} \ge 3 
+\end{cases}$$
+
+### 6. Audio Replay Normalization
+$$\text{normalized\_audio} = \begin{cases} 
+0.0 & \text{if audioReplay} \le 0 \\
+\frac{\text{audioReplay}}{4.0} & \text{if } 0 < \text{audioReplay} < 4 \\
+1.0 & \text{if audioReplay} \ge 4 
+\end{cases}$$
+
+### 7. Webcam Attention Context Normalization
+When webcam context is present, disengagement components are combined:
+$$\text{presenceScore} = (!\text{facePresent} \lor \text{presenceRatio} < 0.5) \;?\; \min(1.0, 1.0 - \text{presenceRatio}) : 0.0$$
+$$\text{tabScore} = !\text{tabFocused} \;?\; 1.0 : 0.0$$
+$$\text{headScore} = !\text{headStable} \;?\; 1.0 : 0.0$$
+$$\text{scrollScore} = !\text{scrollConsistent} \;?\; 1.0 : 0.0$$
+
+$$\text{normalized\_webcam} = \min\big(1.0, \; 0.40 \cdot \text{presenceScore} + 0.30 \cdot \text{tabScore} + 0.15 \cdot \text{headScore} + 0.15 \cdot \text{scrollScore}\big)$$
+
+---
+
+## 11. Final Authoritative Struggle Score Formula
+
+$$\begin{aligned}
+\text{struggle\_score} = \;& \text{normalized\_dwell} \times 0.30 \\
++\;& \text{normalized\_accuracy} \times 0.30 \\
++\;& \text{normalized\_help} \times 0.15 \\
++\;& \text{normalized\_latency} \times 0.10 \\
++\;& \text{normalized\_scroll} \times 0.05 \\
++\;& \text{normalized\_audio} \times 0.05 \\
++\;& \text{normalized\_webcam} \times 0.05
+\end{aligned}$$
+
+$$\text{Clamped: } 0.0 \le \text{struggle\_score} \le 1.0$$
+
+---
+
+## 12. Intervention Thresholds & REWIRE Rules
+
+$$\text{STRUGGLE\_THRESHOLD} = 0.60$$
+$$\text{CRITICAL\_THRESHOLD} = 0.80$$
+
+| Score Range | Classification | Engine Response |
+|-------------|----------------|-----------------|
+| **0.00 – 0.39** | Normal Engagement | Continue standard learning flow |
+| **0.40 – 0.59** | Elevated Cognitive Load | Telemetry warning; monitor next section |
+| **0.60 – 0.79** | Comprehension Struggle | **REWIRE Level +1**: simplify language, reduce chunk size |
+| **0.80 – 1.00** | Critical Struggle | **REWIRE Level +2**: max simplification, visual mental model |
+
+### The Combined Evidence Rule
+A single weak signal can **never** trigger REWIRE:
+- Face lost alone: $\max 0.05 < 0.60 \implies$ No REWIRE
+- 4 Audio replays alone: $\max 0.05 < 0.60 \implies$ No REWIRE
+- High dwell alone: $\max 0.30 < 0.60 \implies$ No REWIRE
+- Poor quiz accuracy alone: $\max 0.30 < 0.60 \implies$ No REWIRE
+- **High Dwell ($0.30$) + Poor Quiz ($0.30$):** $0.60 \ge 0.60 \implies$ **REWIRE Triggered**
+
+---
+
+## 13. Learner-Friendly Explanation Generation
+
+When REWIRE triggers, PRISM presents a supportive, educational explanation based on dominant evidence.
+
+### Design Principles:
+1. **Never misrepresent audio replay as struggle**: Do not say *"You re-read this section 4 times."*
+2. **Never expose raw telemetry metrics**: Do not say *"Head stability was 0.41"* or *"Presence was 52%."*
+3. **Focus on learning actions**: Emphasize reading pace, question responses, and help requests.
+4. **Neutral webcam phrasing**: If attention signals contributed, state:  
+   *"PRISM combined your recent learning interactions with optional attention signals."*
+
+### Examples:
+- **Dwell + Quiz:**  
+  *"Your active reading time was higher than expected and your quiz responses suggest this concept needs reinforcement, so PRISM switched to simpler language."*
+- **Quiz + Help:**  
+  *"Your quiz responses suggest this concept needs reinforcement and your help requests indicate this concept was challenging, so PRISM adapted the explanation."*
+- **With Attention Context:**  
+  *"Your active reading time was higher than expected and your quiz responses suggest this concept needs reinforcement, so PRISM switched to simpler language. PRISM combined your recent learning interactions with optional attention signals."*
+
+---
+
+## 14. Step-by-Step Mathematical Examples
+
+### Example 1: Normal Learner
+- Expected: 120s, Active Dwell: 95s $\implies$ ratio $= 0.79 \le 1.0 \implies \mathbf{0.0}$
+- Quiz Accuracy: 85% ($0.85 \ge 0.80$) $\implies \mathbf{0.0}$
+- Help: 0 $\implies \mathbf{0.0}$
+- Latency: 4,500 ms $\implies \mathbf{0.0}$
+- Scroll Back: 0 $\implies \mathbf{0.0}$
+- Audio Replay: 0 $\implies \mathbf{0.0}$
+- Webcam: normal $\implies \mathbf{0.0}$
+
+$$\text{Struggle Score} = 0.000 \quad \text{(No REWIRE)}$$
+
+### Example 2: Mild Dwell with Solid Quiz
+- Expected: 120s, Active Dwell: 180s $\implies$ ratio $= 1.5 \implies \frac{1.5 - 1.0}{2.0} = 0.25 \times 0.30 = \mathbf{0.075}$
+- Quiz Accuracy: 80% $\implies \mathbf{0.0}$
+- Other signals: normal $\implies \mathbf{0.0}$
+
+$$\text{Struggle Score} = 0.075 \quad \text{(No REWIRE)}$$
+
+### Example 3: Audio Replay Only
+- Expected: 60s, Active Dwell: 50s $\implies \mathbf{0.0}$
+- Audio Replay: 4 clicks $\implies 1.0 \times 0.05 = \mathbf{0.050}$
+- Other signals: normal $\implies \mathbf{0.0}$
+
+$$\text{Struggle Score} = 0.050 \quad \text{(No REWIRE)}$$
+
+### Example 4: High Dwell + Failed Quiz (Combined Evidence)
+- Expected: 60s, Active Dwell: 180s $\implies$ ratio $= 3.0 \implies 1.0 \times 0.30 = \mathbf{0.300}$
+- Quiz Accuracy: 0% ($0.0 \le 0.20$) $\implies 1.0 \times 0.30 = \mathbf{0.300}$
+
+$$\text{Struggle Score} = 0.300 + 0.300 = \mathbf{0.600} \quad \text{(REWIRE ACTIVATED)}$$
+
+### Example 5: Golden-Path Comprehension Struggle
+- Section: 70 words intermediate $\implies$ expected baseline $\approx 30$s
+- Active Dwell: 50s $\implies$ ratio $= 1.67 \implies 0.3333 \times 0.30 = \mathbf{0.1000}$
+- Quiz Accuracy: 0% $\implies 1.0 \times 0.30 = \mathbf{0.3000}$
+- Help Requests: 2 text + 1 voice $= 3 \implies 1.0 \times 0.15 = \mathbf{0.1500}$
+- Latency: 12,000 ms $\implies \frac{12000 - 5000}{15000} = 0.4667 \times 0.10 = \mathbf{0.0467}$
+- Scroll Back: 2 reversals $\implies \frac{2}{3} = 0.6667 \times 0.05 = \mathbf{0.0333}$
+- Audio Replay: 4 replays $\implies 1.0 \times 0.05 = \mathbf{0.0500}$
+
+$$\text{Struggle Score} = 0.1000 + 0.3000 + 0.1500 + 0.0467 + 0.0333 + 0.0500 = \mathbf{0.6800}$$
+
+$$\text{Result: } 0.6800 \ge 0.60 \implies \text{REWIRE LEVEL 2 ACTIVATED}$$

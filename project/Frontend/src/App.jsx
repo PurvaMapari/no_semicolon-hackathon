@@ -1,4 +1,4 @@
- import React, { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from "react";
 import {
   NavLink,
   Route,
@@ -36,7 +36,10 @@ import {
   evaluateSignals,
   applyAdaptation,
   recordAdaptationOutcome,
+  resetSectionDwell,
+  SECTION_STATES,
 } from "./engine/signals";
+import { SCALE_CONFIG } from "./engine/scale";
 import { measureOutcome } from "./engine/scale";
 
 const PROFILE_LABELS = {
@@ -317,8 +320,9 @@ export function SessionProvider({ children }) {
       const updatedSignals = recordReread(current.signals);
       const evalState = evaluateSignals(updatedSignals, current.sessionMeta);
       
-      // Auto-trigger REWIRE if struggle score passes threshold (>= 0.5)
-      if (evalState.struggleScore >= 0.5 && !current.rewireState.active) {
+      // Auto-trigger REWIRE only at STRUGGLE_THRESHOLD (0.6).
+      // Re-read is primarily an audio/TTS replay — NOT a strong struggle indicator.
+      if (evalState.struggleScore >= SCALE_CONFIG.STRUGGLE_THRESHOLD && !current.rewireState.active) {
         setTimeout(() => {
           triggerRewireForChunk(chunkIndex, chunkText, evalState.explanation);
         }, 100);
@@ -333,7 +337,7 @@ export function SessionProvider({ children }) {
       const updatedSignals = recordHelpRequest(current.signals);
       const evalState = evaluateSignals(updatedSignals, current.sessionMeta);
 
-      if (evalState.struggleScore >= 0.5 && !current.rewireState.active) {
+      if (evalState.struggleScore >= SCALE_CONFIG.STRUGGLE_THRESHOLD && !current.rewireState.active) {
         setTimeout(() => {
           triggerRewireForChunk(chunkIndex, chunkText, evalState.explanation);
         }, 100);
@@ -399,6 +403,33 @@ export function SessionProvider({ children }) {
     }));
   }
 
+  /**
+   * Update the active dwell time in the signal state.
+   * Called by the Learn component's active dwell timer on section transitions
+   * and section completion. The value passed is ONLY active learning time (ms).
+   */
+  function updateActiveDwell(activeDwellMs) {
+    setSession((current) => ({
+      ...current,
+      signals: {
+        ...current.signals,
+        activeDwellMs: activeDwellMs,
+        dwellTime: activeDwellMs, // backward compat for SCALE
+      },
+    }));
+  }
+
+  /**
+   * Reset per-section dwell timing when switching sections.
+   * Preserves accumulated quiz/help/reread signals.
+   */
+  function resetDwellForNewSection() {
+    setSession((current) => ({
+      ...current,
+      signals: resetSectionDwell(current.signals),
+    }));
+  }
+
   return (
     <SessionContext.Provider
       value={{
@@ -423,6 +454,8 @@ export function SessionProvider({ children }) {
         recordQuizAnswerAction,
         getAdaptiveQuizAction,
         dismissRewire,
+        updateActiveDwell,
+        resetDwellForNewSection,
       }}
     >
       {children}
@@ -1371,8 +1404,11 @@ function Learn() {
     recordHelpAction,
     recordVoiceHelpAction,
     dismissRewire,
+    updateActiveDwell,
+    resetDwellForNewSection,
   } = useSession();
   const navigate = useNavigate();
+  const transformed = session.transformed;
 
   // Webcam presence — shared instance from WebcamContext (persists across Step 2→3)
   const webcamHook = useWebcam();
@@ -1394,7 +1430,97 @@ function Learn() {
   const [activeSection, setActiveSection] = useState(0);
   const [playing, setPlaying] = useState(false);
 
-  const transformed = session.transformed;
+  // ── Active Dwell Timer ──────────────────────────────────────────────────────
+  // Tracks ONLY active learning time. Pauses during:
+  //   • tab hidden (visibilitychange)
+  //   • busy operations (loading, generation, quiz gen)
+  //   • section not yet ready
+  // Resets on section switch. Uses refs to avoid re-render loops.
+  const dwellRef = useRef({ startTime: null, accumulatedMs: 0, sectionIndex: -1 });
+  const [sectionContentReady, setSectionContentReady] = useState(false);
+
+  // Helper: get current accumulated active dwell including any in-flight period
+  const getCurrentActiveDwellMs = useCallback(() => {
+    let total = dwellRef.current.accumulatedMs;
+    if (dwellRef.current.startTime !== null) {
+      total += Date.now() - dwellRef.current.startTime;
+    }
+    return total;
+  }, []);
+
+  // Helper: pause the active timer (accumulate elapsed, clear startTime)
+  const pauseDwellTimer = useCallback(() => {
+    if (dwellRef.current.startTime !== null) {
+      dwellRef.current.accumulatedMs += Date.now() - dwellRef.current.startTime;
+      dwellRef.current.startTime = null;
+    }
+  }, []);
+
+  // Helper: resume the active timer (set startTime to now)
+  const resumeDwellTimer = useCallback(() => {
+    if (dwellRef.current.startTime === null) {
+      dwellRef.current.startTime = Date.now();
+    }
+  }, []);
+
+  // Effect 1: Section switching — reset timer for the new section
+  useEffect(() => {
+    // Flush any accumulated dwell from the previous section into signals
+    if (dwellRef.current.sectionIndex >= 0 && dwellRef.current.sectionIndex !== activeSection) {
+      pauseDwellTimer();
+      updateActiveDwell(dwellRef.current.accumulatedMs);
+    }
+
+    // Reset for the new section
+    dwellRef.current = { startTime: null, accumulatedMs: 0, sectionIndex: activeSection };
+    setSectionContentReady(false);
+    resetDwellForNewSection();
+
+    // Mark section content as ready after the next frame (content rendered)
+    const frameId = requestAnimationFrame(() => {
+      setSectionContentReady(true);
+    });
+    return () => cancelAnimationFrame(frameId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection]);
+
+  // Effect 2: Start/stop timer based on conditions
+  // Timer runs ONLY when: transformed + not busy + sectionContentReady + tab visible
+  useEffect(() => {
+    const canTime = transformed && !busy && sectionContentReady && !document.hidden;
+    if (canTime) {
+      resumeDwellTimer();
+    } else {
+      pauseDwellTimer();
+    }
+    // Sync active dwell into signals whenever conditions change
+    updateActiveDwell(getCurrentActiveDwellMs());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy, transformed, sectionContentReady]);
+
+  // Effect 3: Visibility change — pause on tab hidden, resume on visible
+  useEffect(() => {
+    function onVisibilityChange() {
+      if (document.hidden) {
+        pauseDwellTimer();
+        updateActiveDwell(getCurrentActiveDwellMs());
+      } else if (transformed && !busy && sectionContentReady) {
+        resumeDwellTimer();
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transformed, busy, sectionContentReady]);
+
+  // Cleanup: flush dwell on unmount (route change away from /learn)
+  useEffect(() => {
+    return () => {
+      pauseDwellTimer();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const isCognitiveLoad = transformed?.profile === "cognitive_load";
   const chunks =
     isCognitiveLoad
@@ -1430,11 +1556,11 @@ function Learn() {
           advanced: 140
         };
         const wpm = wpmByDifficulty[difficulty] || 180;
-        const estimatedSeconds = Math.round((sectionWordCount / wpm) * 60);
+        const estimatedSec = Math.round((sectionWordCount / wpm) * 60);
         
         meta = {
           difficulty_tier: difficulty,
-          estimated_seconds: estimatedSeconds,
+          estimated_seconds: estimatedSec,
           word_count: sectionWordCount,
         };
       }
@@ -1513,6 +1639,11 @@ function Learn() {
   }, []);
 
   function markSectionComplete() {
+    // Flush active dwell into signals before completing
+    pauseDwellTimer();
+    const finalDwellMs = getCurrentActiveDwellMs();
+    updateActiveDwell(finalDwellMs);
+
     completeSection(activeSection);
     // Pass current webcam context so SCALE receives all 5 signals as supporting evidence
     // Also pass estimated reading time baseline for dynamic dwell ratio computation
