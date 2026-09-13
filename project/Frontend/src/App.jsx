@@ -79,6 +79,8 @@ export function SessionProvider({ children }) {
     sessionMeta: createSessionMeta(),
     rewireState: { active: false, adaptedContent: null, evaluation: null, chunkIndex: 0 },
     latestOutcome: null,
+    hasStartedLearning: false,
+    activeSectionIndex: 0,
   });
 
   const [busy, setBusy] = useState("");
@@ -94,6 +96,20 @@ export function SessionProvider({ children }) {
     } finally {
       setBusy("");
     }
+  }
+
+  function setHasStartedLearning(val) {
+    setSession((current) => ({
+      ...current,
+      hasStartedLearning: Boolean(val),
+    }));
+  }
+
+  function setActiveSectionIndex(index) {
+    setSession((current) => ({
+      ...current,
+      activeSectionIndex: typeof index === "number" ? index : 0,
+    }));
   }
 
   async function upload(file) {
@@ -120,6 +136,8 @@ export function SessionProvider({ children }) {
         sessionMeta: createSessionMeta(),
         rewireState: { active: false, adaptedContent: null, evaluation: null, chunkIndex: 0 },
         latestOutcome: null,
+        hasStartedLearning: false,
+        activeSectionIndex: 0,
       }));
       return result;
     });
@@ -147,6 +165,8 @@ export function SessionProvider({ children }) {
       sessionMeta: createSessionMeta(),
       rewireState: { active: false, adaptedContent: null, evaluation: null, chunkIndex: 0 },
       latestOutcome: null,
+      hasStartedLearning: false,
+      activeSectionIndex: 0,
     }));
   }
 
@@ -170,6 +190,8 @@ export function SessionProvider({ children }) {
       sessionMeta: createSessionMeta(),
       rewireState: { active: false, adaptedContent: null, evaluation: null, chunkIndex: 0 },
       latestOutcome: null,
+      hasStartedLearning: false,
+      activeSectionIndex: 0,
     }));
   }
 
@@ -240,16 +262,21 @@ export function SessionProvider({ children }) {
   }
 
   async function chooseProfile(profile) {
-    setSession((current) => ({
-      ...current,
-      profile,
-      transformed: null,
-      quizzes: [],
-      visual: null,
-      visualClusters: [],
-      clusterVisuals: {},
-      selectedClusterId: null,
-    }));
+    setSession((current) => {
+      if (current.profile === profile) return current;
+      return {
+        ...current,
+        profile,
+        transformed: null,
+        quizzes: [],
+        visual: null,
+        visualClusters: [],
+        clusterVisuals: {},
+        selectedClusterId: null,
+        hasStartedLearning: false,
+        activeSectionIndex: 0,
+      };
+    });
   }
 
   async function detect(text) {
@@ -661,6 +688,8 @@ export function SessionProvider({ children }) {
         resetDwellForNewSection,
         startLearningFromTopic,
         removeDocument,
+        setHasStartedLearning,
+        setActiveSectionIndex,
       }}
     >
       {children}
@@ -670,7 +699,12 @@ export function SessionProvider({ children }) {
 
 function Layout({ children, section }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const { session } = useSession();
+  const { mediaStream, setWebcamEnabled } = useWebcam();
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [pendingNavPath, setPendingNavPath] = useState(null);
+
   const items = [
     ["/upload", "Upload", I.CloudUpload],
     ["/learn", "Learn", I.BookOpen],
@@ -678,11 +712,66 @@ function Layout({ children, section }) {
     ["/progress", "Progress", I.BarChart3],
   ];
 
+  // 1. Has an actual learning session started with loaded lesson content?
+  const hasStartedLearning = Boolean(session.hasStartedLearning && session.transformed);
+
+  // 2. Is the user currently on the /learn route in an active learning session?
+  const isLeavingActiveLearning = Boolean(
+    location.pathname === "/learn" &&
+    hasStartedLearning
+  );
+
+  function handleNavClick(e, to) {
+    // If an actual lesson session has started and user is navigating away from /learn:
+    // Show Quit Learning confirmation
+    if (isLeavingActiveLearning && to !== "/learn") {
+      e.preventDefault();
+      setPendingNavPath(to);
+      setShowExitConfirm(true);
+      return;
+    }
+
+    // If a learning session has started and user clicks "Learn" from any other page:
+    // Route through Step 2 Camera Verification (/profile) first
+    if (to === "/learn" && hasStartedLearning) {
+      e.preventDefault();
+      navigate("/profile");
+      return;
+    }
+  }
+
+  function confirmQuitLearning() {
+    try {
+      if (mediaStream) {
+        mediaStream.getTracks().forEach((track) => track.stop());
+      }
+      if (setWebcamEnabled) {
+        setWebcamEnabled(false);
+      }
+    } catch (err) {
+      console.warn("Error turning off camera:", err);
+    }
+    const dest = pendingNavPath || "/upload";
+    setShowExitConfirm(false);
+    setPendingNavPath(null);
+    navigate(dest);
+  }
+
+  function cancelQuitLearning() {
+    setShowExitConfirm(false);
+    setPendingNavPath(null);
+  }
+
   return (
     <div className="app-container">
       <div className="desktop-layout">
         <aside className="desktop-sidebar">
-          <NavLink to="/upload" className="brand" style={{ marginBottom: 12 }}>
+          <NavLink
+            to="/upload"
+            className="brand"
+            style={{ marginBottom: 12 }}
+            onClick={(e) => handleNavClick(e, "/upload")}
+          >
             <img src="/logo.png" alt="AdaptLearn Logo" className="logo" />
             <div>
               <div className="brandname">AdaptLearn</div>
@@ -696,6 +785,7 @@ function Layout({ children, section }) {
                 key={to}
                 to={to}
                 className={`sidebar-link ${location.pathname === to ? "active" : ""}`}
+                onClick={(e) => handleNavClick(e, to)}
               >
                 <Icon size={18} />
                 <span>{label}</span>
@@ -705,6 +795,7 @@ function Layout({ children, section }) {
 
           <NavLink
             to="/profile"
+            onClick={(e) => handleNavClick(e, "/profile")}
             style={{
               display: "block",
               textDecoration: "none",
@@ -754,12 +845,134 @@ function Layout({ children, section }) {
             key={to}
             to={to}
             className={`nav-item ${location.pathname === to ? "active" : ""}`}
+            onClick={(e) => handleNavClick(e, to)}
           >
             <Icon />
             <span>{label}</span>
           </NavLink>
         ))}
       </nav>
+
+      {/* ── Quit Learning Confirmation Modal ── */}
+      {showExitConfirm && (
+        <div
+          className="exit-learn-modal-backdrop"
+          onClick={cancelQuitLearning}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 99999,
+            backgroundColor: "rgba(15, 23, 42, 0.55)",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
+            display: "grid",
+            placeItems: "center",
+            padding: 20,
+            animation: "fadeInBackdrop 0.18s ease-out",
+          }}
+        >
+          <div
+            className="exit-learn-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: 440,
+              width: "100%",
+              padding: "32px 28px",
+              background: "#ffffff",
+              borderRadius: 22,
+              boxShadow: "0 25px 60px -15px rgba(15, 23, 42, 0.35)",
+              border: "1.5px solid rgba(31, 94, 99, 0.18)",
+              textAlign: "center",
+              animation: "scaleUpModal 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+            }}
+          >
+            <div
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: "50%",
+                background: "linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(245, 158, 11, 0.08))",
+                border: "1.5px solid rgba(245, 158, 11, 0.35)",
+                margin: "0 auto 18px",
+                display: "grid",
+                placeItems: "center",
+                color: "#b45309",
+              }}
+            >
+              <I.CameraOff size={28} strokeWidth={2.2} />
+            </div>
+
+            <h3
+              style={{
+                fontSize: 21,
+                fontWeight: 800,
+                color: "var(--ink, #203438)",
+                marginBottom: 8,
+                letterSpacing: "-0.01em",
+              }}
+            >
+              Quit learning session?
+            </h3>
+
+            <p
+              style={{
+                fontSize: 14,
+                color: "var(--muted, #607477)",
+                lineHeight: 1.55,
+                marginBottom: 24,
+              }}
+            >
+              You are currently in an active learning session. Switching tabs will pause your lesson and <strong>turn off your camera</strong>.
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <button
+                type="button"
+                className="exit-learn-confirm-btn"
+                onClick={confirmQuitLearning}
+                style={{
+                  width: "100%",
+                  padding: "12px 18px",
+                  borderRadius: 12,
+                  fontWeight: 700,
+                  fontSize: 14.5,
+                  background: "linear-gradient(135deg, #1f5e63 0%, #17464a 100%)",
+                  color: "#ffffff",
+                  border: "none",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  boxShadow: "0 4px 14px rgba(31, 94, 99, 0.3)",
+                }}
+              >
+                <I.PowerOff size={16} />
+                <span>Quit Learning &amp; Turn Off Camera</span>
+              </button>
+
+              <button
+                type="button"
+                className="exit-learn-stay-btn"
+                onClick={cancelQuitLearning}
+                style={{
+                  width: "100%",
+                  padding: "11px 18px",
+                  borderRadius: 12,
+                  fontWeight: 600,
+                  fontSize: 14,
+                  background: "#f1f5f3",
+                  color: "var(--ink, #203438)",
+                  border: "1px solid rgba(31, 94, 99, 0.14)",
+                  cursor: "pointer",
+                }}
+              >
+                Stay &amp; Continue Learning
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1233,7 +1446,7 @@ function Upload() {
 
   async function handleStartLearning(lessonText, topicTitle) {
     await startLearningFromTopic(lessonText, topicTitle);
-    navigate("/learn");
+    navigate("/profile");
   }
 
   function handleDragOver(e) {
@@ -1489,7 +1702,7 @@ function CameraPreview({ stream, className = "camera-preview-video" }) {
 }
 
 function Profile() {
-  const { session, busy, chooseProfile, detect, adapt } = useSession();
+  const { session, busy, chooseProfile, detect, adapt, setHasStartedLearning } = useSession();
   const navigate = useNavigate();
   const [description, setDescription] = useState("");
   const [simState, setSimState] = useState(null); // 'starting' | 'no_face' | 'detected' | 'error' | null
@@ -1814,7 +2027,9 @@ function Profile() {
               <span className="launch-bar-sparkle">✦</span>
               <span>Ready in ~4 seconds • Configured for {PROFILE_LABELS[session.profile] || "Cognitive load support"}</span>
             </div>
-            <h2 className="launch-bar-title">Launch your customized learning session</h2>
+            <h2 className="launch-bar-title">
+              {session.transformed ? "Resume your customized learning session" : "Launch your customized learning session"}
+            </h2>
             <p className="launch-bar-subtitle">
               OUR ADAPTIVE AI WILL CUSTOMIZE COGNITIVE LOAD &amp; PACING INSTANTLY
             </p>
@@ -1830,17 +2045,31 @@ function Profile() {
               Back to upload
             </button>
 
-            {/* Transform Lesson button */}
+            {/* Transform / Resume Lesson button */}
             <button
               type="button"
               className="launch-transform-btn"
               disabled={!canContinue || Boolean(busy)}
               onClick={async () => {
-                await adapt();
-                navigate("/learn");
+                if (!session.transformed) {
+                  const res = await adapt();
+                  if (res) {
+                    setHasStartedLearning(true);
+                    navigate("/learn");
+                  }
+                } else {
+                  setHasStartedLearning(true);
+                  navigate("/learn");
+                }
               }}
             >
-              <span>{busy === "transform" ? "Adapting lesson…" : "Transform Lesson"}</span>
+              <span>
+                {busy === "transform"
+                  ? "Adapting lesson…"
+                  : session.transformed
+                  ? "Resume Learning Session"
+                  : "Transform Lesson"}
+              </span>
               <I.Sparkles size={14} />
             </button>
           </div>
@@ -2295,6 +2524,8 @@ function Learn() {
     dismissRewire,
     updateActiveDwell,
     resetDwellForNewSection,
+    setHasStartedLearning,
+    setActiveSectionIndex,
   } = useSession();
   const navigate = useNavigate();
   const transformed = session.transformed;
@@ -2317,11 +2548,23 @@ function Learn() {
     setWebcamSkipped: webcamHook.setWebcamSkipped,
   });
 
-  const [activeSection, setActiveSection] = useState(0);
+  const [activeSection, setActiveSection] = useState(session.activeSectionIndex || 0);
   const [showVisualPanel, setShowVisualPanel] = useState(false);
   const [sectionMenuOpen, setSectionMenuOpen] = useState(false);
   const [showQuizPrompt, setShowQuizPrompt] = useState(false);
   const sectionPickerRef = useRef(null);
+
+  // Sync active section to session state
+  useEffect(() => {
+    setActiveSectionIndex(activeSection);
+  }, [activeSection, setActiveSectionIndex]);
+
+  // Ensure hasStartedLearning is true when viewing lesson
+  useEffect(() => {
+    if (transformed && !session.hasStartedLearning) {
+      setHasStartedLearning(true);
+    }
+  }, [transformed, session.hasStartedLearning, setHasStartedLearning]);
 
   // Close section dropdown when clicking outside
   useEffect(() => {
@@ -2429,6 +2672,20 @@ function Learn() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // If user visits /learn after starting learning, but camera is off (e.g., after quitting learning),
+  // route them to Step 2 (/profile) to enable camera and calibrate
+  useEffect(() => {
+    if (
+      transformed &&
+      session.hasStartedLearning &&
+      webcamHook.webcamStatus === "off" &&
+      !webcamHook.webcamEnabled &&
+      !webcamHook.mediaStream
+    ) {
+      navigate("/profile");
+    }
+  }, [transformed, session.hasStartedLearning, webcamHook.webcamStatus, webcamHook.webcamEnabled, webcamHook.mediaStream, navigate]);
 
   const isCognitiveLoad = transformed?.profile === "cognitive_load";
   const hasStructuredSections = Array.isArray(transformed?.sections) && transformed.sections.length > 0;
@@ -2852,8 +3109,18 @@ function Learn() {
             <p style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)", marginBottom: 14 }}>
               This lesson has not been adapted yet.
             </p>
-            <button className="primary-action" onClick={adapt} style={{ maxWidth: 220, margin: "0 auto" }}>
-              Adapt now <I.Sparkles size={16} />
+            <button
+              className="primary-action"
+              onClick={() => {
+                if (session.text) {
+                  navigate("/profile");
+                } else {
+                  navigate("/upload");
+                }
+              }}
+              style={{ maxWidth: 220, margin: "0 auto" }}
+            >
+              {session.text ? "Configure & Adapt" : "Add learning material"} <I.Sparkles size={16} />
             </button>
           </section>
         ) : (
@@ -3514,6 +3781,12 @@ function Learn() {
                 }}
                 onClick={() => {
                   setShowQuizPrompt(false);
+                  if (webcamHook?.mediaStream) {
+                    webcamHook.mediaStream.getTracks().forEach((track) => track.stop());
+                  }
+                  if (webcamHook?.setWebcamEnabled) {
+                    webcamHook.setWebcamEnabled(false);
+                  }
                   navigate("/practice");
                 }}
               >
@@ -3746,6 +4019,7 @@ function Practice() {
     completeChunk,
     completeSection,
   } = useSession();
+  const { mediaStream, webcamEnabled, webcamStatus } = useWebcam();
   const navigate = useNavigate();
 
   const chunks =
@@ -3971,7 +4245,13 @@ function Practice() {
                   </button>
                   <button
                     className="secondary-action"
-                    onClick={() => navigate("/learn")}
+                    onClick={() => {
+                      if (session.hasStartedLearning) {
+                        navigate("/profile");
+                      } else {
+                        navigate("/learn");
+                      }
+                    }}
                     style={{ flex: 1 }}
                   >
                     Back to Learn <I.ArrowRight size={15} />
