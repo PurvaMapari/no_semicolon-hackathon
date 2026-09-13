@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from "react";
 import {
   NavLink,
+  Navigate,
   Route,
   Routes,
   useLocation,
@@ -476,7 +477,7 @@ export function SessionProvider({ children }) {
     setSession((current) => {
       const updatedSignals = recordReread(current.signals);
       const evalState = evaluateSignals(updatedSignals, current.sessionMeta);
-      
+
       // Auto-trigger REWIRE only at STRUGGLE_THRESHOLD (0.6).
       // Re-read is primarily an audio/TTS replay — NOT a strong struggle indicator.
       if (evalState.struggleScore >= SCALE_CONFIG.STRUGGLE_THRESHOLD && !current.rewireState.active) {
@@ -507,6 +508,17 @@ export function SessionProvider({ children }) {
   function recordVoiceHelpAction() {
     setSession((current) => {
       const updatedSignals = recordVoiceHelp(current.signals);
+      return { ...current, signals: updatedSignals };
+    });
+  }
+
+  function recordTimeStruggleAction(sectionIndex, sectionText) {
+    setSession((current) => {
+      const currentCount = current.signals?.timeStruggleCount || 0;
+      const updatedSignals = {
+        ...current.signals,
+        timeStruggleCount: currentCount + 1,
+      };
       return { ...current, signals: updatedSignals };
     });
   }
@@ -556,13 +568,17 @@ export function SessionProvider({ children }) {
   function dismissRewire() {
     setSession((current) => ({
       ...current,
-      rewireState: { ...current.rewireState, active: false },
+      rewireState: {
+        active: false,
+        trigger: null,
+        adaptedContent: null,
+        evaluation: null,
+      },
     }));
   }
 
   /**
-   * Update the active dwell time in the signal state.
-   * Called by the Learn component's active dwell timer on section transitions
+   * Update active dwell time. Called continuously during active reading
    * and section completion. The value passed is ONLY active learning time (ms).
    */
   function updateActiveDwell(activeDwellMs) {
@@ -612,6 +628,7 @@ export function SessionProvider({ children }) {
         recordRereadAction,
         recordHelpAction,
         recordVoiceHelpAction,
+        recordTimeStruggleAction,
         recordQuizAnswerAction,
         getAdaptiveQuizAction,
         dismissRewire,
@@ -639,7 +656,7 @@ function Layout({ children, section }) {
     <div className="app-container">
       <div className="desktop-layout">
         <aside className="desktop-sidebar">
-          <NavLink to="/progress" className="brand" style={{ marginBottom: 12 }}>
+          <NavLink to="/upload" className="brand" style={{ marginBottom: 12 }}>
             <img src="/logo.png" alt="AdaptLearn Logo" className="logo" />
             <div>
               <div className="brandname">AdaptLearn</div>
@@ -887,7 +904,7 @@ function TopicChatAssistant({ onStartLearning, busy }) {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, color: "var(--primary)" }}>
-          
+
           {currentTopic && (
             <span
               style={{
@@ -1205,7 +1222,7 @@ function Upload() {
         </div>
         <h1 className="page-title">Add learning material</h1>
 
-        
+
 
         <div className="segmented">
           {[
@@ -1363,38 +1380,41 @@ function Profile() {
     facePresent,
   } = useWebcam();
 
-  // Auto-start camera on Step 2 entry if not already started
+  // Auto-start camera on Step 2 entry if not already started; enforce no camera skip
   React.useEffect(() => {
-    if (!webcamEnabled && !webcamSkipped && webcamStatus === "off") {
+    if (webcamSkipped && setWebcamSkipped) {
+
+    }
+    if (!webcamEnabled && webcamStatus === "off") {
       toggleCamera();
     }
-  }, [webcamEnabled, webcamSkipped, webcamStatus, toggleCamera]);
+  }, [webcamEnabled, webcamStatus, toggleCamera, webcamSkipped, setWebcamSkipped]);
 
   // Derived simulation states for seamless testing & grading
   const effectiveWebcamStatus =
     simState === "error"
       ? "error"
       : simState === "starting"
-      ? "loading"
-      : simState
-      ? "ready"
-      : webcamStatus;
+        ? "loading"
+        : simState
+          ? "ready"
+          : webcamStatus;
 
   const effectiveFacePresent =
     simState === "detected"
       ? true
       : simState === "no_face"
-      ? false
-      : simState === "starting"
-      ? false
-      : facePresent;
+        ? false
+        : simState === "starting"
+          ? false
+          : facePresent;
 
   const effectiveCamLoading =
     simState === "starting"
       ? true
       : camLoading || webcamStatus === "loading";
 
-  // Gate: Continue allowed if (camera ready AND face detected) OR skipped OR simulated detected
+  // Gate: Continue allowed ONLY if camera ready AND face detected (or simulated detected)
   const canContinue =
     ((effectiveWebcamStatus === "ready" && effectiveFacePresent) ||
       webcamSkipped ||
@@ -1503,7 +1523,7 @@ function Profile() {
           </div>
         </div>
 
-        {/* ── Camera Presence Verification Card ─────────────────────── */}
+        {/* ── Camera Verification Card ── */}
         <section className="camera-verification-card">
           <div className="camera-verification-header">
             <div className="camera-verif-title-group">
@@ -1511,11 +1531,11 @@ function Profile() {
                 <div className="camera-verif-icon-box">
                   <I.Video size={16} />
                 </div>
-                <span className="camera-verif-title">Camera Presence Verification</span>
+                <span className="camera-verif-title">Camera Verification</span>
                 <span className="camera-verif-private-pill">Private • On-device</span>
               </div>
               <p className="camera-verif-subtitle">
-                Ensures you are present to dynamically adapt pacing. No video is recorded or stored.
+                Ensures you are present to dynamically adapt pacing. Required for adaptive learning.
               </p>
             </div>
 
@@ -1564,11 +1584,11 @@ function Profile() {
                   ✕
                 </button>
               )}
-            </div>*/}
-          </div> 
+            </div> */}
+          </div>
 
-          {/* HUD Viewport */}
-          <div className="camera-hud-viewport">
+          {/* HUD Viewport (Square format) */}
+          <div className="camera-hud-viewport square-viewport">
             {/* Live Video Feed */}
             {mediaStream && effectiveWebcamStatus !== "error" && effectiveWebcamStatus !== "off" && (
               <CameraPreview stream={mediaStream} className="camera-hud-video" />
@@ -1577,7 +1597,7 @@ function Profile() {
             {/* Fallback silhouette if camera off or loading */}
             {(!mediaStream || effectiveWebcamStatus === "off" || effectiveCamLoading) && (
               <div style={{ position: "absolute", display: "flex", flexDirection: "column", alignItems: "center", opacity: 0.22, pointerEvents: "none" }}>
-                <svg width="130" height="130" viewBox="0 0 24 24" fill="currentColor" color="#94a3b8">
+                <svg width="120" height="120" viewBox="0 0 24 24" fill="currentColor" color="#94a3b8">
                   <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 4c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm0 14c-2.03 0-4.43-.82-6.14-2.88C7.55 15.8 9.68 15 12 15s4.45.8 6.14 2.12C16.43 19.18 14.03 20 12 20z" />
                 </svg>
               </div>
@@ -1611,8 +1631,8 @@ function Profile() {
               </div>
             ) : effectiveFacePresent ? (
               <div className="camera-hud-bottom-banner detected">
-                <I.Check size={15} strokeWidth={3} />
-                <span>Face detected — Ready to continue</span>
+                <I.Check size={14} strokeWidth={3} />
+                <span>Face detected — Ready</span>
               </div>
             ) : effectiveWebcamStatus === "off" ? (
               <button
@@ -1626,12 +1646,12 @@ function Profile() {
             ) : effectiveWebcamStatus === "error" || effectiveWebcamStatus === "denied" ? (
               <div className="camera-hud-bottom-banner absent" style={{ background: "#ef4444" }}>
                 <I.AlertCircle size={14} />
-                <span>Camera unavailable — Use skip below</span>
+                <span>Camera unavailable</span>
               </div>
             ) : (
               <div className="camera-hud-bottom-banner absent">
                 <I.AlertTriangle size={14} />
-                <span>Face not detected — Position in frame</span>
+                <span>Position head in frame</span>
               </div>
             )}
           </div>
@@ -1656,12 +1676,12 @@ function Profile() {
 
           {/* Hardware fallback skip link */}
           {(effectiveWebcamStatus === "error" || effectiveWebcamStatus === "denied" || (!effectiveFacePresent && !webcamSkipped)) && (
-            <div style={{ marginTop: 12, textAlign: "right"}}>
+            <div style={{ marginTop: 12, textAlign: "right" }}>
               <button
                 type="button"
                 className="camera-gate-skip-link"
                 onClick={() => setWebcamSkipped(true)}
-                style={{ fontSize: 14, color: "#ffff", background: "#6f1200", border: "none", cursor: "pointer",borderRadius:12,padding:14}}
+                style={{ fontSize: 14, color: "#ffff", background: "#6f1200", border: "none", cursor: "pointer", borderRadius: 12, padding: 14 }}
               >
                 Skip camera
               </button>
@@ -1671,19 +1691,20 @@ function Profile() {
 
         <ErrorNotice />
 
-        {/* ── Bottom Launch Session Bar ──────────────────────────────── */}
-        <div className="launch-session-bar">
+        {/* Launch Session Console Bar (Exact Screenshot 2 Match) */}
+        <section className="launch-session-bar">
           <div className="launch-bar-left">
             <div className="launch-bar-meta">
-              
+
             </div>
             <h2 className="launch-bar-title">Launch your customized learning session</h2>
             <p className="launch-bar-subtitle">
-              Our adaptive AI will customize cognitive load &amp; pacing instantly
+              OUR ADAPTIVE AI WILL CUSTOMIZE COGNITIVE LOAD &amp; PACING INSTANTLY
             </p>
           </div>
 
           <div className="launch-bar-right">
+            {/* Back to upload */}
             <button
               type="button"
               className="launch-back-btn"
@@ -1692,10 +1713,11 @@ function Profile() {
               Back to upload
             </button>
 
+            {/* Transform Lesson button */}
             <button
               type="button"
               className="launch-transform-btn"
-              disabled={!canContinue}
+              disabled={!canContinue || Boolean(busy)}
               onClick={async () => {
                 await adapt();
                 navigate("/learn");
@@ -1705,7 +1727,7 @@ function Profile() {
               <I.Sparkles size={16} />
             </button>
           </div>
-        </div>
+        </section>
       </main>
     </Layout>
   );
@@ -1715,20 +1737,20 @@ function VisualCard({ visual, cluster = null, sections = [], onReadAloud }) {
   if (!visual) return null;
 
   const {
-    source        = "prism",
-    visual_type   = "none",
-    title         = "",
-    subtitle      = "",
-    explanation   = "",
+    source = "prism",
+    visual_type = "none",
+    title = "",
+    subtitle = "",
+    explanation = "",
     key_takeaways = [],
-    why_visual    = "",
-    svg_html      = null,
+    why_visual = "",
+    svg_html = null,
     source_images = [],
-    spec          = {},
-    error         = null,
-    covers_label  = "",
+    spec = {},
+    error = null,
+    covers_label = "",
     start_section_index = null,
-    end_section_index   = null,
+    end_section_index = null,
   } = visual;
 
   const [expandedSections, setExpandedSections] = useState(false);
@@ -2152,6 +2174,7 @@ function Learn() {
     recordRereadAction,
     recordHelpAction,
     recordVoiceHelpAction,
+    recordTimeStruggleAction,
     dismissRewire,
     updateActiveDwell,
     resetDwellForNewSection,
@@ -2165,6 +2188,7 @@ function Learn() {
 
   // Face presence from shared webcam hook
   const facePresent = webcamHook.facePresent;
+  const isFaceAway = Boolean(webcamHook.webcamStatus === "ready" && !webcamHook.webcamSkipped && !facePresent);
 
   // Fire contextual toasts on webcam state transitions
   useWebcamToasts({
@@ -2172,7 +2196,7 @@ function Learn() {
     push: pushToast,
     dismiss: dismissToast,
     I,
-    toggleCamera:    webcamHook.toggleCamera,
+    toggleCamera: webcamHook.toggleCamera,
     setWebcamSkipped: webcamHook.setWebcamSkipped,
   });
 
@@ -2200,6 +2224,7 @@ function Learn() {
   // ── Active Dwell Timer ──────────────────────────────────────────────────────
   // Tracks ONLY active learning time. Pauses during:
   //   • tab hidden (visibilitychange)
+  //   • face not detected (user away from camera)
   //   • busy operations (loading, generation, quiz gen)
   //   • section not yet ready
   // Resets on section switch. Uses refs to avoid re-render loops.
@@ -2252,9 +2277,9 @@ function Learn() {
   }, [activeSection]);
 
   // Effect 2: Start/stop timer based on conditions
-  // Timer runs ONLY when: transformed + not busy + sectionContentReady + tab visible
+  // Timer runs ONLY when: transformed + not busy + sectionContentReady + tab visible + face present
   useEffect(() => {
-    const canTime = transformed && !busy && sectionContentReady && !document.hidden;
+    const canTime = transformed && !busy && sectionContentReady && !document.hidden && !isFaceAway;
     if (canTime) {
       resumeDwellTimer();
     } else {
@@ -2263,22 +2288,22 @@ function Learn() {
     // Sync active dwell into signals whenever conditions change
     updateActiveDwell(getCurrentActiveDwellMs());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busy, transformed, sectionContentReady]);
+  }, [busy, transformed, sectionContentReady, isFaceAway]);
 
   // Effect 3: Visibility change — pause on tab hidden, resume on visible
   useEffect(() => {
     function onVisibilityChange() {
-      if (document.hidden) {
+      if (document.hidden || isFaceAway) {
         pauseDwellTimer();
         updateActiveDwell(getCurrentActiveDwellMs());
-      } else if (transformed && !busy && sectionContentReady) {
+      } else if (transformed && !busy && sectionContentReady && !isFaceAway) {
         resumeDwellTimer();
       }
     }
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transformed, busy, sectionContentReady]);
+  }, [transformed, busy, sectionContentReady, isFaceAway]);
 
   // Cleanup: flush dwell on unmount (route change away from /learn)
   useEffect(() => {
@@ -2302,25 +2327,60 @@ function Learn() {
   let globalIndex = 0;
   const sections = hasStructuredSections
     ? transformed.sections.map((sec, idx) => {
-        const rawMeta = chunkMeta[idx] || null;
-        const totalCount = transformed.sections.length;
-        const sanitizedHeading = cleanHeading(sec.heading, sec.content, idx + 1);
+      const rawMeta = chunkMeta[idx] || null;
+      const totalCount = transformed.sections.length;
+      const sanitizedHeading = cleanHeading(sec.heading, sec.content, idx + 1);
+      const resolvedTier = resolveSectionDifficulty(
+        { heading: sanitizedHeading, paragraph: sec.content, meta: rawMeta },
+        idx,
+        totalCount
+      );
+      const sectionWordCount = (sec.content || "").split(/\s+/).filter(Boolean).length;
+      const wpmByDifficulty = { foundational: 220, intermediate: 180, advanced: 140 };
+      const wpm = wpmByDifficulty[resolvedTier] || 180;
+      const estimatedSec = Math.round((sectionWordCount / wpm) * 60);
+
+      return {
+        id: `section-${idx}`,
+        heading: sanitizedHeading,
+        paragraph: sec.content,
+        chunk: idx + 1,
+        chunkIndex: idx,
+        sectionIndex: idx,
+        meta: {
+          difficulty_tier: resolvedTier,
+          expected_time_multiplier: resolvedTier === "foundational" ? 1.0 : resolvedTier === "advanced" ? 2.5 : 1.6,
+          estimated_seconds: rawMeta?.estimated_seconds && rawMeta?.difficulty_tier === resolvedTier
+            ? rawMeta.estimated_seconds
+            : estimatedSec,
+          word_count: rawMeta?.word_count || sectionWordCount,
+        },
+      };
+    })
+    : chunks.filter(Boolean).flatMap((chunk, chunkIndex) => {
+      // For cognitive_load without structured sections: each chunk IS one section.
+      const parts = isCognitiveLoad ? [chunk] : splitIntoLessonSections(chunk);
+      const totalEstChunks = Math.max(chunks.length, parts.length * chunks.length);
+      return parts.map((paragraph, paragraphIndex) => {
+        const idx = globalIndex++;
+        const rawMeta = chunkMeta[chunkIndex] || null;
+        const sanitizedHeading = cleanHeading(null, paragraph, idx + 1);
         const resolvedTier = resolveSectionDifficulty(
-          { heading: sanitizedHeading, paragraph: sec.content, meta: rawMeta },
+          { heading: sanitizedHeading, paragraph, meta: rawMeta },
           idx,
-          totalCount
+          totalEstChunks
         );
-        const sectionWordCount = (sec.content || "").split(/\s+/).filter(Boolean).length;
+        const sectionWordCount = paragraph.split(/\s+/).filter(Boolean).length;
         const wpmByDifficulty = { foundational: 220, intermediate: 180, advanced: 140 };
         const wpm = wpmByDifficulty[resolvedTier] || 180;
         const estimatedSec = Math.round((sectionWordCount / wpm) * 60);
 
         return {
-          id: `section-${idx}`,
+          id: `${chunkIndex}-${paragraphIndex}`,
           heading: sanitizedHeading,
-          paragraph: sec.content,
-          chunk: idx + 1,
-          chunkIndex: idx,
+          paragraph,
+          chunk: chunkIndex + 1,
+          chunkIndex,
           sectionIndex: idx,
           meta: {
             difficulty_tier: resolvedTier,
@@ -2328,46 +2388,11 @@ function Learn() {
             estimated_seconds: rawMeta?.estimated_seconds && rawMeta?.difficulty_tier === resolvedTier
               ? rawMeta.estimated_seconds
               : estimatedSec,
-            word_count: rawMeta?.word_count || sectionWordCount,
+            word_count: sectionWordCount,
           },
         };
-      })
-    : chunks.filter(Boolean).flatMap((chunk, chunkIndex) => {
-        // For cognitive_load without structured sections: each chunk IS one section.
-        const parts = isCognitiveLoad ? [chunk] : splitIntoLessonSections(chunk);
-        const totalEstChunks = Math.max(chunks.length, parts.length * chunks.length);
-        return parts.map((paragraph, paragraphIndex) => {
-          const idx = globalIndex++;
-          const rawMeta = chunkMeta[chunkIndex] || null;
-          const sanitizedHeading = cleanHeading(null, paragraph, idx + 1);
-          const resolvedTier = resolveSectionDifficulty(
-            { heading: sanitizedHeading, paragraph, meta: rawMeta },
-            idx,
-            totalEstChunks
-          );
-          const sectionWordCount = paragraph.split(/\s+/).filter(Boolean).length;
-          const wpmByDifficulty = { foundational: 220, intermediate: 180, advanced: 140 };
-          const wpm = wpmByDifficulty[resolvedTier] || 180;
-          const estimatedSec = Math.round((sectionWordCount / wpm) * 60);
-
-          return {
-            id: `${chunkIndex}-${paragraphIndex}`,
-            heading: sanitizedHeading,
-            paragraph,
-            chunk: chunkIndex + 1,
-            chunkIndex,
-            sectionIndex: idx,
-            meta: {
-              difficulty_tier: resolvedTier,
-              expected_time_multiplier: resolvedTier === "foundational" ? 1.0 : resolvedTier === "advanced" ? 2.5 : 1.6,
-              estimated_seconds: rawMeta?.estimated_seconds && rawMeta?.difficulty_tier === resolvedTier
-                ? rawMeta.estimated_seconds
-                : estimatedSec,
-              word_count: sectionWordCount,
-            },
-          };
-        });
       });
+    });
 
   const currentSection = sections[activeSection] || sections[0];
   const formatting = transformed?.formatting || {};
@@ -2403,11 +2428,79 @@ function Learn() {
   const sectionDifficulty = currentSection?.meta?.difficulty_tier || resolveSectionDifficulty(currentSection, activeSection, sections.length);
   const estimatedSeconds = currentSection?.meta?.estimated_seconds || 60;
 
+  // ── Reading Friction Timer ───────────────────────────────────────────────────
+  // Internal reading timer for the current section (no countdown displayed on screen).
+  // Includes a 5-second grace threshold for initial page load / reading orientation.
+  // Pauses automatically when the user's face is not detected (isFaceAway is true).
+  // When active reading time exceeds estimatedSeconds + 5s, inline assistance is triggered
+  // beside the prompt buttons, an assistance toast is displayed, and struggle score increases by 10%.
+  const [activeReadSeconds, setActiveReadSeconds] = useState(0);
+  const [struggleTriggered, setStruggleTriggered] = useState(false);
+  const sectionStruggleFiredRef = useRef(new Set());
+  const elapsedReadSecondsRef = useRef(0);
+
+  // Keep fresh refs for timer interval callback so interval is NOT torn down on every webcam frame
+  const estimatedSecondsRef = useRef(estimatedSeconds);
+  estimatedSecondsRef.current = estimatedSeconds;
+
+  const activeSectionRef = useRef(activeSection);
+  activeSectionRef.current = activeSection;
+
+  const currentSectionRef = useRef(currentSection);
+  currentSectionRef.current = currentSection;
+
+  const isFaceAwayRef = useRef(isFaceAway);
+  isFaceAwayRef.current = isFaceAway;
+
+  const canRunTimerRef = useRef(true);
+  canRunTimerRef.current = Boolean(transformed && sectionContentReady && !document.hidden && !isFaceAway);
+
+  const recordTimeStruggleRef = useRef(recordTimeStruggleAction);
+  recordTimeStruggleRef.current = recordTimeStruggleAction;
+
+  const pushToastRef = useRef(pushToast);
+  pushToastRef.current = pushToast;
+
+  // Reset read timer & triggered flag when navigating between sections
+  useEffect(() => {
+    elapsedReadSecondsRef.current = 0;
+    setActiveReadSeconds(0);
+    setStruggleTriggered(false);
+  }, [activeSection]);
+
+  // Stable read timer ticker: runs once, inspects refs every 1s
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!canRunTimerRef.current) return;
+
+      elapsedReadSecondsRef.current += 1;
+      setActiveReadSeconds(elapsedReadSecondsRef.current);
+
+      const secIdx = activeSectionRef.current;
+      const targetThreshold = (estimatedSecondsRef.current || 25) + 5;
+
+      console.log(`[PRISM Timer] Section ${secIdx + 1}: ${elapsedReadSecondsRef.current}s / ${targetThreshold}s`);
+
+      if (elapsedReadSecondsRef.current >= targetThreshold && !sectionStruggleFiredRef.current.has(secIdx)) {
+        sectionStruggleFiredRef.current.add(secIdx);
+        setStruggleTriggered(true);
+
+        // Record struggle signal
+        if (recordTimeStruggleRef.current) {
+          recordTimeStruggleRef.current(secIdx, currentSectionRef.current?.paragraph);
+        }
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   const evaluation = evaluateSignals(
-    session.signals, 
-    session.sessionMeta, 
-    null, 
-    estimatedSeconds
+    session.signals,
+    session.sessionMeta,
+    null,
+    estimatedSeconds,
+    sectionDifficulty
   );
   const struggleScore = evaluation.struggleScore;
   const lessonClass =
@@ -2466,17 +2559,17 @@ function Learn() {
     // Pass current webcam context so SCALE receives all 5 signals as supporting evidence
     // Also pass estimated reading time baseline for dynamic dwell ratio computation
     completeChunk({
-      presence_ratio:        webcamHook.presenceRatio,
-      face_present_now:      webcamHook.facePresent,
-      head_stable_now:       webcamHook.headStable,
-      tab_focused_now:       webcamHook.tabFocused,
+      presence_ratio: webcamHook.presenceRatio,
+      face_present_now: webcamHook.facePresent,
+      head_stable_now: webcamHook.headStable,
+      tab_focused_now: webcamHook.tabFocused,
       scroll_consistent_now: scrollConsistent,
       // camelCase aliases
-      presenceRatio:         webcamHook.presenceRatio,
-      facePresentNow:        webcamHook.facePresent,
-      headStableNow:         webcamHook.headStable,
-      tabFocusedNow:         webcamHook.tabFocused,
-      scrollConsistentNow:   scrollConsistent,
+      presenceRatio: webcamHook.presenceRatio,
+      facePresentNow: webcamHook.facePresent,
+      headStableNow: webcamHook.headStable,
+      tabFocusedNow: webcamHook.tabFocused,
+      scrollConsistentNow: scrollConsistent,
     }, estimatedSeconds);
 
     const isLastSection = activeSection === sections.length - 1;
@@ -2518,10 +2611,10 @@ function Learn() {
 
   // Format difficulty for display (sectionDifficulty and estimatedSeconds already defined above)
   const difficultyLabel = sectionDifficulty.toUpperCase();
-  const difficultyColor = 
-    sectionDifficulty === "foundational" ? "#10b981" : 
-    sectionDifficulty === "advanced" ? "#f59e0b" : 
-    "#3b82f6";
+  const difficultyColor =
+    sectionDifficulty === "foundational" ? "#10b981" :
+      sectionDifficulty === "advanced" ? "#f59e0b" :
+        "#3b82f6";
 
   // Topic title: use structured heading if available, otherwise first line
   const sectionTopic =
@@ -2657,11 +2750,11 @@ function Learn() {
                   <span className="lesson-card-section-label">
                     SECTION {activeSection + 1} OF {sections.length}
                   </span>
-                  <span 
-                    style={{ 
-                      color: difficultyColor, 
-                      fontSize: 11, 
-                      fontWeight: 700, 
+                  <span
+                    style={{
+                      color: difficultyColor,
+                      fontSize: 11,
+                      fontWeight: 700,
                       letterSpacing: "0.05em",
                       padding: "2px 8px",
                       borderRadius: "4px",
@@ -2685,6 +2778,11 @@ function Learn() {
                 </div>
                 <span className="lesson-card-readtime">
                   Estimated read: {formatReadTime(estimatedSeconds)}
+                  {isFaceAway && (
+                    <span className="readtime-paused-pill" title="Reading timer paused because face is not detected">
+                      ⏸ (Paused)
+                    </span>
+                  )}
                 </span>
                 {/* Webcam status badge — shows current relevant state */}
                 <WebcamStatusBadge
@@ -2753,9 +2851,16 @@ function Learn() {
 
                     <span className="audio-ribbon-divider" />
 
+                    {struggleTriggered && (
+                      <div className="struggle-inline-hint" role="status">
+                        <I.Sparkles size={12} className="struggle-hint-icon" />
+                        <span>Struggling with this explanation?</span>
+                      </div>
+                    )}
+
                     <button
                       type="button"
-                      className="audio-tool-btn prompt-tool-btn"
+                      className={`audio-tool-btn prompt-tool-btn ${struggleTriggered ? "highlighted" : ""}`}
                       onClick={() => handleTriggerVoicePrompt("Explain this section in very simple terms.")}
                       title="Ask AI Assistant to explain this section simply"
                     >
@@ -2765,7 +2870,7 @@ function Learn() {
 
                     <button
                       type="button"
-                      className="audio-tool-btn prompt-tool-btn"
+                      className={`audio-tool-btn prompt-tool-btn ${struggleTriggered ? "highlighted" : ""}`}
                       onClick={() => handleTriggerVoicePrompt("Give me an intuitive, real-world example of this concept.")}
                       title="Ask AI Assistant for an intuitive real-world example"
                     >
@@ -2775,7 +2880,7 @@ function Learn() {
 
                     <button
                       type="button"
-                      className="audio-tool-btn prompt-tool-btn"
+                      className={`audio-tool-btn prompt-tool-btn ${struggleTriggered ? "highlighted" : ""}`}
                       onClick={() => handleTriggerVoicePrompt("What is the single most important point in this section?")}
                       title="Ask AI Assistant for the key takeaway"
                     >
@@ -2851,7 +2956,7 @@ function Learn() {
                               const tier = section.meta?.difficulty_tier || resolveSectionDifficulty(section, index, sections.length);
                               const tierColor =
                                 tier === "foundational" ? "#10b981" :
-                                tier === "advanced" ? "#f59e0b" : "#3b82f6";
+                                  tier === "advanced" ? "#f59e0b" : "#3b82f6";
 
                               return (
                                 <button
@@ -2947,10 +3052,10 @@ function Learn() {
                     {busy && busy.startsWith("visual")
                       ? "Generating visual…"
                       : showVisualPanel
-                      ? "Visuals Active ↓"
-                      : session.clusterVisuals?.[activeCluster?.cluster_id]
-                      ? "View Concept Visual ↓"
-                      : "Generate Visual"}
+                        ? "Visuals Active ↓"
+                        : session.clusterVisuals?.[activeCluster?.cluster_id]
+                          ? "View Concept Visual ↓"
+                          : "Generate Visual"}
                   </span>
                 </button>
 
@@ -3156,9 +3261,8 @@ function Learn() {
               title={`SCALE: ${(struggleScore * 100).toFixed(0)}% struggle`}
             >
               <span
-                className={`gauge-dot ${
-                  struggleScore >= 0.6 ? "critical" : struggleScore >= 0.4 ? "warning" : "normal"
-                }`}
+                className={`gauge-dot ${struggleScore >= 0.6 ? "critical" : struggleScore >= 0.4 ? "warning" : "normal"
+                  }`}
               />
               <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600 }}>
                 SCALE {(struggleScore * 100).toFixed(0)}%
@@ -3765,169 +3869,169 @@ function Practice() {
               </section>
             )}
 
-        {/* ── REWIRE Adaptive Question Card ─────────────────────────────── */}
-        {isRewireActive && (
-          <section className="card" style={{ marginBottom: 16, padding: 20, border: "2px solid #a855f7" }}>
-            <div style={{
-              background: "#f3e8ff", color: "#7e22ce",
-              padding: "6px 12px", borderRadius: 9999,
-              fontSize: 12, fontWeight: 700,
-              display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 12,
-            }}>
-              <I.Zap size={13} />
-              <span>Adaptive Question: Calibrated to Simplified Level</span>
-            </div>
-
-            {!adaptiveQuiz ? (
-              <div>
-                <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 12 }}>
-                  Generate an adaptive question calibrated to your learning recovery.
-                </p>
-                <button className="primary-action" disabled={Boolean(busy)} onClick={loadAdaptiveQuiz}>
-                  {busy === "quiz" ? "Generating..." : "Generate Adaptive Question"}
-                  <I.HelpCircle size={18} />
-                </button>
-              </div>
-            ) : (
-              <div className="practice-card" style={{ padding: 0 }}>
-                <h2 style={{ fontSize: 18, marginBottom: 14 }}>{adaptiveQuiz.question}</h2>
-                <div className="option-list">
-                  {adaptiveQuiz.options.map((option, idx) => {
-                    const letter = String.fromCharCode(65 + idx);
-                    return (
-                      <button key={option} className={adaptiveSelected === option ? "selected" : ""}
-                        onClick={() => !adaptiveSubmitted && setAdaptiveSelected(option)}>
-                        <span style={{ width: 24, height: 24, borderRadius: 6, background: adaptiveSelected === option ? "var(--primary)" : "#e2e8f0", color: adaptiveSelected === option ? "#fff" : "var(--muted)", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{letter}</span>
-                        <span>{option}</span>
-                      </button>
-                    );
-                  })}
+            {/* ── REWIRE Adaptive Question Card ─────────────────────────────── */}
+            {isRewireActive && (
+              <section className="card" style={{ marginBottom: 16, padding: 20, border: "2px solid #a855f7" }}>
+                <div style={{
+                  background: "#f3e8ff", color: "#7e22ce",
+                  padding: "6px 12px", borderRadius: 9999,
+                  fontSize: 12, fontWeight: 700,
+                  display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 12,
+                }}>
+                  <I.Zap size={13} />
+                  <span>Adaptive Question: Calibrated to Simplified Level</span>
                 </div>
-                <button className="primary-action" disabled={!adaptiveSelected || adaptiveSubmitted} onClick={handleAdaptiveSubmit}>
-                  {adaptiveSubmitted ? (adaptiveSelected === adaptiveQuiz.answer ? "Correct" : "Review Answer") : "Submit Answer"}
-                </button>
-                {adaptiveSubmitted && (
-                  <div className={`feedback ${adaptiveSelected === adaptiveQuiz.answer ? "correct-feedback" : "failed-feedback"}`} style={{ marginTop: 14 }}>
-                    <b style={{ fontSize: 15, display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                      {adaptiveSelected === adaptiveQuiz.answer ? <><I.CheckCircle2 size={16} /> Correct</> : <><I.AlertCircle size={16} /> Answer: {adaptiveQuiz.answer}</>}
-                    </b>
-                    <p>{adaptiveQuiz.explanation}</p>
-                  </div>
-                )}
-                {adaptiveSubmitted && session.latestOutcome && (
-                  <div className="outcome-card" style={{ marginTop: 14 }}>
-                    <div className="outcome-title">
-                      <span className="outcome-delta-badge">+{((session.latestOutcome.outcomeDelta || 1) * 100).toFixed(0)}%</span>
-                      <span>SCALE Outcome: Struggle Successfully Resolved</span>
-                    </div>
-                    <button className="primary-action" style={{ background: "#059669", fontSize: 12, padding: "8px 14px", width: "auto", marginTop: 10 }} onClick={() => navigate("/progress")}>
-                      View in Progress Dashboard <I.ArrowRight size={14} />
+
+                {!adaptiveQuiz ? (
+                  <div>
+                    <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 12 }}>
+                      Generate an adaptive question calibrated to your learning recovery.
+                    </p>
+                    <button className="primary-action" disabled={Boolean(busy)} onClick={loadAdaptiveQuiz}>
+                      {busy === "quiz" ? "Generating..." : "Generate Adaptive Question"}
+                      <I.HelpCircle size={18} />
                     </button>
                   </div>
-                )}
-              </div>
-            )}
-          </section>
-        )}
-
-        <section className="card practice-report" style={{ padding: 18 }}>
-          <b style={{ fontSize: 15, color: "var(--ink)", fontFamily: "var(--font-heading)" }}>Section Report</b>
-          <div className="practice-stats-grid" style={{ marginTop: 12 }}>
-            <div className="stat practice-stat-card">
-              <div className="practice-stat-header">
-                <div className="practice-stat-icon" style={{ background: "#eff6ff", color: "#2563eb", borderColor: "#bfdbfe" }}>
-                  <I.FileEdit size={16} />
-                </div>
-              </div>
-              <b>{session.practiceReport.answered.length}</b>
-              <span>Answered</span>
-            </div>
-            <div className="stat practice-stat-card">
-              <div className="practice-stat-header">
-                <div className="practice-stat-icon" style={{ background: "#fff1f2", color: "#e11d48", borderColor: "#fecdd3" }}>
-                  <I.RotateCcw size={16} />
-                </div>
-              </div>
-              <b>{session.practiceReport.failed.length}</b>
-              <span>Need Review</span>
-            </div>
-            <div className="stat practice-stat-card">
-              <div className="practice-stat-header">
-                <div className="practice-stat-icon" style={{ background: "#fffbeb", color: "#d97706", borderColor: "#fde68a" }}>
-                  <I.Trophy size={16} />
-                </div>
-              </div>
-              <b>{session.practiceReport.masteredSections.length}</b>
-              <span>Mastered</span>
-            </div>
-            <div className="stat practice-stat-card">
-              <div className="practice-stat-header">
-                <div className="practice-stat-icon" style={{ background: "#f3e8ff", color: "#7e22ce", borderColor: "#e9d5ff" }}>
-                  <I.BookOpen size={16} />
-                </div>
-              </div>
-              <b>{chunks.length}</b>
-              <span>Total Sections</span>
-            </div>
-          </div>
-        </section>
-
-        {/* ── Per-section quiz ─────────────────────────────────────────── */}
-        {!sectionText ? (
-          <section className="card empty-state" style={{ marginTop: 16 }}>
-            <I.BadgeHelp size={36} style={{ color: "var(--muted)", margin: "0 auto 12px" }} />
-            <p style={{ fontSize: 15, color: "var(--ink)", fontWeight: 600 }}>Adapt a lesson first to generate section questions.</p>
-          </section>
-        ) : (
-          <section className="card practice-card" style={{ marginTop: 16 }}>
-            <span className="pill">Section {sectionIndex + 1} of {chunks.length}</span>
-            <p className="practice-context" style={{ marginTop: 8 }}>Section-by-section comprehension check.</p>
-            {!quiz ? (
-              <div style={{ marginTop: 16, textAlign: "center" }}>
-                <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 14 }}>Test your understanding of this section before moving on.</p>
-                <button className="primary-action" disabled={Boolean(busy)} onClick={loadSectionQuestion}>
-                  {busy === "quiz" ? "Generating question..." : "Start section question"}
-                  <I.HelpCircle size={18} />
-                </button>
-              </div>
-            ) : (
-              <>
-                <h2>{quiz.question}</h2>
-                <div className="option-list">
-                  {quiz.options.map((option, idx) => {
-                    const letter = String.fromCharCode(65 + idx);
-                    return (
-                      <button key={option} className={selected === option ? "selected" : ""} onClick={() => !report && setSelected(option)}>
-                        <span style={{ width: 24, height: 24, borderRadius: 6, background: selected === option ? "var(--primary)" : "#e2e8f0", color: selected === option ? "#fff" : "var(--muted)", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{letter}</span>
-                        <span>{option}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-                {!report ? (
-                  <button className="primary-action" disabled={!selected || Boolean(busy)} onClick={submitSectionAnswer}>
-                    {busy === "evaluate" ? "Evaluating answer..." : "Submit answer"}
-                  </button>
                 ) : (
-                  <div className={`feedback ${report.is_correct ? "correct-feedback" : "failed-feedback"}`}>
-                    <b style={{ fontSize: 15, display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                      {report.is_correct ? <><I.CheckCircle2 size={16} /> Correct! Section mastered.</> : <><I.AlertCircle size={16} /> Review this topic</>}
-                    </b>
-                    <p>{report.explanation}</p>
-                    <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
-                      {!report.is_correct && (<button className="secondary-action" onClick={loadSectionQuestion}>Retry this topic</button>)}
-                      {report.is_correct && sectionIndex < chunks.length - 1 && (
-                        <button className="primary-action" onClick={() => { setSectionIndex((i) => i + 1); setQuiz(null); setReport(null); }}>
-                          Continue to next section <I.ArrowRight size={16} />
-                        </button>
-                      )}
+                  <div className="practice-card" style={{ padding: 0 }}>
+                    <h2 style={{ fontSize: 18, marginBottom: 14 }}>{adaptiveQuiz.question}</h2>
+                    <div className="option-list">
+                      {adaptiveQuiz.options.map((option, idx) => {
+                        const letter = String.fromCharCode(65 + idx);
+                        return (
+                          <button key={option} className={adaptiveSelected === option ? "selected" : ""}
+                            onClick={() => !adaptiveSubmitted && setAdaptiveSelected(option)}>
+                            <span style={{ width: 24, height: 24, borderRadius: 6, background: adaptiveSelected === option ? "var(--primary)" : "#e2e8f0", color: adaptiveSelected === option ? "#fff" : "var(--muted)", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{letter}</span>
+                            <span>{option}</span>
+                          </button>
+                        );
+                      })}
                     </div>
+                    <button className="primary-action" disabled={!adaptiveSelected || adaptiveSubmitted} onClick={handleAdaptiveSubmit}>
+                      {adaptiveSubmitted ? (adaptiveSelected === adaptiveQuiz.answer ? "Correct" : "Review Answer") : "Submit Answer"}
+                    </button>
+                    {adaptiveSubmitted && (
+                      <div className={`feedback ${adaptiveSelected === adaptiveQuiz.answer ? "correct-feedback" : "failed-feedback"}`} style={{ marginTop: 14 }}>
+                        <b style={{ fontSize: 15, display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                          {adaptiveSelected === adaptiveQuiz.answer ? <><I.CheckCircle2 size={16} /> Correct</> : <><I.AlertCircle size={16} /> Answer: {adaptiveQuiz.answer}</>}
+                        </b>
+                        <p>{adaptiveQuiz.explanation}</p>
+                      </div>
+                    )}
+                    {adaptiveSubmitted && session.latestOutcome && (
+                      <div className="outcome-card" style={{ marginTop: 14 }}>
+                        <div className="outcome-title">
+                          <span className="outcome-delta-badge">+{((session.latestOutcome.outcomeDelta || 1) * 100).toFixed(0)}%</span>
+                          <span>SCALE Outcome: Struggle Successfully Resolved</span>
+                        </div>
+                        <button className="primary-action" style={{ background: "#059669", fontSize: 12, padding: "8px 14px", width: "auto", marginTop: 10 }} onClick={() => navigate("/progress")}>
+                          View in Progress Dashboard <I.ArrowRight size={14} />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
-              </>
+              </section>
             )}
-          </section>
-        )}
+
+            <section className="card practice-report" style={{ padding: 18 }}>
+              <b style={{ fontSize: 15, color: "var(--ink)", fontFamily: "var(--font-heading)" }}>Section Report</b>
+              <div className="practice-stats-grid" style={{ marginTop: 12 }}>
+                <div className="stat practice-stat-card">
+                  <div className="practice-stat-header">
+                    <div className="practice-stat-icon" style={{ background: "#eff6ff", color: "#2563eb", borderColor: "#bfdbfe" }}>
+                      <I.FileEdit size={16} />
+                    </div>
+                  </div>
+                  <b>{session.practiceReport.answered.length}</b>
+                  <span>Answered</span>
+                </div>
+                <div className="stat practice-stat-card">
+                  <div className="practice-stat-header">
+                    <div className="practice-stat-icon" style={{ background: "#fff1f2", color: "#e11d48", borderColor: "#fecdd3" }}>
+                      <I.RotateCcw size={16} />
+                    </div>
+                  </div>
+                  <b>{session.practiceReport.failed.length}</b>
+                  <span>Need Review</span>
+                </div>
+                <div className="stat practice-stat-card">
+                  <div className="practice-stat-header">
+                    <div className="practice-stat-icon" style={{ background: "#fffbeb", color: "#d97706", borderColor: "#fde68a" }}>
+                      <I.Trophy size={16} />
+                    </div>
+                  </div>
+                  <b>{session.practiceReport.masteredSections.length}</b>
+                  <span>Mastered</span>
+                </div>
+                <div className="stat practice-stat-card">
+                  <div className="practice-stat-header">
+                    <div className="practice-stat-icon" style={{ background: "#f3e8ff", color: "#7e22ce", borderColor: "#e9d5ff" }}>
+                      <I.BookOpen size={16} />
+                    </div>
+                  </div>
+                  <b>{chunks.length}</b>
+                  <span>Total Sections</span>
+                </div>
+              </div>
+            </section>
+
+            {/* ── Per-section quiz ─────────────────────────────────────────── */}
+            {!sectionText ? (
+              <section className="card empty-state" style={{ marginTop: 16 }}>
+                <I.BadgeHelp size={36} style={{ color: "var(--muted)", margin: "0 auto 12px" }} />
+                <p style={{ fontSize: 15, color: "var(--ink)", fontWeight: 600 }}>Adapt a lesson first to generate section questions.</p>
+              </section>
+            ) : (
+              <section className="card practice-card" style={{ marginTop: 16 }}>
+                <span className="pill">Section {sectionIndex + 1} of {chunks.length}</span>
+                <p className="practice-context" style={{ marginTop: 8 }}>Section-by-section comprehension check.</p>
+                {!quiz ? (
+                  <div style={{ marginTop: 16, textAlign: "center" }}>
+                    <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 14 }}>Test your understanding of this section before moving on.</p>
+                    <button className="primary-action" disabled={Boolean(busy)} onClick={loadSectionQuestion}>
+                      {busy === "quiz" ? "Generating question..." : "Start section question"}
+                      <I.HelpCircle size={18} />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <h2>{quiz.question}</h2>
+                    <div className="option-list">
+                      {quiz.options.map((option, idx) => {
+                        const letter = String.fromCharCode(65 + idx);
+                        return (
+                          <button key={option} className={selected === option ? "selected" : ""} onClick={() => !report && setSelected(option)}>
+                            <span style={{ width: 24, height: 24, borderRadius: 6, background: selected === option ? "var(--primary)" : "#e2e8f0", color: selected === option ? "#fff" : "var(--muted)", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{letter}</span>
+                            <span>{option}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {!report ? (
+                      <button className="primary-action" disabled={!selected || Boolean(busy)} onClick={submitSectionAnswer}>
+                        {busy === "evaluate" ? "Evaluating answer..." : "Submit answer"}
+                      </button>
+                    ) : (
+                      <div className={`feedback ${report.is_correct ? "correct-feedback" : "failed-feedback"}`}>
+                        <b style={{ fontSize: 15, display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                          {report.is_correct ? <><I.CheckCircle2 size={16} /> Correct! Section mastered.</> : <><I.AlertCircle size={16} /> Review this topic</>}
+                        </b>
+                        <p>{report.explanation}</p>
+                        <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
+                          {!report.is_correct && (<button className="secondary-action" onClick={loadSectionQuestion}>Retry this topic</button>)}
+                          {report.is_correct && sectionIndex < chunks.length - 1 && (
+                            <button className="primary-action" onClick={() => { setSectionIndex((i) => i + 1); setQuiz(null); setReport(null); }}>
+                              Continue to next section <I.ArrowRight size={16} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </section>
+            )}
           </>
         )}
 
@@ -4802,7 +4906,7 @@ function App() {
       <WebcamProvider>
         <ToastProvider>
           <Routes>
-            <Route path="/" element={<Progress />} />
+            <Route path="/" element={<Navigate to="/upload" replace />} />
             <Route path="/upload" element={<Upload />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/learn" element={<Learn />} />

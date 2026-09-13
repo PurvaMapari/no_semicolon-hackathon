@@ -17,7 +17,7 @@
  *   SECTION_COMPLETED  — learner marked section done
  */
 
-import { scaleEvaluate, measureOutcome, SCALE_CONFIG } from "./scale.js";
+import { scaleEvaluate, measureOutcome, computeStruggleScore, normalizeSignals, SCALE_CONFIG } from "./scale.js";
 
 // ─── Section Lifecycle States ────────────────────────────────────────────────
 
@@ -46,6 +46,7 @@ export function createSignalState() {
     answerLatency: 0,
     retryCount: 0,
     voiceHelpRequests: 0,
+    timeStruggleCount: 0,
 
     // --- Internal quiz tracking ---
     _questionsCorrect: 0,
@@ -262,7 +263,13 @@ export function recordQuizAnswer(signals, isCorrect, latencyMs) {
  * Optional baselineDwellSeconds parameter sets the expected reading time for
  * this section (from backend metadata). Used to compute dwell ratio dynamically.
  */
-export function evaluateSignals(signals, sessionMeta, webcamContext = null, baselineDwellSeconds = null) {
+export function evaluateSignals(
+  signals,
+  sessionMeta,
+  webcamContext = null,
+  baselineDwellSeconds = null,
+  difficultyTier = "intermediate"
+) {
   // Use active dwell (including any in-flight period) for the SCALE evaluation
   const currentActiveDwellMs = signals.activeDwellMs +
     (signals._dwellTimerStart !== null ? Date.now() - signals._dwellTimerStart : 0);
@@ -275,7 +282,7 @@ export function evaluateSignals(signals, sessionMeta, webcamContext = null, base
     scrollBack: signals.scrollBack ?? 0,
     helpRequests: signals.helpRequests ?? 0,
     voiceHelpRequests: signals.voiceHelpRequests ?? 0,
-    questionAccuracy: signals.questionAccuracy ?? 0.8, // default to "normal" if no quiz yet
+    questionAccuracy: signals.questionAccuracy ?? (signals._questionsTotal > 0 ? (signals._questionsCorrect / signals._questionsTotal) : 0.8),
     answerLatency: signals.answerLatency ?? 0,
     retryCount: signals.retryCount ?? 0,
   };
@@ -285,14 +292,13 @@ export function evaluateSignals(signals, sessionMeta, webcamContext = null, base
     sessionMeta?.currentVariantLevel ?? 1,
     sessionMeta,
     baselineDwellSeconds,
-    webcamContext
+    webcamContext,
+    difficultyTier
   );
-
-  const webcamBoost = (evalResult.normalized?.webcamContext ?? 0) * (SCALE_CONFIG?.WEIGHTS?.webcamContext ?? 0.05);
 
   return {
     ...evalResult,
-    webcamBoost,
+    webcamBoost: 0.0, // Webcam only gates dwell accumulation; 0% direct weight
     webcamContext: webcamContext ? {
       presence_ratio: webcamContext.presence_ratio ?? webcamContext.presenceRatio ?? 1,
       face_present_now: webcamContext.face_present_now ?? webcamContext.facePresentNow ?? true,
@@ -399,78 +405,70 @@ export function injectGoldenPathStruggle(signals) {
 /**
  * Computes the unified struggle score (0.0 to 1.0) from learner session activity.
  * Single authoritative source of truth used across Learn, Practice, and Progress.
+ *
+ * Follows the PRISM SCALE Final Authoritative Scoring Model (100% total):
+ * - Active Reading / Dwell Behavior: 30%
+ *   - 20% continuous active-dwell evidence
+ *   - up to 10% progressive difficulty-aware exceeded-time evidence (from SAME dwell ratio)
+ * - Quiz Accuracy: 35% (inverted)
+ * - Help Requests (text + voice): 15%
+ * - Quiz Answer Latency: 10%
+ * - Scroll / Backtracking: 10%
  */
 export function computeSessionStruggleScore(session) {
   if (!session) return 0;
 
   const signals = session.signals || {};
+
+  // 1. Difficulty Tier & Expected Baseline
+  const sections = Array.isArray(session.transformed?.sections)
+    ? session.transformed.sections
+    : Array.isArray(session.transformed?.chunks)
+      ? session.transformed.chunks
+      : [];
+
+  const currentSection = sections[session.activeSection || 0] || sections[0];
+  const difficultyTier = currentSection?.meta?.difficulty_tier || session.difficultyTier || "intermediate";
+  const baselineDwellSeconds = currentSection?.meta?.estimated_seconds || 60;
+
+  // 2. Quiz Performance & Accuracy
   const answeredList = session.practiceReport?.answered || [];
   const totalAnswered = answeredList.length;
   const correctCount = answeredList.filter((a) => a.is_correct || a.correct).length;
-  const accuracy = totalAnswered > 0 ? correctCount / totalAnswered : null;
+  const accuracy = totalAnswered > 0 ? (correctCount / totalAnswered) : (signals.questionAccuracy ?? null);
 
-  const helpRequests = (signals.helpRequests || 0) + (signals.voiceHelpRequests || 0);
-  const rereadCount = signals.rereadCount || signals.audioReplayCount || 0;
-  const retryCount = signals.retryCount || 0;
-  const dwellTime = signals.dwellTime || signals.activeDwellMs || 0;
-  const totalAdaptations = session.sessionMeta?.totalAdaptations || 0;
-  const isRewireActive = Boolean(session.rewireState?.active);
-  const completedCount = session.completedSections?.length || session.completed || 0;
-
-  // Interaction struggle from help queries, retries, excessive dwell, and adaptations:
-  // - Help/voice queries: +0.15 each (clear proportional steps)
-  // - Retries/wrong attempts: +0.12 each
-  // - Re-reads/audio replays: +0.08 each
-  // - Excessive active dwell (>45s): +0.12
-  // - Active REWIRE / adaptations: +0.25 base + 0.08 per adaptation
-  const interactionStruggle =
-    (helpRequests * 0.15) +
-    (retryCount * 0.12) +
-    (rereadCount * 0.08) +
-    (dwellTime > 45000 ? 0.12 : 0) +
-    (isRewireActive ? 0.25 : 0) +
-    (totalAdaptations * 0.08);
-
-  let rawScore = 0;
-
-  if (totalAnswered > 0) {
-    // When practice questions have been attempted:
-    // Balance quiz error rate and reading friction dynamically so that neither
-    // crushes the score down to an artificial plateau.
-    const errorRate = 1 - (accuracy ?? 1); // 0 (100% correct) to 1 (0% correct)
-    const friction = Math.min(1.0, interactionStruggle);
-
-    // Primary driver is the maximum of error rate and interaction friction (70%),
-    // blended with secondary context (30%)
-    const primary = Math.max(errorRate, friction);
-    const secondary = Math.min(errorRate, friction);
-    rawScore = (primary * 0.70) + (secondary * 0.30);
-
-    // If performance is genuinely clean (100% accuracy with zero help/retries), allow natural calm flow
-    if (accuracy === 1.0 && helpRequests === 0 && retryCount === 0 && !isRewireActive) {
-      rawScore = rawScore * 0.50;
+  // 3. Answer Latency
+  let latencyMs = signals.answerLatency || 0;
+  if (totalAnswered > 0 && (!latencyMs || latencyMs === 0)) {
+    const latencies = answeredList.map((a) => a.latency_ms || a.latency || 0).filter((l) => l > 0);
+    if (latencies.length > 0) {
+      latencyMs = latencies.reduce((a, b) => a + b, 0) / latencies.length;
     }
-  } else if (isRewireActive || session.rewireState?.evaluation) {
-    rawScore = session.rewireState.evaluation?.struggleScore || Math.max(0.60, interactionStruggle);
-  } else {
-    // Before quizzes: derived directly from interaction signals (help, rereads, dwell)
-    rawScore = Math.min(1.0, interactionStruggle);
   }
 
-  // Clean section completion relief:
-  // For cleanly completed sections (completed without help/retries), reduce struggle with a noticeable step (-0.05 per clean section)
-  const cleanSections = Math.max(0, completedCount - (helpRequests + retryCount));
-  if (cleanSections > 0 && !isRewireActive) {
-    rawScore = Math.max(0, rawScore - (cleanSections * 0.05));
-  }
+  // 4. Active Dwell (inclusive of in-flight timer if active)
+  const currentActiveDwellMs = (signals.activeDwellMs || signals.dwellTime || 0) +
+    (signals._dwellTimerStart ? Math.max(0, Date.now() - signals._dwellTimerStart) : 0);
 
-  // If REWIRE is active, floor at 0.60 so cognitive monitor stays consistent with REWIRE state
-  if (isRewireActive && rawScore < 0.60) {
-    rawScore = 0.60;
-  }
+  const rawSignals = {
+    dwellTime: currentActiveDwellMs,
+    activeDwellMs: currentActiveDwellMs,
+    questionAccuracy: accuracy,
+    helpRequests: signals.helpRequests || 0,
+    voiceHelpRequests: signals.voiceHelpRequests || 0,
+    answerLatency: latencyMs,
+    scrollBack: signals.scrollBack || 0,
+    audioReplayCount: 0,
+    rereadCount: 0,
+  };
 
-  // Ensure bounded strictly between 0.0 and 1.0
-  const score = Math.min(1.0, Math.max(0.0, rawScore));
+  const normalized = normalizeSignals(rawSignals, baselineDwellSeconds, null, difficultyTier);
+  let score = computeStruggleScore(normalized, difficultyTier);
+
+  // If REWIRE is active, floor at 0.60 to maintain consistency with active REWIRE state
+  if (session.rewireState?.active && score < 0.60) {
+    score = 0.60;
+  }
 
   return Number(score.toFixed(3));
 }
