@@ -2007,18 +2007,6 @@ function Profile() {
           </div>
 
           <div className="launch-bar-right">
-            {/* Verify Camera Pill Button */}
-            <button
-              type="button"
-              className="launch-cam-pill"
-              onClick={() => setShowCameraModal(true)}
-              title="Camera Verification Status"
-            >
-              <span className={`launch-cam-dot ${isCameraVerified ? "green" : "amber"}`} />
-              <I.Video size={13} />
-              <span>Verify Camera</span>
-            </button>
-
             {/* Back to upload */}
             <button
               type="button"
