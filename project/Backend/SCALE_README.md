@@ -42,30 +42,41 @@ Each section receives:
 **Where:** `app/services/scale.py::compute_struggle_score()`  
 **Triggered by:** Frontend sends signals to `/api/struggle-score`
 
-**Normalized Formula:**
+**Normalized Formula & Weights (Must Sum Exactly to 1.00 / 100%):**
 
-```
-dwell_ratio = actual_seconds / (baseline_seconds * difficulty_multiplier)
+```text
+dwell_ratio = actual_dwell_seconds / (baseline_seconds * difficulty_multiplier)
 
 struggle_score = 
-    0.35 × dwell_ratio
-  + 0.25 × normalized_reread_count
-  + 0.15 × help_request_flag
-  + 0.15 × quiz_incorrect_flag
-  + 0.10 × quiz_latency_ratio
+    0.20 × normalized_continuous_dwell
+  + min(max_difficulty_exceeded, progressive_exceeded_curve(dwell_ratio))
+  + 0.35 × normalized_quiz_accuracy (inverted)
+  + 0.15 × normalized_help_requests (text + voice)
+  + 0.10 × normalized_quiz_latency
+  + 0.10 × normalized_scroll_back
 ```
 
-**Weights** (configurable in `scale.py`):
-- `WEIGHT_DWELL = 0.35` — Time spent vs. expected
-- `WEIGHT_REREAD = 0.25` — Re-visiting behavior
-- `WEIGHT_HELP = 0.15` — Help/question requests
-- `WEIGHT_QUIZ_WRONG = 0.15` — Quiz performance
-- `WEIGHT_QUIZ_LATENCY = 0.10` — Quiz response speed
+**Final Authoritative Weights:**
+- `WEIGHT_DWELL_CONTINUOUS = 0.20` (20%) — Continuous active-dwell evidence
+- `WEIGHT_DWELL_EXCEEDED = 0.10` (max 10%) — Difficulty-aware exceeded-time evidence
+  - *Active Reading / Dwell total maximum weight = 30% (0.30)*
+- `WEIGHT_QUIZ_ACCURACY = 0.35` (35%) — Quiz accuracy (inverted: >=80% -> 0, <=20% -> 1.0)
+- `WEIGHT_HELP = 0.15` (15%) — Combined help requests (text + voice, >=3 -> 1.0)
+- `WEIGHT_QUIZ_LATENCY = 0.10` (10%) — Response latency (<=5s -> 0, >=20s -> 1.0)
+- `WEIGHT_SCROLL = 0.10` (10%) — Scroll / Backtracking reversals (>=3 -> 1.0)
+- **TOTAL = 1.00 (100%)**
+
+**Anti-Double-Counting Architecture:**
+Both continuous dwell (20%) and progressive exceeded-time (up to 10%) derive from the **SAME** `dwell_ratio = actual_dwell_seconds / expected_seconds`. Exceeded-time does not independently re-score dwell.
+Difficulty-specific exceeded caps:
+- **Foundational / Easy:** maximum contribution = 0.10
+- **Intermediate / Medium:** maximum contribution = 0.07
+- **Advanced / Hard:** maximum contribution = 0.05
+
+An Advanced learner taking longer than expected receives significantly lower struggle contribution than an Easy learner with the same relative overrun. Webcam attention contributes 0% directly to struggle score; it only gates whether active dwell accumulates. Audio replays contribute 0% directly.
 
 **Threshold:**
-- `REWIRE_THRESHOLD = 0.6` — Trigger adaptive intervention
-
-**Key insight:** A learner spending 3x time on FOUNDATIONAL content scores **higher** than spending 1.2x time on ADVANCED content, correctly prioritizing intervention.
+- `REWIRE_THRESHOLD = 0.60` — Trigger adaptive intervention
 
 ---
 
@@ -187,25 +198,31 @@ Now includes difficulty tagging by default.
 All configurable in `app/services/scale.py`:
 
 ```python
-# Difficulty time multipliers
-DIFFICULTY_MULTIPLIERS = {
-    "foundational": 1.0,
-    "intermediate": 1.6,
-    "advanced": 2.5,
+# Per-difficulty reading speeds (WPM)
+READING_SPEEDS_WPM = {
+    "foundational": 220,
+    "intermediate": 180,
+    "advanced":     140,
 }
 
-# Reading speed for baseline calculation
-AVERAGE_READING_SPEED_WPM = 200
+# Maximum difficulty-specific exceeded-time contributions (part of 10% exceeded component)
+DIFFICULTY_EXCEEDED_MAX_CONTRIBUTIONS = {
+    "foundational": 0.10,  # Easy: full 0.10 max
+    "intermediate": 0.07,  # Medium: 0.07 max
+    "advanced":     0.05,  # Hard: 0.05 max
+}
 
-# Struggle score weights (must sum to 1.0)
-WEIGHT_DWELL = 0.35
-WEIGHT_REREAD = 0.25
-WEIGHT_HELP = 0.15
-WEIGHT_QUIZ_WRONG = 0.15
-WEIGHT_QUIZ_LATENCY = 0.10
+# Authoritative weights (sum strictly to 1.00)
+WEIGHT_DWELL_CONTINUOUS = 0.20   # 20% continuous active-dwell
+WEIGHT_DWELL_EXCEEDED   = 0.10   # up to 10% difficulty-aware exceeded-time
+# Total Active Reading / Dwell = 0.30 (30%)
+WEIGHT_QUIZ_ACCURACY    = 0.35   # 35% quiz accuracy
+WEIGHT_HELP             = 0.15   # 15% help requests (text + voice)
+WEIGHT_QUIZ_LATENCY     = 0.10   # 10% quiz answer latency
+WEIGHT_SCROLL           = 0.10   # 10% scroll / backtracking
 
 # REWIRE trigger threshold
-REWIRE_THRESHOLD = 0.6
+REWIRE_THRESHOLD = 0.60
 ```
 
 ---

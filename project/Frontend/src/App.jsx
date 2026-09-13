@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from "react";
 import {
   NavLink,
+  Navigate,
   Route,
   Routes,
   useLocation,
@@ -536,6 +537,17 @@ export function SessionProvider({ children }) {
     });
   }
 
+  function recordTimeStruggleAction(sectionIndex, sectionText) {
+    setSession((current) => {
+      const currentCount = current.signals?.timeStruggleCount || 0;
+      const updatedSignals = {
+        ...current.signals,
+        timeStruggleCount: currentCount + 1,
+      };
+      return { ...current, signals: updatedSignals };
+    });
+  }
+
   async function getAdaptiveQuizAction(chunk) {
     return run("quiz", async () => {
       let quizData = null;
@@ -581,13 +593,17 @@ export function SessionProvider({ children }) {
   function dismissRewire() {
     setSession((current) => ({
       ...current,
-      rewireState: { ...current.rewireState, active: false },
+      rewireState: {
+        active: false,
+        trigger: null,
+        adaptedContent: null,
+        evaluation: null,
+      },
     }));
   }
 
   /**
-   * Update the active dwell time in the signal state.
-   * Called by the Learn component's active dwell timer on section transitions
+   * Update active dwell time. Called continuously during active reading
    * and section completion. The value passed is ONLY active learning time (ms).
    */
   function updateActiveDwell(activeDwellMs) {
@@ -637,6 +653,7 @@ export function SessionProvider({ children }) {
         recordRereadAction,
         recordHelpAction,
         recordVoiceHelpAction,
+        recordTimeStruggleAction,
         recordQuizAnswerAction,
         getAdaptiveQuizAction,
         dismissRewire,
@@ -665,7 +682,7 @@ function Layout({ children, section }) {
     <div className="app-container">
       <div className="desktop-layout">
         <aside className="desktop-sidebar">
-          <NavLink to="/progress" className="brand" style={{ marginBottom: 12 }}>
+          <NavLink to="/upload" className="brand" style={{ marginBottom: 12 }}>
             <img src="/logo.png" alt="AdaptLearn Logo" className="logo" />
             <div>
               <div className="brandname">AdaptLearn</div>
@@ -1489,12 +1506,15 @@ function Profile() {
     facePresent,
   } = useWebcam();
 
-  // Auto-start camera on Step 2 entry if not already started
+  // Auto-start camera on Step 2 entry if not already started; enforce no camera skip
   React.useEffect(() => {
-    if (!webcamEnabled && !webcamSkipped && webcamStatus === "off") {
+    if (webcamSkipped && setWebcamSkipped) {
+      setWebcamSkipped(false);
+    }
+    if (!webcamEnabled && webcamStatus === "off") {
       toggleCamera();
     }
-  }, [webcamEnabled, webcamSkipped, webcamStatus, toggleCamera]);
+  }, [webcamEnabled, webcamStatus, toggleCamera, webcamSkipped, setWebcamSkipped]);
 
   // Derived simulation states for seamless testing & grading
   const effectiveWebcamStatus =
@@ -1520,10 +1540,9 @@ function Profile() {
       ? true
       : camLoading || webcamStatus === "loading";
 
-  // Gate: Continue allowed if (camera ready AND face detected) OR skipped OR simulated detected
+  // Gate: Continue allowed ONLY if camera ready AND face detected (or simulated detected)
   const canContinue =
     ((effectiveWebcamStatus === "ready" && effectiveFacePresent) ||
-      webcamSkipped ||
       simState === "detected") &&
     !Boolean(busy);
 
@@ -1634,188 +1653,175 @@ function Profile() {
           </div>
         </div>
 
-        {/* ── Camera Presence Verification Card ─────────────────────── */}
+        {/* ── Camera Verification Card ── */}
         <section className="camera-verification-card">
-          <div className="camera-verification-header">
-            <div className="camera-verif-title-group">
-              <div className="camera-verif-title-row">
-                <div className="camera-verif-icon-box">
-                  <I.Video size={16} />
+            <div className="camera-verification-header">
+              <div className="camera-verif-title-group">
+                <div className="camera-verif-title-row">
+                  <div className="camera-verif-icon-box">
+                    <I.Video size={16} />
+                  </div>
+                  <span className="camera-verif-title">Camera Verification</span>
+                  <span className="camera-verif-private-pill">Private • On-device</span>
                 </div>
-                <span className="camera-verif-title">Camera Presence Verification</span>
-                <span className="camera-verif-private-pill">Private • On-device</span>
+                <p className="camera-verif-subtitle">
+                  Ensures you are present to dynamically adapt pacing. Required for adaptive learning.
+                </p>
               </div>
-              <p className="camera-verif-subtitle">
-                Ensures you are present to dynamically adapt pacing. No video is recorded or stored.
-              </p>
-            </div>
 
-            {/* Simulation controls */}
-            <div className="camera-sim-controls">
-              <span>SIMULATE:</span>
-              <button
-                type="button"
-                className={`camera-sim-btn ${simState === "starting" ? "active" : ""}`}
-                onClick={() => setSimState(simState === "starting" ? null : "starting")}
-              >
-                Starting
-              </button>
-              <span>|</span>
-              <button
-                type="button"
-                className={`camera-sim-btn ${simState === "no_face" ? "active" : ""}`}
-                onClick={() => setSimState(simState === "no_face" ? null : "no_face")}
-              >
-                No Face
-              </button>
-              <span>|</span>
-              <button
-                type="button"
-                className={`camera-sim-btn ${simState === "detected" ? "active" : ""}`}
-                onClick={() => setSimState(simState === "detected" ? null : "detected")}
-              >
-                Detected
-              </button>
-              <span>|</span>
-              <button
-                type="button"
-                className={`camera-sim-btn ${simState === "error" ? "active" : ""}`}
-                onClick={() => setSimState(simState === "error" ? null : "error")}
-              >
-                Error
-              </button>
-              {simState && (
+              {/* Simulation controls */}
+              <div className="camera-sim-controls">
+                <span>SIMULATE:</span>
                 <button
                   type="button"
-                  className="camera-sim-btn"
-                  style={{ color: "#ef4444", marginLeft: 4 }}
-                  onClick={() => setSimState(null)}
-                  title="Reset to live camera"
+                  className={`camera-sim-btn ${simState === "starting" ? "active" : ""}`}
+                  onClick={() => setSimState(simState === "starting" ? null : "starting")}
                 >
-                  ✕
+                  Starting
                 </button>
+                <span>|</span>
+                <button
+                  type="button"
+                  className={`camera-sim-btn ${simState === "no_face" ? "active" : ""}`}
+                  onClick={() => setSimState(simState === "no_face" ? null : "no_face")}
+                >
+                  No Face
+                </button>
+                <span>|</span>
+                <button
+                  type="button"
+                  className={`camera-sim-btn ${simState === "detected" ? "active" : ""}`}
+                  onClick={() => setSimState(simState === "detected" ? null : "detected")}
+                >
+                  Detected
+                </button>
+                <span>|</span>
+                <button
+                  type="button"
+                  className={`camera-sim-btn ${simState === "error" ? "active" : ""}`}
+                  onClick={() => setSimState(simState === "error" ? null : "error")}
+                >
+                  Error
+                </button>
+                {simState && (
+                  <button
+                    type="button"
+                    className="camera-sim-btn"
+                    style={{ color: "#ef4444", marginLeft: 4 }}
+                    onClick={() => setSimState(null)}
+                    title="Reset to live camera"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* HUD Viewport (Square format) */}
+            <div className="camera-hud-viewport square-viewport">
+              {/* Live Video Feed */}
+              {mediaStream && effectiveWebcamStatus !== "error" && effectiveWebcamStatus !== "off" && (
+                <CameraPreview stream={mediaStream} className="camera-hud-video" />
+              )}
+
+              {/* Fallback silhouette if camera off or loading */}
+              {(!mediaStream || effectiveWebcamStatus === "off" || effectiveCamLoading) && (
+                <div style={{ position: "absolute", display: "flex", flexDirection: "column", alignItems: "center", opacity: 0.22, pointerEvents: "none" }}>
+                  <svg width="120" height="120" viewBox="0 0 24 24" fill="currentColor" color="#94a3b8">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 4c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm0 14c-2.03 0-4.43-.82-6.14-2.88C7.55 15.8 9.68 15 12 15s4.45.8 6.14 2.12C16.43 19.18 14.03 20 12 20z" />
+                  </svg>
+                </div>
+              )}
+
+              {/* Top-left HUD badge */}
+              <div className="camera-hud-top-left">
+                <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: "#10b981", boxShadow: "0 0 6px #10b981" }} />
+                <span>LIVE FEED: PRISM</span>
+              </div>
+
+              {/* Top-right HUD badge */}
+              <div className="camera-hud-top-right">
+                <span>720p HD</span>
+              </div>
+
+              {/* Center Biometric Reticle */}
+              <div className="camera-hud-reticle-wrap">
+                <div className={`camera-hud-reticle ${effectiveFacePresent ? "detected" : effectiveCamLoading ? "loading" : "absent"}`}>
+                  <span className="camera-hud-reticle-tag">
+                    {effectiveCamLoading ? "CALIBRATING" : effectiveFacePresent ? "HEAD ALIGNED" : "POSITION HEAD"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Bottom HUD Banner */}
+              {effectiveCamLoading ? (
+                <div className="camera-hud-bottom-banner loading">
+                  <span className="camera-gate-spinner" style={{ width: 12, height: 12, borderTopColor: "#fff", marginRight: 6 }} />
+                  <span>Calibrating presence…</span>
+                </div>
+              ) : effectiveFacePresent ? (
+                <div className="camera-hud-bottom-banner detected">
+                  <I.Check size={14} strokeWidth={3} />
+                  <span>Face detected — Ready</span>
+                </div>
+              ) : effectiveWebcamStatus === "off" ? (
+                <button
+                  type="button"
+                  className="camera-hud-bottom-banner off"
+                  onClick={toggleCamera}
+                >
+                  <I.Video size={14} />
+                  <span>Enable camera</span>
+                </button>
+              ) : effectiveWebcamStatus === "error" || effectiveWebcamStatus === "denied" ? (
+                <div className="camera-hud-bottom-banner absent" style={{ background: "#ef4444" }}>
+                  <I.AlertCircle size={14} />
+                  <span>Camera unavailable</span>
+                </div>
+              ) : (
+                <div className="camera-hud-bottom-banner absent">
+                  <I.AlertTriangle size={14} />
+                  <span>Position head in frame</span>
+                </div>
               )}
             </div>
-          </div>
 
-          {/* HUD Viewport */}
-          <div className="camera-hud-viewport">
-            {/* Live Video Feed */}
-            {mediaStream && effectiveWebcamStatus !== "error" && effectiveWebcamStatus !== "off" && (
-              <CameraPreview stream={mediaStream} className="camera-hud-video" />
-            )}
-
-            {/* Fallback silhouette if camera off or loading */}
-            {(!mediaStream || effectiveWebcamStatus === "off" || effectiveCamLoading) && (
-              <div style={{ position: "absolute", display: "flex", flexDirection: "column", alignItems: "center", opacity: 0.22, pointerEvents: "none" }}>
-                <svg width="130" height="130" viewBox="0 0 24 24" fill="currentColor" color="#94a3b8">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 4c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm0 14c-2.03 0-4.43-.82-6.14-2.88C7.55 15.8 9.68 15 12 15s4.45.8 6.14 2.12C16.43 19.18 14.03 20 12 20z" />
-                </svg>
+            {/* 3 Telemetry Status Chips below HUD */}
+            <div className="camera-telemetry-grid">
+              <div className={`camera-telemetry-chip ${effectiveWebcamStatus === "ready" ? "success" : effectiveCamLoading ? "warn" : "neutral"}`}>
+                {effectiveWebcamStatus === "ready" ? <I.Check size={13} strokeWidth={2.5} /> : <I.Radio size={13} />}
+                <span>{effectiveWebcamStatus === "ready" ? "Camera connected" : effectiveCamLoading ? "Camera starting..." : "Camera offline"}</span>
               </div>
-            )}
 
-            {/* Top-left HUD badge */}
-            <div className="camera-hud-top-left">
-              <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: "#10b981", boxShadow: "0 0 6px #10b981" }} />
-              <span>LIVE FEED: PRISM</span>
-            </div>
+              <div className={`camera-telemetry-chip ${effectiveFacePresent ? "success" : "warn"}`}>
+                {effectiveFacePresent ? <I.Check size={13} strokeWidth={2.5} /> : <I.User size={13} />}
+                <span>{effectiveFacePresent ? "Face detected" : "No face detected"}</span>
+              </div>
 
-            {/* Top-right HUD badge */}
-            <div className="camera-hud-top-right">
-              <span>720p HD</span>
-            </div>
-
-            {/* Center Biometric Reticle */}
-            <div className="camera-hud-reticle-wrap">
-              <div className={`camera-hud-reticle ${effectiveFacePresent ? "detected" : effectiveCamLoading ? "loading" : "absent"}`}>
-                <span className="camera-hud-reticle-tag">
-                  {effectiveCamLoading ? "CALIBRATING" : effectiveFacePresent ? "HEAD ALIGNED" : "POSITION HEAD"}
-                </span>
+              <div className={`camera-telemetry-chip ${effectiveFacePresent && effectiveWebcamStatus === "ready" ? "success" : "neutral"}`}>
+                {effectiveFacePresent && effectiveWebcamStatus === "ready" ? <I.Sparkles size={13} /> : <I.Clock size={13} />}
+                <span>{effectiveFacePresent && effectiveWebcamStatus === "ready" ? "Ready for adaptive learning" : "Awaiting calibration"}</span>
               </div>
             </div>
-
-            {/* Bottom HUD Banner */}
-            {effectiveCamLoading ? (
-              <div className="camera-hud-bottom-banner loading">
-                <span className="camera-gate-spinner" style={{ width: 12, height: 12, borderTopColor: "#fff", marginRight: 6 }} />
-                <span>Calibrating presence…</span>
-              </div>
-            ) : effectiveFacePresent ? (
-              <div className="camera-hud-bottom-banner detected">
-                <I.Check size={15} strokeWidth={3} />
-                <span>Face detected — Ready to continue</span>
-              </div>
-            ) : effectiveWebcamStatus === "off" ? (
-              <button
-                type="button"
-                className="camera-hud-bottom-banner off"
-                onClick={toggleCamera}
-              >
-                <I.Video size={14} />
-                <span>Enable camera</span>
-              </button>
-            ) : effectiveWebcamStatus === "error" || effectiveWebcamStatus === "denied" ? (
-              <div className="camera-hud-bottom-banner absent" style={{ background: "#ef4444" }}>
-                <I.AlertCircle size={14} />
-                <span>Camera unavailable — Use skip below</span>
-              </div>
-            ) : (
-              <div className="camera-hud-bottom-banner absent">
-                <I.AlertTriangle size={14} />
-                <span>Face not detected — Position in frame</span>
-              </div>
-            )}
-          </div>
-
-          {/* 3 Telemetry Status Chips below HUD */}
-          <div className="camera-telemetry-grid">
-            <div className={`camera-telemetry-chip ${effectiveWebcamStatus === "ready" ? "success" : effectiveCamLoading ? "warn" : "neutral"}`}>
-              {effectiveWebcamStatus === "ready" ? <I.Check size={13} strokeWidth={2.5} /> : <I.Radio size={13} />}
-              <span>{effectiveWebcamStatus === "ready" ? "Camera connected" : effectiveCamLoading ? "Camera starting..." : "Camera offline"}</span>
-            </div>
-
-            <div className={`camera-telemetry-chip ${effectiveFacePresent ? "success" : "warn"}`}>
-              {effectiveFacePresent ? <I.Check size={13} strokeWidth={2.5} /> : <I.User size={13} />}
-              <span>{effectiveFacePresent ? "Face detected" : "No face detected"}</span>
-            </div>
-
-            <div className={`camera-telemetry-chip ${(effectiveFacePresent && effectiveWebcamStatus === "ready") || webcamSkipped ? "success" : "neutral"}`}>
-              {(effectiveFacePresent && effectiveWebcamStatus === "ready") || webcamSkipped ? <I.Sparkles size={13} /> : <I.Clock size={13} />}
-              <span>{(effectiveFacePresent && effectiveWebcamStatus === "ready") || webcamSkipped ? "Ready for adaptive learning" : "Awaiting calibration"}</span>
-            </div>
-          </div>
-
-          {/* Hardware fallback skip link */}
-          {(effectiveWebcamStatus === "error" || effectiveWebcamStatus === "denied" || (!effectiveFacePresent && !webcamSkipped)) && (
-            <div style={{ marginTop: 12, textAlign: "right" }}>
-              <button
-                type="button"
-                className="camera-gate-skip-link"
-                onClick={() => setWebcamSkipped(true)}
-                style={{ fontSize: 11.5, color: "#64748b", textDecoration: "underline", background: "none", border: "none", cursor: "pointer" }}
-              >
-                Skip camera requirement (text-only mode)
-              </button>
-            </div>
-          )}
-        </section>
+          </section>
 
         <ErrorNotice />
 
-        {/* ── Bottom Launch Session Bar ──────────────────────────────── */}
-        <div className="launch-session-bar">
+        {/* Launch Session Console Bar (Exact Screenshot 2 Match) */}
+        <section className="launch-session-bar">
           <div className="launch-bar-left">
             <div className="launch-bar-meta">
-              <span style={{ color: "#fce072", fontSize: 13 }}>✦</span>
-              <span>Ready in ~4 seconds • Configured for {PROFILE_LABELS[session.profile] || "Adaptive Learning"}</span>
+              <span className="launch-bar-sparkle">✦</span>
+              <span>Ready in ~4 seconds • Configured for {PROFILE_LABELS[session.profile] || "Cognitive load support"}</span>
             </div>
             <h2 className="launch-bar-title">Launch your customized learning session</h2>
             <p className="launch-bar-subtitle">
-              Our adaptive AI will customize cognitive load &amp; pacing instantly
+              OUR ADAPTIVE AI WILL CUSTOMIZE COGNITIVE LOAD &amp; PACING INSTANTLY
             </p>
           </div>
 
           <div className="launch-bar-right">
+            {/* Back to upload */}
             <button
               type="button"
               className="launch-back-btn"
@@ -1824,20 +1830,21 @@ function Profile() {
               Back to upload
             </button>
 
+            {/* Transform Lesson button */}
             <button
               type="button"
               className="launch-transform-btn"
-              disabled={!canContinue}
+              disabled={!canContinue || Boolean(busy)}
               onClick={async () => {
                 await adapt();
                 navigate("/learn");
               }}
             >
               <span>{busy === "transform" ? "Adapting lesson…" : "Transform Lesson"}</span>
-              <I.Sparkles size={16} />
+              <I.Sparkles size={14} />
             </button>
           </div>
-        </div>
+        </section>
       </main>
     </Layout>
   );
@@ -2284,6 +2291,7 @@ function Learn() {
     recordRereadAction,
     recordHelpAction,
     recordVoiceHelpAction,
+    recordTimeStruggleAction,
     dismissRewire,
     updateActiveDwell,
     resetDwellForNewSection,
@@ -2297,6 +2305,7 @@ function Learn() {
 
   // Face presence from shared webcam hook
   const facePresent = webcamHook.facePresent;
+  const isFaceAway = Boolean(webcamHook.webcamStatus === "ready" && !webcamHook.webcamSkipped && !facePresent);
 
   // Fire contextual toasts on webcam state transitions
   useWebcamToasts({
@@ -2332,6 +2341,7 @@ function Learn() {
   // ── Active Dwell Timer ──────────────────────────────────────────────────────
   // Tracks ONLY active learning time. Pauses during:
   //   • tab hidden (visibilitychange)
+  //   • face not detected (user away from camera)
   //   • busy operations (loading, generation, quiz gen)
   //   • section not yet ready
   // Resets on section switch. Uses refs to avoid re-render loops.
@@ -2384,9 +2394,9 @@ function Learn() {
   }, [activeSection]);
 
   // Effect 2: Start/stop timer based on conditions
-  // Timer runs ONLY when: transformed + not busy + sectionContentReady + tab visible
+  // Timer runs ONLY when: transformed + not busy + sectionContentReady + tab visible + face present
   useEffect(() => {
-    const canTime = transformed && !busy && sectionContentReady && !document.hidden;
+    const canTime = transformed && !busy && sectionContentReady && !document.hidden && !isFaceAway;
     if (canTime) {
       resumeDwellTimer();
     } else {
@@ -2395,22 +2405,22 @@ function Learn() {
     // Sync active dwell into signals whenever conditions change
     updateActiveDwell(getCurrentActiveDwellMs());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busy, transformed, sectionContentReady]);
+  }, [busy, transformed, sectionContentReady, isFaceAway]);
 
   // Effect 3: Visibility change — pause on tab hidden, resume on visible
   useEffect(() => {
     function onVisibilityChange() {
-      if (document.hidden) {
+      if (document.hidden || isFaceAway) {
         pauseDwellTimer();
         updateActiveDwell(getCurrentActiveDwellMs());
-      } else if (transformed && !busy && sectionContentReady) {
+      } else if (transformed && !busy && sectionContentReady && !isFaceAway) {
         resumeDwellTimer();
       }
     }
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transformed, busy, sectionContentReady]);
+  }, [transformed, busy, sectionContentReady, isFaceAway]);
 
   // Cleanup: flush dwell on unmount (route change away from /learn)
   useEffect(() => {
@@ -2535,11 +2545,79 @@ function Learn() {
   const sectionDifficulty = currentSection?.meta?.difficulty_tier || resolveSectionDifficulty(currentSection, activeSection, sections.length);
   const estimatedSeconds = currentSection?.meta?.estimated_seconds || 60;
 
+  // ── Reading Friction Timer ───────────────────────────────────────────────────
+  // Internal reading timer for the current section (no countdown displayed on screen).
+  // Includes a 5-second grace threshold for initial page load / reading orientation.
+  // Pauses automatically when the user's face is not detected (isFaceAway is true).
+  // When active reading time exceeds estimatedSeconds + 5s, inline assistance is triggered
+  // beside the prompt buttons, an assistance toast is displayed, and struggle score increases by 10%.
+  const [activeReadSeconds, setActiveReadSeconds] = useState(0);
+  const [struggleTriggered, setStruggleTriggered] = useState(false);
+  const sectionStruggleFiredRef = useRef(new Set());
+  const elapsedReadSecondsRef = useRef(0);
+
+  // Keep fresh refs for timer interval callback so interval is NOT torn down on every webcam frame
+  const estimatedSecondsRef = useRef(estimatedSeconds);
+  estimatedSecondsRef.current = estimatedSeconds;
+
+  const activeSectionRef = useRef(activeSection);
+  activeSectionRef.current = activeSection;
+
+  const currentSectionRef = useRef(currentSection);
+  currentSectionRef.current = currentSection;
+
+  const isFaceAwayRef = useRef(isFaceAway);
+  isFaceAwayRef.current = isFaceAway;
+
+  const canRunTimerRef = useRef(true);
+  canRunTimerRef.current = Boolean(transformed && sectionContentReady && !document.hidden && !isFaceAway);
+
+  const recordTimeStruggleRef = useRef(recordTimeStruggleAction);
+  recordTimeStruggleRef.current = recordTimeStruggleAction;
+
+  const pushToastRef = useRef(pushToast);
+  pushToastRef.current = pushToast;
+
+  // Reset read timer & triggered flag when navigating between sections
+  useEffect(() => {
+    elapsedReadSecondsRef.current = 0;
+    setActiveReadSeconds(0);
+    setStruggleTriggered(false);
+  }, [activeSection]);
+
+  // Stable read timer ticker: runs once, inspects refs every 1s
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!canRunTimerRef.current) return;
+
+      elapsedReadSecondsRef.current += 1;
+      setActiveReadSeconds(elapsedReadSecondsRef.current);
+
+      const secIdx = activeSectionRef.current;
+      const targetThreshold = (estimatedSecondsRef.current || 25) + 5;
+
+      console.log(`[PRISM Timer] Section ${secIdx + 1}: ${elapsedReadSecondsRef.current}s / ${targetThreshold}s`);
+
+      if (elapsedReadSecondsRef.current >= targetThreshold && !sectionStruggleFiredRef.current.has(secIdx)) {
+        sectionStruggleFiredRef.current.add(secIdx);
+        setStruggleTriggered(true);
+
+        // Record struggle signal
+        if (recordTimeStruggleRef.current) {
+          recordTimeStruggleRef.current(secIdx, currentSectionRef.current?.paragraph);
+        }
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   const evaluation = evaluateSignals(
     session.signals, 
     session.sessionMeta, 
     null, 
-    estimatedSeconds
+    estimatedSeconds,
+    sectionDifficulty
   );
   const struggleScore = evaluation.struggleScore;
   const lessonClass =
@@ -2817,6 +2895,11 @@ function Learn() {
                 </div>
                 <span className="lesson-card-readtime">
                   Estimated read: {formatReadTime(estimatedSeconds)}
+                  {isFaceAway && (
+                    <span className="readtime-paused-pill" title="Reading timer paused because face is not detected">
+                      ⏸ (Paused)
+                    </span>
+                  )}
                 </span>
                 {/* Webcam status badge — shows current relevant state */}
                 <WebcamStatusBadge
@@ -2876,9 +2959,16 @@ function Learn() {
 
                     <span className="audio-ribbon-divider" />
 
+                    {struggleTriggered && (
+                      <div className="struggle-inline-hint" role="status">
+                        <I.Sparkles size={12} className="struggle-hint-icon" />
+                        <span>Struggling with this explanation?</span>
+                      </div>
+                    )}
+
                     <button
                       type="button"
-                      className="audio-tool-btn prompt-tool-btn"
+                      className={`audio-tool-btn prompt-tool-btn ${struggleTriggered ? "highlighted" : ""}`}
                       onClick={() => handleTriggerVoicePrompt("Explain this section in very simple terms.")}
                       title="Ask AI Assistant to explain this section simply"
                     >
@@ -2888,7 +2978,7 @@ function Learn() {
 
                     <button
                       type="button"
-                      className="audio-tool-btn prompt-tool-btn"
+                      className={`audio-tool-btn prompt-tool-btn ${struggleTriggered ? "highlighted" : ""}`}
                       onClick={() => handleTriggerVoicePrompt("Give me an intuitive, real-world example of this concept.")}
                       title="Ask AI Assistant for an intuitive real-world example"
                     >
@@ -2898,7 +2988,7 @@ function Learn() {
 
                     <button
                       type="button"
-                      className="audio-tool-btn prompt-tool-btn"
+                      className={`audio-tool-btn prompt-tool-btn ${struggleTriggered ? "highlighted" : ""}`}
                       onClick={() => handleTriggerVoicePrompt("What is the single most important point in this section?")}
                       title="Ask AI Assistant for the key takeaway"
                     >
@@ -4927,7 +5017,7 @@ function App() {
       <WebcamProvider>
         <ToastProvider>
           <Routes>
-            <Route path="/" element={<Progress />} />
+            <Route path="/" element={<Navigate to="/upload" replace />} />
             <Route path="/upload" element={<Upload />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/learn" element={<Learn />} />

@@ -28,9 +28,6 @@ export function showFaceNotDetectedAlert(push, I) {
     title: 'Face not detected',
     body: "PRISM can't detect your face right now. Attention signals may be unavailable.",
     duration: 0,
-    actions: [
-      { label: 'Check camera', onClick: () => {} },
-    ],
   });
 }
 

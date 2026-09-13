@@ -9,13 +9,35 @@
 
 // ─── Named Weights (Must Sum Exactly to 1.00) ─────────────────────────────────
 
-export const DWELL_WEIGHT          = 0.30; // normalized active dwell ratio
-export const QUIZ_ACCURACY_WEIGHT  = 0.30; // normalized quiz accuracy (inverted)
-export const HELP_REQUEST_WEIGHT   = 0.15; // normalized combined help requests (text + voice)
-export const QUIZ_LATENCY_WEIGHT   = 0.10; // normalized quiz response latency
-export const SCROLL_BACK_WEIGHT    = 0.05; // normalized scroll-back / backtracking
-export const AUDIO_REPLAY_WEIGHT   = 0.05; // normalized audio / TTS replay
-export const WEBCAM_CONTEXT_WEIGHT = 0.05; // normalized webcam attention context
+export const DWELL_CONTINUOUS_WEIGHT   = 0.20; // continuous active-dwell evidence (20%)
+export const DWELL_EXCEEDED_WEIGHT     = 0.10; // difficulty-aware exceeded-time evidence (max 10%)
+export const DWELL_WEIGHT              = 0.30; // total active reading / dwell behavior (30%)
+export const QUIZ_ACCURACY_WEIGHT      = 0.35; // normalized quiz accuracy (inverted) (35%)
+export const HELP_REQUEST_WEIGHT       = 0.15; // normalized combined help requests (text + voice) (15%)
+export const QUIZ_LATENCY_WEIGHT       = 0.10; // normalized quiz response latency (10%)
+export const SCROLL_BACK_WEIGHT        = 0.10; // normalized scroll-back / backtracking (10%)
+export const AUDIO_REPLAY_WEIGHT       = 0.00; // audio control, not score input (0%)
+export const WEBCAM_CONTEXT_WEIGHT     = 0.00; // webcam gates dwell only, not direct score (0%)
+
+// Reading speeds by difficulty tier (WPM)
+export const READING_SPEEDS_WPM = {
+  foundational: 220,
+  intermediate: 180,
+  advanced:     140,
+};
+
+// Maximum difficulty-specific exceeded-time contribution (part of 10% exceeded component)
+export const DIFFICULTY_EXCEEDED_MAX = {
+  foundational: 0.10, // Easy: full 0.10 max
+  intermediate: 0.07, // Medium: 0.07 max
+  advanced:     0.05, // Hard: 0.05 max
+};
+
+export const DIFFICULTY_MULTIPLIERS = {
+  foundational: 1.0,
+  intermediate: 1.6,
+  advanced:     2.5,
+};
 
 // ─── Named Baseline & Critical Constants ─────────────────────────────────────
 
@@ -78,6 +100,8 @@ export const SCALE_CONFIG = {
   AUDIO_REPLAY_CRITICAL,
 
   WEIGHTS: {
+    dwellContinuous:  DWELL_CONTINUOUS_WEIGHT,
+    dwellExceeded:    DWELL_EXCEEDED_WEIGHT,
     dwellTime:        DWELL_WEIGHT,
     questionAccuracy: QUIZ_ACCURACY_WEIGHT,
     helpRequests:     HELP_REQUEST_WEIGHT,
@@ -102,38 +126,81 @@ export function normalizeInverted(value, baseline, criticalThreshold) {
   return (baseline - value) / (baseline - criticalThreshold);
 }
 
+// ─── Difficulty-Aware Exceeded Time Contribution ─────────────────────────────
+
+/**
+ * Computes the progressive difficulty-aware exceeded-time contribution (up to 10% max).
+ * Derived from the SAME dwellRatio (activeDwellSec / baselineSec) to prevent double-counting.
+ *
+ * Difficulty caps:
+ *   - foundational (Easy): 0.10 max
+ *   - intermediate (Medium): 0.07 max
+ *   - advanced (Hard): 0.05 max
+ *
+ * Progression:
+ *   - ratio <= 1.00: 0.0
+ *   - 1.00 < ratio <= 1.25: small contribution (up to 30% of max)
+ *   - 1.25 < ratio < 1.50: moderate contribution (30% to 100% of max)
+ *   - ratio >= 1.50: maximum difficulty contribution
+ */
+export function computeExceededTimeContribution(dwellRatio, difficultyTier = "intermediate") {
+  const tier = (difficultyTier || "intermediate").toLowerCase();
+  const maxExceeded = DIFFICULTY_EXCEEDED_MAX[tier] ?? 0.07;
+
+  if (dwellRatio <= 1.00) {
+    return 0.0;
+  } else if (dwellRatio <= 1.25) {
+    return 0.30 * maxExceeded * ((dwellRatio - 1.00) / 0.25);
+  } else if (dwellRatio < 1.50) {
+    return maxExceeded * (0.30 + 0.70 * ((dwellRatio - 1.25) / 0.25));
+  } else {
+    return maxExceeded;
+  }
+}
+
 // ─── Signal Normalization ────────────────────────────────────────────────────
 
 /**
  * Normalizes raw signals against section-specific baselines and named thresholds.
  *
- * All returned values are bounded in [0.0, 1.0].
+ * All returned normalized components are bounded in [0.0, 1.0].
  */
-export function normalizeSignals(rawSignals, baselineDwellSeconds = null, webcamContext = null) {
+export function normalizeSignals(
+  rawSignals,
+  baselineDwellSeconds = null,
+  webcamContext = null,
+  difficultyTier = "intermediate"
+) {
   const normalized = {};
 
-  // 1. Active Dwell Time (Section-Specific Ratio)
+  // 1. Active Reading / Dwell Behavior (30% total weight)
+  // Derived from the SAME active dwell ratio to avoid double counting
   const activeDwellMs = rawSignals.dwellTime ?? rawSignals.activeDwellMs ?? 0;
   const activeDwellSec = activeDwellMs / 1000;
   const baselineSec = (baselineDwellSeconds && baselineDwellSeconds > 0)
     ? baselineDwellSeconds
     : SCALE_CONFIG.DEFAULT_BASELINE_DWELL_SECONDS;
 
-  if (activeDwellSec < SCALE_CONFIG.MIN_MEANINGFUL_DWELL_SECONDS) {
-    normalized.dwellTime = 0.0;
-  } else {
-    const dwellRatio = activeDwellSec / baselineSec;
-    if (dwellRatio <= 1.0) {
-      normalized.dwellTime = 0.0;
-    } else if (dwellRatio >= SCALE_CONFIG.DWELL_CRITICAL_RATIO) {
-      normalized.dwellTime = 1.0;
-    } else {
-      normalized.dwellTime = (dwellRatio - 1.0) / (SCALE_CONFIG.DWELL_CRITICAL_RATIO - 1.0);
-    }
+  let dwellRatio = 0.0;
+  if (activeDwellSec >= SCALE_CONFIG.MIN_MEANINGFUL_DWELL_SECONDS) {
+    dwellRatio = activeDwellSec / baselineSec;
   }
 
-  // 2. Question Accuracy (Inverted: accuracy >= 0.80 -> 0; <= 0.20 -> 1.0)
-  // E.g. accuracy 0.60 -> (0.80 - 0.60) / (0.80 - 0.20) = 0.20 / 0.60 = 0.3333...
+  // 1a. Continuous Active Dwell (20% max)
+  if (dwellRatio <= 1.0) {
+    normalized.dwellContinuous = 0.0;
+  } else if (dwellRatio >= SCALE_CONFIG.DWELL_CRITICAL_RATIO) {
+    normalized.dwellContinuous = 1.0;
+  } else {
+    normalized.dwellContinuous = (dwellRatio - 1.0) / (SCALE_CONFIG.DWELL_CRITICAL_RATIO - 1.0);
+  }
+
+  // 1b. Difficulty-Aware Exceeded-Time (Up to 10% max)
+  normalized.dwellExceeded = computeExceededTimeContribution(dwellRatio, difficultyTier);
+  normalized.dwellRatio = dwellRatio;
+  normalized.dwellTime = normalized.dwellContinuous; // backward compat alias
+
+  // 2. Question Accuracy (35% max, Inverted: accuracy >= 0.80 -> 0; <= 0.20 -> 1.0)
   const accuracy = rawSignals.questionAccuracy;
   if (accuracy === null || accuracy === undefined) {
     normalized.questionAccuracy = 0.0;
@@ -147,7 +214,7 @@ export function normalizeSignals(rawSignals, baselineDwellSeconds = null, webcam
       (SCALE_CONFIG.ACCURACY_NORMAL_BASELINE - SCALE_CONFIG.ACCURACY_CRITICAL);
   }
 
-  // 3. Help Requests (Unified: Text Help + Voice Help)
+  // 3. Help Requests (15% max, Unified: Text Help + Voice Help, >=3 -> 1.0)
   const totalHelp = (rawSignals.helpRequests ?? 0) + (rawSignals.voiceHelpRequests ?? 0);
   if (totalHelp <= SCALE_CONFIG.HELP_NORMAL_BASELINE) {
     normalized.helpRequests = 0.0;
@@ -159,7 +226,7 @@ export function normalizeSignals(rawSignals, baselineDwellSeconds = null, webcam
       (SCALE_CONFIG.HELP_CRITICAL - SCALE_CONFIG.HELP_NORMAL_BASELINE);
   }
 
-  // 4. Question Response Latency
+  // 4. Question Response Latency (10% max, <= 5s -> 0, >= 20s -> 1.0)
   const latency = rawSignals.answerLatency ?? 0;
   if (latency <= SCALE_CONFIG.LATENCY_NORMAL_BASELINE) {
     normalized.answerLatency = 0.0;
@@ -171,7 +238,7 @@ export function normalizeSignals(rawSignals, baselineDwellSeconds = null, webcam
       (SCALE_CONFIG.LATENCY_CRITICAL - SCALE_CONFIG.LATENCY_NORMAL_BASELINE);
   }
 
-  // 5. Scroll-Back / Backtracking
+  // 5. Scroll-Back / Backtracking (10% max, >= 3 -> 1.0)
   const scroll = rawSignals.scrollBack ?? 0;
   if (scroll <= SCALE_CONFIG.SCROLL_BACK_NORMAL_BASELINE) {
     normalized.scrollBack = 0.0;
@@ -183,45 +250,12 @@ export function normalizeSignals(rawSignals, baselineDwellSeconds = null, webcam
       (SCALE_CONFIG.SCROLL_BACK_CRITICAL - SCALE_CONFIG.SCROLL_BACK_NORMAL_BASELINE);
   }
 
-  // 6. Audio / TTS Replay (formerly rereadCount)
-  const audioReplay =
-    rawSignals.audioReplayCount ??
-    rawSignals.audio_replay_count ??
-    rawSignals.rereadCount ??
-    0;
-  if (audioReplay <= SCALE_CONFIG.AUDIO_REPLAY_NORMAL_BASELINE) {
-    normalized.audioReplay = 0.0;
-  } else if (audioReplay >= SCALE_CONFIG.AUDIO_REPLAY_CRITICAL) {
-    normalized.audioReplay = 1.0;
-  } else {
-    normalized.audioReplay =
-      (audioReplay - SCALE_CONFIG.AUDIO_REPLAY_NORMAL_BASELINE) /
-      (SCALE_CONFIG.AUDIO_REPLAY_CRITICAL - SCALE_CONFIG.AUDIO_REPLAY_NORMAL_BASELINE);
-  }
-  // Backward compatibility alias for legacy readers
-  normalized.rereadCount = normalized.audioReplay;
+  // 6. Audio / TTS Replay (0% score weight, user convenience control)
+  normalized.audioReplay = 0.0;
+  normalized.rereadCount = 0.0;
 
-  // 7. Webcam Attention Context (Supporting Evidence)
-  const wc = webcamContext ?? rawSignals.webcamContext ?? null;
-  if (!wc) {
-    normalized.webcamContext = 0.0;
-  } else {
-    const presenceRatio = wc.presence_ratio ?? wc.presenceRatio ?? 1;
-    const facePresent = wc.face_present_now ?? wc.facePresentNow ?? wc.facePresent ?? true;
-    const tabFocused = wc.tab_focused_now ?? wc.tabFocusedNow ?? wc.tabFocused ?? true;
-    const headStable = wc.head_stable_now ?? wc.headStableNow ?? wc.headStable ?? true;
-    const scrollConsistent = wc.scroll_consistent_now ?? wc.scrollConsistentNow ?? wc.scrollConsistent ?? true;
-
-    const presenceScore = (!facePresent || presenceRatio < 0.5) ? Math.min(1.0, (1.0 - presenceRatio)) : 0.0;
-    const tabScore = !tabFocused ? 1.0 : 0.0;
-    const headScore = !headStable ? 1.0 : 0.0;
-    const scrollScore = !scrollConsistent ? 1.0 : 0.0;
-
-    normalized.webcamContext = Math.min(
-      1.0,
-      presenceScore * 0.4 + tabScore * 0.3 + headScore * 0.15 + scrollScore * 0.15
-    );
-  }
+  // 7. Webcam Attention Context (Gates active dwell accumulation only, 0% direct weight)
+  normalized.webcamContext = 0.0;
 
   return normalized;
 }
@@ -229,19 +263,44 @@ export function normalizeSignals(rawSignals, baselineDwellSeconds = null, webcam
 // ─── Authoritative Struggle Score Computation ────────────────────────────────
 
 /**
- * Computes the unified struggle score as a weighted sum of all normalized signals.
+ * Computes the authoritative unified struggle score as a weighted sum of normalized signals.
+ *
+ * Follows the PRISM SCALE Final Authoritative Scoring Model:
+ * - Active Reading / Dwell Behavior: 30%
+ *   - 20% continuous active-dwell evidence
+ *   - up to 10% progressive difficulty-aware exceeded-time evidence (from the SAME dwellRatio)
+ * - Quiz Accuracy: 35%
+ * - Help Requests (text + voice): 15%
+ * - Quiz Answer Latency: 10%
+ * - Scroll / Backtracking: 10%
+ * TOTAL = 100% (1.00)
  *
  * Clamped strictly to [0.0, 1.0].
  */
-export function computeStruggleScore(normalizedSignals) {
+export function computeStruggleScore(normalizedSignals, difficultyTier = "intermediate") {
   let score = 0;
-  score += (normalizedSignals.dwellTime ?? 0)        * SCALE_CONFIG.WEIGHTS.dwellTime;
+
+  // 1a. Continuous Active Dwell (20% max)
+  const dwellContinuous = normalizedSignals.dwellContinuous ?? normalizedSignals.dwellTime ?? 0;
+  score += dwellContinuous * SCALE_CONFIG.WEIGHTS.dwellContinuous;
+
+  // 1b. Difficulty-Aware Exceeded-Time (Up to 10% max)
+  const dwellExceeded = (normalizedSignals.dwellExceeded !== undefined)
+    ? normalizedSignals.dwellExceeded
+    : computeExceededTimeContribution(normalizedSignals.dwellRatio ?? 1.0, difficultyTier);
+  score += dwellExceeded;
+
+  // 2. Quiz Accuracy (35% max)
   score += (normalizedSignals.questionAccuracy ?? 0) * SCALE_CONFIG.WEIGHTS.questionAccuracy;
-  score += (normalizedSignals.helpRequests ?? 0)     * SCALE_CONFIG.WEIGHTS.helpRequests;
-  score += (normalizedSignals.answerLatency ?? 0)    * SCALE_CONFIG.WEIGHTS.answerLatency;
-  score += (normalizedSignals.scrollBack ?? 0)       * SCALE_CONFIG.WEIGHTS.scrollBack;
-  score += (normalizedSignals.audioReplay ?? 0)      * SCALE_CONFIG.WEIGHTS.audioReplay;
-  score += (normalizedSignals.webcamContext ?? 0)    * SCALE_CONFIG.WEIGHTS.webcamContext;
+
+  // 3. Help Requests (15% max)
+  score += (normalizedSignals.helpRequests ?? 0) * SCALE_CONFIG.WEIGHTS.helpRequests;
+
+  // 4. Answer Latency (10% max)
+  score += (normalizedSignals.answerLatency ?? 0) * SCALE_CONFIG.WEIGHTS.answerLatency;
+
+  // 5. Scroll / Backtracking (10% max)
+  score += (normalizedSignals.scrollBack ?? 0) * SCALE_CONFIG.WEIGHTS.scrollBack;
 
   return Math.min(1.0, Math.max(0.0, score));
 }
@@ -363,11 +422,12 @@ export function scaleEvaluate(
   currentVariantLevel,
   sessionMeta,
   baselineDwellSeconds = null,
-  webcamContext = null
+  webcamContext = null,
+  difficultyTier = "intermediate"
 ) {
   // Step 1: SIGNAL & CALIBRATE — normalize against section-specific baselines
-  const normalized = normalizeSignals(rawSignals, baselineDwellSeconds, webcamContext);
-  const struggleScore = computeStruggleScore(normalized);
+  const normalized = normalizeSignals(rawSignals, baselineDwellSeconds, webcamContext, difficultyTier);
+  const struggleScore = computeStruggleScore(normalized, difficultyTier);
 
   // Check cooldown
   if (isCooldownActive(sessionMeta?.lastAdaptationChunksAgo)) {

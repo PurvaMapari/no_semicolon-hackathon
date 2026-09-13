@@ -42,12 +42,21 @@ DEFAULT_READING_SPEED_WPM = 180
 # still compile; new code must use READING_SPEEDS_WPM.
 AVERAGE_READING_SPEED_WPM = DEFAULT_READING_SPEED_WPM
 
-# Struggle score component weights (must sum to 1.0)
-WEIGHT_DWELL = 0.35
-WEIGHT_REREAD = 0.25
-WEIGHT_HELP = 0.15
-WEIGHT_QUIZ_WRONG = 0.15
-WEIGHT_QUIZ_LATENCY = 0.10
+# Struggle score component weights (must sum exactly to 1.0)
+WEIGHT_DWELL_CONTINUOUS = 0.20   # Continuous active-dwell evidence
+WEIGHT_DWELL_EXCEEDED = 0.10     # Difficulty-aware exceeded-time evidence (max)
+# Active Reading / Dwell total weight = 0.30 (30%)
+WEIGHT_QUIZ_ACCURACY = 0.35      # Quiz accuracy (inverted) = 35%
+WEIGHT_HELP = 0.15               # Help requests (text + voice) = 15%
+WEIGHT_QUIZ_LATENCY = 0.10       # Quiz response latency = 10%
+WEIGHT_SCROLL = 0.10             # Scroll-back / backtracking = 10%
+
+# Maximum difficulty-specific exceeded-time contribution (part of the 10% exceeded component)
+DIFFICULTY_EXCEEDED_MAX_CONTRIBUTIONS = {
+    "foundational": 0.10,  # Easy: full 0.10 max
+    "intermediate": 0.07,  # Medium: 0.07 max
+    "advanced":     0.05,  # Hard: 0.05 max
+}
 
 # REWIRE trigger threshold
 REWIRE_THRESHOLD = 0.6
@@ -184,144 +193,214 @@ def tag_section_difficulty(lesson_text: str) -> List[Dict[str, Any]]:
 # STRUGGLE SCORE COMPUTATION (Task 2)
 # ──────────────────────────────────────────────────────────────────────────────
 
+def compute_exceeded_time_contribution(dwell_ratio: float, difficulty_tier: str = "intermediate") -> float:
+    """
+    Compute the progressive difficulty-aware exceeded-time contribution (part of the 30% dwell weight, max 0.10).
+    Uses the SAME dwell_ratio (actual / expected) as continuous dwell to prevent double-counting.
+    
+    Difficulty caps:
+      - foundational (Easy): 0.10 max
+      - intermediate (Medium): 0.07 max
+      - advanced (Hard): 0.05 max
+      
+    Progression:
+      - ratio <= 1.00: 0.0
+      - 1.00 < ratio <= 1.25: small contribution (up to 30% of max)
+      - 1.25 < ratio < 1.50: moderate contribution (30% to 100% of max)
+      - ratio >= 1.50: maximum difficulty contribution
+    """
+    tier = (difficulty_tier or "intermediate").lower()
+    max_exceeded = DIFFICULTY_EXCEEDED_MAX_CONTRIBUTIONS.get(tier, 0.07)
+    
+    if dwell_ratio <= 1.00:
+        return 0.0
+    elif dwell_ratio <= 1.25:
+        return 0.30 * max_exceeded * ((dwell_ratio - 1.00) / 0.25)
+    elif dwell_ratio < 1.50:
+        return max_exceeded * (0.30 + 0.70 * ((dwell_ratio - 1.25) / 0.25))
+    else:
+        return max_exceeded
+
+
 def compute_struggle_score(
     actual_dwell_seconds: float,
     expected_baseline_seconds: float,
-    expected_time_multiplier: float,
+    expected_time_multiplier: float = 1.0,
     reread_count: int = 0,
     help_requested: bool = False,
     quiz_incorrect: bool = False,
     quiz_response_seconds: Optional[float] = None,
     expected_quiz_seconds: float = 30.0,
+    difficulty_tier: Optional[str] = None,
+    help_requests_count: Optional[int] = None,
+    quiz_accuracy: Optional[float] = None,
+    scroll_back_count: int = 0,
 ) -> Tuple[float, Dict[str, float], str]:
     """
     Compute difficulty-normalized struggle score from learner signals.
     
-    Args:
-        actual_dwell_seconds: How long learner spent on this section
-        expected_baseline_seconds: Expected time based on word count alone
-        expected_time_multiplier: Difficulty adjustment (1.0, 1.6, or 2.5)
-        reread_count: Number of times learner re-visited this section
-        help_requested: Whether learner clicked "help" or asked a question
-        quiz_incorrect: Whether learner answered quiz incorrectly
-        quiz_response_seconds: How long learner took to answer quiz (optional)
-        expected_quiz_seconds: Expected quiz response time (default 30s)
-    
-    Returns:
-        Tuple of (struggle_score, component_breakdown, reason)
-        - struggle_score: float between 0.0 and ~3.0 (typically 0-1)
-        - component_breakdown: dict with individual weighted components
-        - reason: string explaining primary struggle indicator
+    Follows the PRISM SCALE Final Authoritative Scoring Model:
+    - Active Reading / Dwell Behavior: 30%
+      - 20% continuous active-dwell evidence
+      - up to 10% progressive difficulty-aware exceeded-time evidence (from the SAME dwell_ratio)
+    - Quiz Accuracy: 35%
+    - Help Requests (text + voice): 15%
+    - Quiz Answer Latency: 10%
+    - Scroll / Backtracking: 10%
+    TOTAL = 100% (1.00)
     """
+    # Resolve difficulty tier
+    if not difficulty_tier:
+        if expected_time_multiplier <= 1.1:
+            difficulty_tier = "foundational"
+        elif expected_time_multiplier >= 2.0:
+            difficulty_tier = "advanced"
+        else:
+            difficulty_tier = "intermediate"
     
-    # Normalize dwell time against difficulty-adjusted baseline
-    expected_total_seconds = expected_baseline_seconds * expected_time_multiplier
+    # Calculate canonical dwell ratio
+    expected_total_seconds = expected_baseline_seconds * (expected_time_multiplier if expected_time_multiplier > 0 else 1.0)
     dwell_ratio = actual_dwell_seconds / max(expected_total_seconds, 1.0)
-    
-    # Cap dwell ratio at 3.0 to prevent extreme outliers
-    dwell_ratio = min(dwell_ratio, 3.0)
-    
-    # Normalize reread count (0-2 rereads is typical, 3+ is struggle)
-    normalized_reread = min(reread_count / 3.0, 1.0)
-    
-    # Help request is binary
-    help_flag = 1.0 if help_requested else 0.0
-    
-    # Quiz incorrect is binary
-    quiz_wrong_flag = 1.0 if quiz_incorrect else 0.0
-    
-    # Normalize quiz latency
-    quiz_latency_ratio = 0.0
-    if quiz_response_seconds is not None:
-        quiz_latency_ratio = min(quiz_response_seconds / expected_quiz_seconds, 2.0)
-    
-    # Compute weighted struggle score
+
+    # 1a. Continuous Active Dwell (20% max)
+    if dwell_ratio <= 1.0:
+        normalized_continuous_dwell = 0.0
+    elif dwell_ratio >= 3.0:
+        normalized_continuous_dwell = 1.0
+    else:
+        normalized_continuous_dwell = (dwell_ratio - 1.0) / (3.0 - 1.0)
+    dwell_continuous_contrib = WEIGHT_DWELL_CONTINUOUS * normalized_continuous_dwell
+
+    # 1b. Difficulty-Aware Exceeded-Time (Up to 10% max, progressive from SAME ratio)
+    dwell_exceeded_contrib = compute_exceeded_time_contribution(dwell_ratio, difficulty_tier)
+
+    # Combined dwell
+    dwell_total_contrib = dwell_continuous_contrib + dwell_exceeded_contrib
+
+    # 2. Quiz Accuracy (35% max, inverted)
+    if quiz_accuracy is not None:
+        acc = quiz_accuracy
+    elif quiz_incorrect:
+        acc = 0.0
+    else:
+        acc = 1.0
+
+    if acc >= 0.80:
+        normalized_accuracy = 0.0
+    elif acc <= 0.20:
+        normalized_accuracy = 1.0
+    else:
+        normalized_accuracy = (0.80 - acc) / (0.80 - 0.20)
+    quiz_accuracy_contrib = WEIGHT_QUIZ_ACCURACY * normalized_accuracy
+
+    # 3. Help Requests (15% max, text + voice)
+    total_help = help_requests_count if help_requests_count is not None else (1 if help_requested else 0)
+    normalized_help = min(total_help / 3.0, 1.0)
+    help_contrib = WEIGHT_HELP * normalized_help
+
+    # 4. Quiz Response Latency (10% max)
+    if quiz_response_seconds is None:
+        normalized_latency = 0.0
+    elif quiz_response_seconds <= 5.0:
+        normalized_latency = 0.0
+    elif quiz_response_seconds >= 20.0:
+        normalized_latency = 1.0
+    else:
+        normalized_latency = (quiz_response_seconds - 5.0) / (20.0 - 5.0)
+    quiz_latency_contrib = WEIGHT_QUIZ_LATENCY * normalized_latency
+
+    # 5. Scroll / Backtracking (10% max)
+    normalized_scroll = min(scroll_back_count / 3.0, 1.0)
+    scroll_contrib = WEIGHT_SCROLL * normalized_scroll
+
     components = {
-        "dwell": WEIGHT_DWELL * dwell_ratio,
-        "reread": WEIGHT_REREAD * normalized_reread,
-        "help": WEIGHT_HELP * help_flag,
-        "quiz_wrong": WEIGHT_QUIZ_WRONG * quiz_wrong_flag,
-        "quiz_latency": WEIGHT_QUIZ_LATENCY * quiz_latency_ratio,
+        "dwell_continuous": round(dwell_continuous_contrib, 4),
+        "dwell_exceeded": round(dwell_exceeded_contrib, 4),
+        "dwell": round(dwell_total_contrib, 4),
+        "quiz_accuracy": round(quiz_accuracy_contrib, 4),
+        "help": round(help_contrib, 4),
+        "quiz_latency": round(quiz_latency_contrib, 4),
+        "scroll": round(scroll_contrib, 4),
     }
-    
-    struggle_score = sum(components.values())
-    
-    # Determine reason for struggle (or lack thereof)
+
+    struggle_score = min(1.0, max(0.0, sum([
+        dwell_continuous_contrib,
+        dwell_exceeded_contrib,
+        quiz_accuracy_contrib,
+        help_contrib,
+        quiz_latency_contrib,
+        scroll_contrib,
+    ])))
+    struggle_score = round(struggle_score, 4)
+
     reason = _determine_struggle_reason(
         components=components,
         dwell_ratio=dwell_ratio,
+        difficulty_tier=difficulty_tier,
         expected_time_multiplier=expected_time_multiplier,
         reread_count=reread_count,
-        help_requested=help_requested,
-        quiz_incorrect=quiz_incorrect,
+        help_requested=total_help > 0,
+        quiz_incorrect=acc < 0.80,
         struggle_score=struggle_score,
     )
-    
+
     return struggle_score, components, reason
 
 
 def _determine_struggle_reason(
     components: Dict[str, float],
     dwell_ratio: float,
-    expected_time_multiplier: float,
-    reread_count: int,
-    help_requested: bool,
-    quiz_incorrect: bool,
-    struggle_score: float,
+    difficulty_tier: str = "intermediate",
+    expected_time_multiplier: float = 1.0,
+    reread_count: int = 0,
+    help_requested: bool = False,
+    quiz_incorrect: bool = False,
+    struggle_score: float = 0.0,
 ) -> str:
     """
     Determine the primary reason for struggle (or normal engagement).
-    
-    Returns a machine-readable reason string that the frontend can use
-    to decide between "distraction" vs "confusion" intervention strategies.
     """
-    
-    # Not struggling — normal engagement
     if struggle_score < REWIRE_THRESHOLD:
         if dwell_ratio > 0.8:
             return "normal_engagement"
         else:
             return "quick_completion"
-    
-    # Struggling — identify primary cause
-    max_component = max(components.items(), key=lambda x: x[1])
+
+    # Identify primary cause among active signals
+    key_signals = {
+        "dwell": components.get("dwell", 0.0),
+        "quiz_accuracy": components.get("quiz_accuracy", 0.0),
+        "help": components.get("help", 0.0),
+        "quiz_latency": components.get("quiz_latency", 0.0),
+        "scroll": components.get("scroll", 0.0),
+    }
+    max_component = max(key_signals.items(), key=lambda x: x[1])
     component_name, component_value = max_component
-    
-    # Multiple high signals → confusion
-    high_signals = sum(1 for v in components.values() if v > 0.1)
+
+    high_signals = sum(1 for v in key_signals.values() if v >= 0.08)
     if high_signals >= 3:
         return "multiple_signals"
-    
-    # Primary signal: excessive dwell time
+
     if component_name == "dwell":
-        # Check if it's on foundational/easy content (indicates real struggle)
-        if expected_time_multiplier <= 1.0:
+        if difficulty_tier == "foundational" or expected_time_multiplier <= 1.0:
             return "excessive_dwell_on_foundational"
-        elif dwell_ratio >= 2.5:
+        elif dwell_ratio >= 2.0:
             return "excessive_dwell"
         else:
             return "elevated_dwell"
-    
-    # Primary signal: quiz failure
-    if component_name == "quiz_wrong":
+
+    if component_name == "quiz_accuracy":
         return "quiz_failure"
-    
-    # Primary signal: help requests
+
     if component_name == "help":
         return "help_requested"
-    
-    # Primary signal: excessive rereading
-    if component_name == "reread":
-        if reread_count >= 3:
-            return "excessive_rereads"
-        else:
-            return "rereading"
-    
-    # Primary signal: slow quiz response
+
     if component_name == "quiz_latency":
         return "quiz_latency"
-    
-    # Fallback
+
+    if component_name == "scroll":
+        return "frequent_backtracking"
+
     return "elevated_struggle"
 
 
