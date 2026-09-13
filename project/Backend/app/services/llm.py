@@ -7,7 +7,10 @@ try:
 except ImportError:
     Groq = None
 
+import threading
+
 from app.config import (
+    GROQ_API_KEYS,
     GROQ_API_KEY,
     GROQ_MODEL,
     VOICE_GROQ_API_KEY,
@@ -28,17 +31,23 @@ QUIZ_FALLBACK = {
 _PREFERRED_MODELS = (
     "qwen/qwen3.8-27b",
     "qwen/qwen3.6-27b",
+    "groq/compound",
     "openai/gpt-oss-20b",
+    "openai/gpt-oss-120b",
     "llama-3.3-70b-versatile",
     "llama-3.1-70b-versatile",
     "llama-3.1-8b-instant",
-    "llama3-70b-8192",
-    "openai/gpt-oss-120b",
-    "groq/compound",
 )
 
 # Model IDs that are NOT suitable for chat completions (guard / speech / embedding)
 _NON_CHAT_KEYWORDS = ("prompt-guard", "whisper", "orpheus", "allam", "safeguard")
+
+
+def _safe_max_tokens(model: str, requested: int) -> int:
+    """Cap output tokens to respect free-tier per-model output limits (e.g. Qwen 1000 OTPM)."""
+    if "qwen" in model.lower():
+        return min(requested, 800)
+    return min(requested, 2048)
 
 
 def _get_candidate_models(client: Any, configured: Optional[str]) -> List[str]:
@@ -68,44 +77,95 @@ def _client_and_models(api_key: Optional[str], configured_model: Optional[str]):
         client = Groq(api_key=api_key)
         return client, _get_candidate_models(client, configured_model)
     except Exception as e:
-        print(f"Warning: Failed to initialize Groq client ({e}). Falling back to offline/mock mode.")
+        print(f"Warning: Failed to initialize Groq client ({e}).")
         return None, []
 
 
-_MAIN_CLIENT, _MAIN_MODELS = _client_and_models(GROQ_API_KEY, GROQ_MODEL)
+class GroqClientEntry:
+    def __init__(self, key: str, client: Any, models: List[str], key_index: int):
+        self.key = key
+        self.client = client
+        self.models = models
+        self.key_index = key_index
+        self.masked_key = f"{key[:7]}...{key[-4:]}" if len(key) > 12 else f"key_{key_index}"
+
+
+# Initialize multi-key client pool
+_CLIENT_POOL: List[GroqClientEntry] = []
+for idx, key in enumerate(GROQ_API_KEYS):
+    client, models = _client_and_models(key, GROQ_MODEL)
+    if client:
+        _CLIENT_POOL.append(GroqClientEntry(key, client, models, idx))
+
+if _CLIENT_POOL:
+    print(f"[Groq Multi-Key] Initialized pool with {len(_CLIENT_POOL)} active keys.")
+else:
+    print("Warning: No active Groq keys found in pool. Falling back to offline/mock mode.")
+
+# Backward compatibility references
+_MAIN_CLIENT = _CLIENT_POOL[0].client if _CLIENT_POOL else None
+_MAIN_MODELS = _CLIENT_POOL[0].models if _CLIENT_POOL else []
 _MAIN_MODEL = _MAIN_MODELS[0] if _MAIN_MODELS else None
 
+# Dedicated voice/visual clients (if configured separately)
 _VOICE_CLIENT, _VOICE_MODELS = _client_and_models(VOICE_GROQ_API_KEY, GROQ_MODEL)
 _VOICE_MODEL = _VOICE_MODELS[0] if _VOICE_MODELS else None
 
 _VISUAL_CLIENT, _VISUAL_MODELS = _client_and_models(VISUAL_GROQ_API_KEY, GROQ_MODEL)
 _VISUAL_MODEL = _VISUAL_MODELS[0] if _VISUAL_MODELS else None
 
+_pool_lock = threading.Lock()
+_round_robin_counter = 0
+
+
+def _get_ordered_pool() -> List[GroqClientEntry]:
+    """Rotate pool per request to load-balance across keys, followed by backups for failover."""
+    global _round_robin_counter
+    if not _CLIENT_POOL:
+        return []
+    with _pool_lock:
+        start_idx = _round_robin_counter % len(_CLIENT_POOL)
+        _round_robin_counter += 1
+    return _CLIENT_POOL[start_idx:] + _CLIENT_POOL[:start_idx]
+
 
 def call_llm(prompt: str) -> str:
-    """Generate text with Groq or return the notebook's local development fallback."""
-    if _MAIN_CLIENT and _MAIN_MODELS:
+    """Generate text with Groq with multi-key failover or return offline fallback."""
+    ordered_pool = _get_ordered_pool()
+    if ordered_pool:
         needs_json = "QUIZ_JSON" in prompt or "CHUNK_JSON" in prompt or "VISUAL_JSON" in prompt or "SECTION_JSON" in prompt
-        for model in _MAIN_MODELS:
-            is_openai_model = model.startswith("openai/")
-            options: Dict[str, Any] = {
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.2,
-                "max_completion_tokens": 4096,
-            }
-            if needs_json and not is_openai_model:
-                options["response_format"] = {"type": "json_object"}
-            if is_openai_model:
-                options["reasoning_effort"] = "low"
-            try:
-                res = _MAIN_CLIENT.chat.completions.create(**options)
-                return res.choices[0].message.content or ""
-            except Exception as err:
-                # If rate limited or model error, fail over to the next candidate model
-                if len(_MAIN_MODELS) > 1 and model != _MAIN_MODELS[-1]:
-                    continue
-                break
+        for entry in ordered_pool:
+            client = entry.client
+            models = entry.models or list(_PREFERRED_MODELS)
+            key_exhausted = False
+            for model in models:
+                is_openai_model = model.startswith("openai/")
+                options: Dict[str, Any] = {
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.2,
+                    "max_completion_tokens": _safe_max_tokens(model, 2048),
+                }
+                if needs_json and not is_openai_model:
+                    options["response_format"] = {"type": "json_object"}
+                if is_openai_model:
+                    options["reasoning_effort"] = "low"
+                try:
+                    res = client.chat.completions.create(**options)
+                    return res.choices[0].message.content or ""
+                except Exception as err:
+                    err_str = str(err).lower()
+                    is_account_limit = any(k in err_str for k in ("daily quota", "quota exceeded", "tpd", "too many requests")) and "reduce max_tokens" not in err_str
+                    if is_account_limit:
+                        print(f"[Groq Multi-Key] Account rate limit hit on key #{entry.key_index} ({entry.masked_key}). Failing over to next backup key...")
+                        key_exhausted = True
+                        break
+                    print(f"[Groq Multi-Key] Model {model} failed on key #{entry.key_index} ({entry.masked_key}): {err}. Trying next candidate...")
+                    if len(models) > 1 and model != models[-1]:
+                        continue
+                    break
+            if key_exhausted:
+                continue
 
     if "QUIZ_JSON" in prompt:
         return json.dumps(QUIZ_FALLBACK)
@@ -129,46 +189,52 @@ def call_llm(prompt: str) -> str:
 
 
 def call_voice_llm(prompt: str) -> str:
-    """Use the dedicated voice client when configured, otherwise use the main client."""
-    if not (_VOICE_CLIENT and _VOICE_MODEL):
-        return call_llm(prompt)
-    options: Dict[str, Any] = {
-        "model": _VOICE_MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.2,
-        "max_completion_tokens": 1024,
-    }
-    if _VOICE_MODEL.startswith("openai/"):
-        options["reasoning_effort"] = "low"
-    return _VOICE_CLIENT.chat.completions.create(**options).choices[0].message.content or ""
+    """Use dedicated voice client if available, with automatic failover to the multi-key pool."""
+    if _VOICE_CLIENT and _VOICE_MODEL:
+        options: Dict[str, Any] = {
+            "model": _VOICE_MODEL,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.2,
+            "max_completion_tokens": _safe_max_tokens(_VOICE_MODEL, 1024),
+        }
+        if _VOICE_MODEL.startswith("openai/"):
+            options["reasoning_effort"] = "low"
+        try:
+            return _VOICE_CLIENT.chat.completions.create(**options).choices[0].message.content or ""
+        except Exception as err:
+            print(f"[Groq Voice] Dedicated voice key failed ({err}). Failing over to main pool...")
+    return call_llm(prompt)
 
 
 def call_visual_llm(prompt: str) -> str:
-    """Use the dedicated visual client when configured, otherwise use the main client."""
-    if not (_VISUAL_CLIENT and _VISUAL_MODEL):
-        return call_llm(prompt)
-    is_openai_model = _VISUAL_MODEL.startswith("openai/")
-    options: Dict[str, Any] = {
-        "model": _VISUAL_MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.1,
-        "max_completion_tokens": 2048,
-    }
-    # response_format and reasoning_effort are mutually exclusive on openai/ models
-    if not is_openai_model:
-        options["response_format"] = {"type": "json_object"}
-    else:
-        options["reasoning_effort"] = "low"
-    return _VISUAL_CLIENT.chat.completions.create(**options).choices[0].message.content or ""
- 
- 
+    """Use dedicated visual client if available, with automatic failover to the multi-key pool."""
+    if _VISUAL_CLIENT and _VISUAL_MODEL:
+        is_openai_model = _VISUAL_MODEL.startswith("openai/")
+        options: Dict[str, Any] = {
+            "model": _VISUAL_MODEL,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.1,
+            "max_completion_tokens": _safe_max_tokens(_VISUAL_MODEL, 2048),
+        }
+        if not is_openai_model:
+            options["response_format"] = {"type": "json_object"}
+        else:
+            options["reasoning_effort"] = "low"
+        try:
+            return _VISUAL_CLIENT.chat.completions.create(**options).choices[0].message.content or ""
+        except Exception as err:
+            print(f"[Groq Visual] Dedicated visual key failed ({err}). Failing over to main pool...")
+    return call_llm(prompt)
+
+
 def call_llm_chat(
     messages: List[Dict[str, str]],
     system_prompt: Optional[str] = None,
     json_mode: bool = True,
 ) -> str:
-    """Multi-turn chat completion with Groq or structured fallback."""
-    if _MAIN_CLIENT and _MAIN_MODELS:
+    """Multi-turn chat completion with Groq multi-key pool or structured fallback."""
+    ordered_pool = _get_ordered_pool()
+    if ordered_pool:
         formatted_messages = []
         if system_prompt:
             formatted_messages.append({"role": "system", "content": system_prompt})
@@ -176,25 +242,38 @@ def call_llm_chat(
         if json_mode and not any("json" in m.get("content", "").lower() for m in formatted_messages):
             formatted_messages.append({"role": "system", "content": "Return output in valid JSON format."})
 
-        for model in _MAIN_MODELS:
-            is_openai_model = model.startswith("openai/")
-            options: Dict[str, Any] = {
-                "model": model,
-                "messages": formatted_messages,
-                "temperature": 0.3,
-                "max_completion_tokens": 4096,
-            }
-            if json_mode and not is_openai_model:
-                options["response_format"] = {"type": "json_object"}
-            if is_openai_model:
-                options["reasoning_effort"] = "low"
-            try:
-                res = _MAIN_CLIENT.chat.completions.create(**options)
-                return res.choices[0].message.content or ""
-            except Exception as err:
-                if len(_MAIN_MODELS) > 1 and model != _MAIN_MODELS[-1]:
-                    continue
-                break
+        for entry in ordered_pool:
+            client = entry.client
+            models = entry.models or list(_PREFERRED_MODELS)
+            key_exhausted = False
+            for model in models:
+                is_openai_model = model.startswith("openai/")
+                options: Dict[str, Any] = {
+                    "model": model,
+                    "messages": formatted_messages,
+                    "temperature": 0.3,
+                    "max_completion_tokens": _safe_max_tokens(model, 2048),
+                }
+                if json_mode and not is_openai_model:
+                    options["response_format"] = {"type": "json_object"}
+                if is_openai_model:
+                    options["reasoning_effort"] = "low"
+                try:
+                    res = client.chat.completions.create(**options)
+                    return res.choices[0].message.content or ""
+                except Exception as err:
+                    err_str = str(err).lower()
+                    is_account_limit = any(k in err_str for k in ("daily quota", "quota exceeded", "tpd", "too many requests")) and "reduce max_tokens" not in err_str
+                    if is_account_limit:
+                        print(f"[Groq Multi-Key Chat] Rate limit on key #{entry.key_index} ({entry.masked_key}). Switching to next backup key...")
+                        key_exhausted = True
+                        break
+                    print(f"[Groq Multi-Key Chat] Model {model} failed on key #{entry.key_index} ({entry.masked_key}): {err}. Trying next candidate...")
+                    if len(models) > 1 and model != models[-1]:
+                        continue
+                    break
+            if key_exhausted:
+                continue
 
     last_user_msg = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "the topic")
     return json.dumps({
