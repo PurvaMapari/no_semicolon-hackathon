@@ -354,28 +354,20 @@ function Profile() {
           error={transformError || session.error}
           onRetry={handleTransformLesson}
           profile={session.profile}
-          fileName={session.fileName}
         />
 
-        {!isTransforming && !transformError && <ErrorNotice />}
-
-        {/* Launch Session Console Bar */}
+        {/* Launch Session Bar */}
         <section className="launch-session-bar">
           <div className="launch-bar-left">
-            <div className="launch-bar-meta">
-              <span className="launch-bar-sparkle">✦</span>
-              <span>Ready in ~4 seconds • Configured for {PROFILE_LABELS[session.profile] || "Cognitive load support"}</span>
-            </div>
             <h2 className="launch-bar-title">
-              {session.transformed ? "Resume your customized learning session" : "Launch your customized learning session"}
+              {session.transformed ? "Resume Learning Session" : "Start Learning Session"}
             </h2>
             <p className="launch-bar-subtitle">
-              OUR ADAPTIVE AI WILL CUSTOMIZE COGNITIVE LOAD &amp; PACING INSTANTLY
+              <span>Personalized for {PROFILE_LABELS[session.profile] || "Cognitive Load"}</span>
             </p>
           </div>
 
           <div className="launch-bar-right">
-            {/* Back to upload */}
             <button
               type="button"
               className="launch-back-btn"
@@ -385,7 +377,6 @@ function Profile() {
               Back to upload
             </button>
 
-            {/* Transform / Resume Lesson button */}
             <button
               type="button"
               className="launch-transform-btn"
@@ -403,10 +394,10 @@ function Profile() {
                 {isTransforming
                   ? "Processing lesson…"
                   : session.transformed
-                  ? "Resume Learning Session"
+                  ? "Resume Session"
                   : "Transform Lesson"}
               </span>
-              {isTransforming ? <I.Loader2 size={14} className="spinner" /> : <I.Sparkles size={14} />}
+              {isTransforming ? <I.Loader2 size={15} className="spinner" /> : <I.Sparkles size={15} />}
             </button>
           </div>
         </section>

@@ -36,6 +36,9 @@ def extract_text_and_tables_from_pdf(filepath: str) -> Tuple[str, List[List[List
                 else:
                     # Clean unmapped PDF font encoding artifacts (e.g. (cid:127) -> "• ")
                     page_text = re.sub(r"\(cid:\d+\)", "• ", page_text)
+                    # Fix ligature glyphs where 'fi' was extracted instead of arrow '→'
+                    page_text = re.sub(r"(?<=\S)\s+fi\s+(?=\S)", " → ", page_text)
+                    page_text = re.sub(r"\b([A-Za-z0-9\+\s]+?)\s+fi\s+([A-Za-z0-9\+\s]+)", r"\1 → \2", page_text)
                 pages_text.append(page_text)
                 pages_tables.append([table.extract() for table in found_tables])
     except Exception as error:
@@ -43,6 +46,11 @@ def extract_text_and_tables_from_pdf(filepath: str) -> Tuple[str, List[List[List
 
     full_text = "\n\n".join(pages_text)
     full_text = re.sub(r"\(cid:\d+\)", "• ", full_text)
+    full_text = re.sub(r"(?<=\S)\s+fi\s+(?=\S)", " → ", full_text)
+    full_text = re.sub(r"\b([A-Za-z0-9\+\s]+?)\s+fi\s+([A-Za-z0-9\+\s]+)", r"\1 → \2", full_text)
+    # Ensure clear section breaks before numbered headings (e.g. \n2. The Overall Process -> \n\n2. The Overall Process)
+    full_text = re.sub(r"([.!?])\s+(\d+\.\s+[A-Z])", r"\1\n\n\2", full_text)
+    full_text = re.sub(r"(?<!\n)\n(?=\d+\.\s+[A-Z])", "\n\n", full_text)
     return full_text, pages_tables
 
 

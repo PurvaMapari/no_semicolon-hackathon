@@ -4,10 +4,10 @@ import * as I from "lucide-react";
 import { useSession, PROFILE_LABELS } from "../../context/SessionContext";
 import { useWebcam } from "../../hooks/WebcamContext";
 
-export function Layout({ children, section }) {
+export function Layout({ children, section, onNavIntercept }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { session } = useSession();
+  const { session, setHasStartedLearning } = useSession();
   const { mediaStream, setWebcamEnabled } = useWebcam();
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [pendingNavPath, setPendingNavPath] = useState(null);
@@ -38,8 +38,20 @@ export function Layout({ children, section }) {
       return;
     }
 
-    // If user clicks "Learn", allow direct navigation to /learn
-    if (to === "/learn") {
+    // Allow child pages (e.g. PracticePage during quiz) to intercept navigation
+    if (onNavIntercept && to !== location.pathname) {
+      const intercepted = onNavIntercept(to);
+      if (intercepted) {
+        e.preventDefault();
+        return;
+      }
+    }
+
+    // If user clicks "Learn" from another page, route through /profile (Step 2)
+    // so they can re-enable camera and resume properly
+    if (to === "/learn" && location.pathname !== "/learn" && session.transformed) {
+      e.preventDefault();
+      navigate("/profile");
       return;
     }
   }
@@ -55,6 +67,8 @@ export function Layout({ children, section }) {
     } catch (err) {
       console.warn("Error turning off camera:", err);
     }
+    // Reset learning state so re-entering goes through Step 2 (Profile) first
+    setHasStartedLearning(false);
     const dest = pendingNavPath || "/upload";
     setShowExitConfirm(false);
     setPendingNavPath(null);

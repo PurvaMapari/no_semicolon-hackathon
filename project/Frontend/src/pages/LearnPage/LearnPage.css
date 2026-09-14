@@ -861,6 +861,38 @@
   transform: translateY(-1.5px);
 }
 
+.download-lesson-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  font-size: 12.5px;
+  font-weight: 700;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  background: rgba(6, 95, 70, 0.08);
+  color: #065f46;
+  border: 1.5px solid rgba(6, 95, 70, 0.28);
+}
+
+.download-lesson-pill:hover {
+  background: rgba(6, 95, 70, 0.16);
+  border-color: #059669;
+  color: #047857;
+  transform: translateY(-1.5px);
+  box-shadow: 0 4px 14px rgba(6, 95, 70, 0.18);
+}
+
+.download-lesson-pill svg {
+  color: #059669;
+  transition: transform 0.2s ease;
+}
+
+.download-lesson-pill:hover svg {
+  transform: translateY(1.5px);
+}
+
 .lesson-complete-btn {
   display: inline-flex;
   align-items: center;
@@ -1242,4 +1274,48 @@
   animation: pulseGlow 2s infinite;
   flex-shrink: 0;
 }
-
+
+/* ── Cognitive Load Support: Accessible Process & Formula Callouts ────────── */
+.cognitive-content-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cognitive-body-text {
+  margin: 0 0 10px 0;
+  font-size: 1.05em;
+  line-height: 1.85;
+  color: #1e293b;
+}
+
+.cognitive-flow-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-left: 4px solid #10b981;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 10px 0 14px 0;
+  font-size: 0.95em;
+}
+
+.cognitive-flow-badge {
+  background: #10b981;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.cognitive-flow-text {
+  font-weight: 600;
+  color: #065f46;
+  line-height: 1.5;
+}

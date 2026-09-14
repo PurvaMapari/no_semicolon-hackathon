@@ -48,6 +48,32 @@ STRICT RULES:
 - Do NOT add new information not present in the original
 - Adapt vocabulary and sentence complexity for the {profile} profile
 - Do NOT include quiz questions or answers in sections
+- Every section MUST have non-empty content. Never create a section with empty content. If a subsection in the source has no content, omit it.
+
+Include the marker SECTION_JSON.
+
+LESSON TEXT:
+{text}"""
+
+
+COGNITIVE_LOAD_PROMPT = """You are an expert educational content designer specializing in cognitive load theory and accessible pedagogy.
+A learner with cognitive load processing challenges needs to study the lesson below. Dense text, long paragraphs, and multiple topics mixed together overwhelm this learner.
+
+Your task: Break the lesson into clear, bite-sized, concept-by-concept sections.
+
+STRICT RULES:
+- Return a JSON object with a "sections" array
+- Each element: {{"heading": "Clear topic title or question", "content": "Concise, digestible explanation"}}
+- Focus on ONE single concept per section. Never merge two distinct concepts.
+- Each section's content must be bite-sized: 2 to 4 complete, simple sentences (maximum {max_words} words).
+- If the source text contains numbered subsections (e.g., '1. Overview', '2. The Overall Process'), each MUST be its own section.
+- For processes or chemical reactions, write them out clearly with arrows (e.g., "Sunlight + Carbon dioxide + Water → Glucose + Oxygen").
+- Headings must be descriptive, friendly questions or titles (e.g., "What Is Photosynthesis?", "The Overall Process", "Where Does It Occur?").
+- Do NOT repeat the document title or section heading inside the content text.
+- REMOVE all: bold markers (**), markdown headings (##), bullet dashes, numbered-list prefixes, AI commentary, and quiz questions.
+- Every section MUST have non-empty, factual content. Do NOT create sections with empty content. If a section heading has no text in the source, omit it.
+- Preserve every fact, number, name, and cause-and-effect relationship from the original.
+- Do NOT add outside knowledge or invented facts.
 
 Include the marker SECTION_JSON.
 
@@ -187,6 +213,9 @@ def _clean_section_text(text: str) -> str:
         return text
     # Remove PDF font-encoding artifacts like (cid:127) -> space
     text = re.sub(r"\(cid:\d+\)", " ", text)
+    # Fix ligature glyphs where 'fi' was extracted instead of arrow '→'
+    text = re.sub(r"(?<=\S)\s+fi\s+(?=\S)", " → ", text)
+    text = re.sub(r"\b([A-Za-z0-9\+\s]+?)\s+fi\s+([A-Za-z0-9\+\s]+)", r"\1 → \2", text)
     # Remove bold markers  **text** → text
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
     # Remove italic markers  *text* → text  (single asterisks only)
@@ -395,21 +424,22 @@ def _parse_sections_response(raw_response: str) -> Optional[List[Dict[str, str]]
             candidate = parsed.get("sections")
         elif isinstance(parsed, list):
             candidate = parsed
-        if (
-            isinstance(candidate, list)
-            and len(candidate) >= 2
-            and all(
-                isinstance(s, dict) and s.get("heading") and s.get("content")
-                for s in candidate
-            )
-        ):
-            return [
-                {
-                    "heading": _sanitize_heading(_clean_section_text(s["heading"]), s.get("content", "")),
-                    "content": _clean_section_text(s["content"]),
-                }
-                for s in candidate
+        if isinstance(candidate, list):
+            # Filter out entries where content is empty (e.g. empty headers from tables/unparsed sections)
+            valid = [
+                s for s in candidate
+                if isinstance(s, dict)
+                and (s.get("heading") or "").strip()
+                and (s.get("content") or "").strip()
             ]
+            if len(valid) >= 2:
+                return [
+                    {
+                        "heading": _sanitize_heading(_clean_section_text(s["heading"]), s.get("content", "")),
+                        "content": _clean_section_text(s["content"]),
+                    }
+                    for s in valid
+                ]
     except Exception:
         pass
     return None
@@ -477,10 +507,25 @@ def _enforce_section_constraints(sections: List[Dict[str, str]], max_words: int)
 
 def _fallback_sections(text: str, max_words: int = 100) -> List[Dict[str, str]]:
     """Build sections from paragraph splitting when LLM fails, respecting max_words."""
+    # First normalize text boundaries so numbered headings become distinct paragraphs
+    text = re.sub(r"(?<=\S)\s+fi\s+(?=\S)", " → ", text)
+    text = re.sub(r"\b([A-Za-z0-9\+\s]+?)\s+fi\s+([A-Za-z0-9\+\s]+)", r"\1 → \2", text)
+    text = re.sub(r"([.!?])\s+(\d+\.\s+[A-Z])", r"\1\n\n\2", text)
+    text = re.sub(r"(?<!\n)\n(?=\d+\.\s+[A-Z])", "\n\n", text)
+    text = re.sub(r"(?<!\n)\n(?=(?:Chapter|Section|Part)\s+\d+)", "\n\n", text, flags=re.IGNORECASE)
+
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
     if len(paragraphs) <= 1:
         sentences = [s.strip() + "." for s in text.split(".") if s.strip()]
         paragraphs = [" ".join(sentences[i:i+3]) for i in range(0, len(sentences), 3)]
+
+    # If the first paragraph is just a short document title (e.g. "Photosynthesis\nHow plants convert..."),
+    # don't make it a solitary section if followed by numbered sections.
+    if len(paragraphs) >= 2:
+        p0_words = len(paragraphs[0].split())
+        p0_lines = [l.strip() for l in paragraphs[0].split("\n") if l.strip()]
+        if p0_words <= 15 and len(p0_lines) <= 2 and not any(p0_lines[0].startswith(str(d)) for d in range(10)):
+            paragraphs = paragraphs[1:]
 
     merged: List[str] = []
     buf: List[str] = []
@@ -522,10 +567,15 @@ def _fallback_sections(text: str, max_words: int = 100) -> List[Dict[str, str]]:
     sections_list = []
     for chunk in fallback_chunks:
         heading = _extract_section_heading(chunk)
-        sections_list.append({
-            "heading": heading,
-            "content": _clean_section_text(chunk),
-        })
+        cleaned_content = _clean_section_text(chunk)
+        # Strip leading redundant heading from content if present
+        if heading and cleaned_content.lower().startswith(heading.lower()):
+            cleaned_content = cleaned_content[len(heading):].lstrip(" :.-\n")
+        if cleaned_content.strip():
+            sections_list.append({
+                "heading": heading,
+                "content": cleaned_content.strip(),
+            })
     return sections_list
 
 
@@ -606,7 +656,7 @@ def transform_text(text: str, profile: str) -> Dict[str, Any]:
         sections_list = None
         if GROQ_API_KEY or VOICE_GROQ_API_KEY:
             try:
-                raw = call_llm(STRUCTURED_SECTIONS_PROMPT.format(text=text, profile=profile, max_words=max_words))
+                raw = call_llm(COGNITIVE_LOAD_PROMPT.format(text=text, max_words=max_words))
                 sections_list = _parse_sections_response(raw)
             except Exception:
                 sections_list = None
@@ -625,6 +675,14 @@ def transform_text(text: str, profile: str) -> Dict[str, Any]:
             "sections": sections_list,
             "chunks": chunks if chunks else [text],
             "chunk_meta": chunk_meta,
+            "text": "\n\n".join(chunks),
+            "formatting": {
+                "font_family": "system-ui, -apple-system, sans-serif",
+                "line_height": 1.85,
+                "letter_spacing": "0.015em",
+                "paragraph_spacing": "1.25rem",
+                "font_size_multiplier": 1.05,
+            },
         }
 
     raise ValueError("profile must be dyslexia, low_vision, or cognitive_load")

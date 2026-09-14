@@ -319,15 +319,30 @@ export function SessionProvider({ children }) {
 
   const evaluateAnswer = useCallback(async (payload) => {
     return run("evaluate", async () => {
-      const result = await evaluateQuizAnswer(payload);
+      let result = null;
+      try {
+        result = await evaluateQuizAnswer(payload);
+      } catch (err) {
+        console.warn("evaluateQuizAnswer request failed, fallback to local eval:", err);
+        const isCorrect = payload.selected_answer === payload.correct_answer;
+        result = {
+          is_correct: isCorrect,
+          correct: isCorrect,
+          question: payload.question,
+          selected_answer: payload.selected_answer,
+          correct_answer: payload.correct_answer,
+          explanation: payload.explanation || (isCorrect ? "Correct!" : `The correct answer is ${payload.correct_answer}.`),
+          section_index: payload.section_index,
+        };
+      }
       setSession((current) => {
+        const isCorrect = Boolean(result.is_correct ?? result.correct);
         const answered = [...current.practiceReport.answered, result];
-        const failed = answered.filter((item) => !item.is_correct);
-        const masteredSections = result.is_correct
+        const failed = answered.filter((item) => !item.is_correct && !item.correct);
+        const masteredSections = isCorrect && typeof result.section_index === "number"
           ? [...new Set([...current.practiceReport.masteredSections, result.section_index])]
           : current.practiceReport.masteredSections;
 
-        const isCorrect = result.is_correct;
         const updatedSignals = recordQuizAnswer(current.signals, isCorrect, 4000);
 
         return {
@@ -608,7 +623,52 @@ export function SessionProvider({ children }) {
     });
   }, [run]);
 
-  const recordQuizAnswerAction = useCallback((isCorrect) => {
+  const recordPracticeResult = useCallback((result) => {
+    setSession((current) => {
+      const isCorrect = Boolean(result.is_correct ?? result.correct ?? (result.selected && result.selected === result.answer));
+      const entry = {
+        question: result.question || "Practice Question",
+        selected_answer: result.selected || result.selected_answer || "",
+        correct_answer: result.answer || result.correct_answer || "",
+        is_correct: isCorrect,
+        correct: isCorrect,
+        explanation: result.explanation || "",
+        section_index: typeof result.section_index === "number" ? result.section_index : (current.activeSectionIndex || 0),
+        latency_ms: result.latency_ms || 4000,
+        timestamp: Date.now(),
+      };
+
+      const prevAnswered = current.practiceReport?.answered || [];
+      const answered = [...prevAnswered, entry];
+      const failed = answered.filter((item) => !item.is_correct && !item.correct);
+
+      const prevMastered = current.practiceReport?.masteredSections || [];
+      let masteredSections = [...prevMastered];
+      if (isCorrect && typeof entry.section_index === "number" && !masteredSections.includes(entry.section_index)) {
+        masteredSections.push(entry.section_index);
+      }
+
+      const updatedSignals = recordQuizAnswer(current.signals, isCorrect, entry.latency_ms || 4000);
+
+      let updatedMeta = current.sessionMeta;
+      let outcome = current.latestOutcome;
+      if (current.rewireState?.active) {
+        const postAcc = isCorrect ? 1.0 : 0.0;
+        updatedMeta = recordAdaptationOutcome(current.sessionMeta, postAcc);
+        outcome = measureOutcome(updatedMeta.preAccuracy ?? 0.0, postAcc);
+      }
+
+      return {
+        ...current,
+        signals: updatedSignals,
+        sessionMeta: updatedMeta,
+        latestOutcome: outcome,
+        practiceReport: { answered, failed, masteredSections },
+      };
+    });
+  }, []);
+
+  const recordQuizAnswerAction = useCallback((isCorrect, answerMeta = null) => {
     setSession((current) => {
       const updatedSignals = recordQuizAnswer(current.signals, isCorrect, 4000);
       let updatedMeta = current.sessionMeta;
@@ -620,11 +680,30 @@ export function SessionProvider({ children }) {
         outcome = measureOutcome(updatedMeta.preAccuracy ?? 0.0, postAcc);
       }
 
+      const prevAnswered = current.practiceReport?.answered || [];
+      const entry = answerMeta || {
+        question: "Adaptive Question",
+        selected_answer: isCorrect ? "Correct" : "Incorrect",
+        correct_answer: "Correct",
+        is_correct: isCorrect,
+        correct: isCorrect,
+        section_index: current.activeSectionIndex || 0,
+        latency_ms: 4000,
+        timestamp: Date.now(),
+      };
+      const answered = [...prevAnswered, entry];
+      const failed = answered.filter((item) => !item.is_correct && !item.correct);
+      const prevMastered = current.practiceReport?.masteredSections || [];
+      const masteredSections = isCorrect && typeof entry.section_index === "number" && !prevMastered.includes(entry.section_index)
+        ? [...prevMastered, entry.section_index]
+        : prevMastered;
+
       return {
         ...current,
         signals: updatedSignals,
         sessionMeta: updatedMeta,
         latestOutcome: outcome,
+        practiceReport: { answered, failed, masteredSections },
       };
     });
   }, []);
@@ -687,6 +766,7 @@ export function SessionProvider({ children }) {
     recordVoiceHelpAction,
     recordTimeStruggleAction,
     recordQuizAnswerAction,
+    recordPracticeResult,
     getAdaptiveQuizAction,
     dismissRewire,
     updateActiveDwell,
@@ -720,6 +800,7 @@ export function SessionProvider({ children }) {
     recordVoiceHelpAction,
     recordTimeStruggleAction,
     recordQuizAnswerAction,
+    recordPracticeResult,
     getAdaptiveQuizAction,
     dismissRewire,
     updateActiveDwell,

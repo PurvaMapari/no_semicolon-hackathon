@@ -1,5 +1,6 @@
 import json
 import re
+import time
 from typing import Any, Dict, List, Optional
 
 try:
@@ -27,16 +28,18 @@ QUIZ_FALLBACK = {
 
 
 # Chat-capable models in preference order (guard/whisper/TTS models are excluded).
-# Update this list if your Groq account gains access to newer models.
+# Chat-capable models in preference order (guard/whisper/TTS models are excluded).
+# Prioritize high-capacity compound and OSS models available on current Groq tier.
 _PREFERRED_MODELS = (
+    "groq/compound",
+    "groq/compound-mini",
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
     "llama-3.3-70b-versatile",
     "llama-3.1-70b-versatile",
     "llama-3.1-8b-instant",
     "qwen/qwen3.8-27b",
     "qwen/qwen3.6-27b",
-    "groq/compound",
-    "openai/gpt-oss-20b",
-    "openai/gpt-oss-120b",
 )
 
 # Model IDs that are NOT suitable for chat completions (guard / speech / embedding)
@@ -51,16 +54,18 @@ def _safe_max_tokens(model: str, requested: int) -> int:
 
 
 def _get_candidate_models(client: Any, configured: Optional[str]) -> List[str]:
-    candidates = []
-    if configured:
-        candidates.append(configured)
     try:
         available = {model.id for model in client.models.list().data}
     except Exception as e:
         print(f"Warning: Could not fetch models from Groq ({e}). Using preferred list.")
         available = set(_PREFERRED_MODELS)
 
-    # Try preferred list first
+    candidates = []
+    # Only prioritize configured model if it is actually accessible on this Groq key
+    if configured and configured in available:
+        candidates.append(configured)
+
+    # Try preferred list in order of priority among available models
     for model in _PREFERRED_MODELS:
         if model in available and model not in candidates:
             candidates.append(model)
@@ -155,6 +160,18 @@ def call_llm(prompt: str) -> str:
                     return res.choices[0].message.content or ""
                 except Exception as err:
                     err_str = str(err).lower()
+                    # If this is a brief transient rate limit with a recommended retry delay (e.g. 2.4s), auto-wait and retry
+                    wait_match = re.search(r"try again in ([\d\.]+)s", err_str)
+                    if wait_match:
+                        wait_sec = min(float(wait_match.group(1)) + 0.3, 5.0)
+                        print(f"[Groq Multi-Key] Rate limit hit on {model}. Auto-waiting {wait_sec:.1f}s to retry...")
+                        time.sleep(wait_sec)
+                        try:
+                            res = client.chat.completions.create(**options)
+                            return res.choices[0].message.content or ""
+                        except Exception as retry_err:
+                            print(f"[Groq Multi-Key] Retry after wait on {model} failed ({retry_err}). Trying next candidate...")
+
                     is_account_limit = any(k in err_str for k in ("daily quota", "quota exceeded", "tpd", "too many requests")) and "reduce max_tokens" not in err_str
                     if is_account_limit:
                         print(f"[Groq Multi-Key] Account rate limit hit on key #{entry.key_index} ({entry.masked_key}). Failing over to next backup key...")
@@ -204,6 +221,16 @@ def call_voice_llm(prompt: str) -> str:
             try:
                 return _VOICE_CLIENT.chat.completions.create(**options).choices[0].message.content or ""
             except Exception as err:
+                err_str = str(err).lower()
+                wait_match = re.search(r"try again in ([\d\.]+)s", err_str)
+                if wait_match:
+                    wait_sec = min(float(wait_match.group(1)) + 0.3, 5.0)
+                    print(f"[Groq Voice] Rate limit on {model}. Auto-waiting {wait_sec:.1f}s to retry...")
+                    time.sleep(wait_sec)
+                    try:
+                        return _VOICE_CLIENT.chat.completions.create(**options).choices[0].message.content or ""
+                    except Exception:
+                        pass
                 print(f"[Groq Voice] Dedicated voice key with model {model} failed ({err}). Trying next model...")
                 continue
     return call_llm(prompt)
@@ -228,6 +255,16 @@ def call_visual_llm(prompt: str) -> str:
             try:
                 return _VISUAL_CLIENT.chat.completions.create(**options).choices[0].message.content or ""
             except Exception as err:
+                err_str = str(err).lower()
+                wait_match = re.search(r"try again in ([\d\.]+)s", err_str)
+                if wait_match:
+                    wait_sec = min(float(wait_match.group(1)) + 0.3, 5.0)
+                    print(f"[Groq Visual] Rate limit on {model}. Auto-waiting {wait_sec:.1f}s to retry...")
+                    time.sleep(wait_sec)
+                    try:
+                        return _VISUAL_CLIENT.chat.completions.create(**options).choices[0].message.content or ""
+                    except Exception:
+                        pass
                 print(f"[Groq Visual] Dedicated visual key with model {model} failed ({err}). Trying next candidate...")
                 continue
     return call_llm(prompt)

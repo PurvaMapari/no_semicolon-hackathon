@@ -32,7 +32,7 @@ export function LessonProcessingProgress({
 
   if (!isProcessing && !error) return null;
 
-  // Smooth progressive pacing according to typical Groq processing lifecycle
+  // Smooth progressive pacing according to typical AI processing lifecycle
   let progressValue = 12;
   if (elapsed >= 18) {
     progressValue = Math.min(96, 90 + (elapsed - 18) * 0.7);

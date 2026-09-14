@@ -67,7 +67,7 @@ function TopicChatAssistant({ onStartLearning, busy }) {
 
     setCurrentTopic(finalTopic);
     setStep("building");
-    setBuildStatus(`Consulting Groq AI to design your curriculum for "${finalTopic}"...`);
+    setBuildStatus(`Consulting AI to design your curriculum for "${finalTopic}"...`);
     setErrorMsg("");
 
     try {
@@ -78,7 +78,7 @@ function TopicChatAssistant({ onStartLearning, busy }) {
         },
       ];
 
-      setBuildStatus(`Groq AI is generating your structured interactive modules...`);
+      setBuildStatus(`AI is generating your structured interactive modules...`);
       const response = await chatTopicAssistant(messages, finalTopic, session.profile, true);
 
       const lessonText = response.ready_lesson_text;
@@ -94,7 +94,7 @@ function TopicChatAssistant({ onStartLearning, busy }) {
       await onStartLearning(lessonText, topicTitle);
     } catch (err) {
       console.error("Build lesson error:", err);
-      setErrorMsg(err.message || "Failed to generate lesson with Groq. Please try again.");
+      setErrorMsg(err.message || "Failed to generate lesson. Please try again.");
       setStep("ask");
     }
   };
@@ -249,7 +249,7 @@ function TopicChatAssistant({ onStartLearning, busy }) {
               What would you like to learn today?
             </div>
             <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
-              Don't have a document or PDF? Tell Groq AI any skill or concept (e.g. <i>"Can you teach me JavaScript?"</i>), and we'll generate the full lesson in interactive sections and take you straight into the Learn page!
+              Don't have a document or PDF? Tell our AI any skill or concept (e.g. <i>"Can you teach me JavaScript?"</i>), and we'll generate the full lesson in interactive sections and take you straight into the Learn page!
             </div>
 
             {/* Input Form */}

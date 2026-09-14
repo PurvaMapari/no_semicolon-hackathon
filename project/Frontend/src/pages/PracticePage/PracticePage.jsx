@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import * as I from "lucide-react";
 import { useSession } from "../../context/SessionContext";
@@ -15,10 +15,10 @@ function PracticePage() {
     getPracticeQuiz,
     getAdaptiveQuizAction,
     recordQuizAnswerAction,
+    recordPracticeResult,
     completeChunk,
     completeSection,
   } = useSession();
-  const { mediaStream, webcamEnabled, webcamStatus } = useWebcam();
   const navigate = useNavigate();
 
   const chunks =
@@ -74,7 +74,15 @@ function PracticePage() {
     if (!adaptiveSelected || adaptiveSubmitted) return;
     setAdaptiveSubmitted(true);
     const isCorrect = adaptiveSelected === adaptiveQuiz.answer;
-    recordQuizAnswerAction(isCorrect);
+    recordPracticeResult({
+      question: adaptiveQuiz.question,
+      selected: adaptiveSelected,
+      answer: adaptiveQuiz.answer,
+      explanation: adaptiveQuiz.explanation,
+      is_correct: isCorrect,
+      section_index: 0,
+      latency_ms: 4000,
+    });
     if (isCorrect) {
       completeChunk();
       completeSection(0);
@@ -128,8 +136,34 @@ function PracticePage() {
     setPracticePhase("idle");
   }
 
+  // ── Quit quiz confirmation for sidebar navigation ─────────────────────
+  const [showNavQuitConfirm, setShowNavQuitConfirm] = useState(false);
+  const [pendingNavDest, setPendingNavDest] = useState(null);
+
+  // Called by Layout when user clicks a sidebar link during an active quiz
+  function handleNavIntercept(to) {
+    if (practicePhase === "quiz") {
+      setPendingNavDest(to);
+      setShowNavQuitConfirm(true);
+      return true; // intercepted
+    }
+    return false; // allow navigation
+  }
+
+  function confirmNavQuit() {
+    setShowNavQuitConfirm(false);
+    resetPracticeQuiz();
+    if (pendingNavDest) navigate(pendingNavDest);
+    setPendingNavDest(null);
+  }
+
+  function cancelNavQuit() {
+    setShowNavQuitConfirm(false);
+    setPendingNavDest(null);
+  }
+
   return (
-    <Layout section="Practice">
+    <Layout section="Practice" onNavIntercept={handleNavIntercept}>
       <main className="page">
         <div className="eyebrow">
           <b>Mastery Practice</b>
@@ -137,7 +171,7 @@ function PracticePage() {
         </div>
         <h1 className="page-title">Check your understanding</h1>
 
-        {/* ── Practice Quiz (full-lesson, Groq AI generated) ─────────── */}
+        {/* ── Practice Quiz (full-lesson, AI generated) ─────────── */}
         {practicePhase === "loading" ? (
           <section className="card" style={{ padding: 48, textAlign: "center" }}>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
@@ -149,7 +183,7 @@ function PracticePage() {
               <div>
                 <div style={{ fontWeight: 800, fontSize: 17, color: "var(--ink)" }}>Generating your practice quiz…</div>
                 <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 6 }}>
-                  Asking Groq AI to extract and formulate the most important and relevant questions from your lesson.
+                  Extracting and formulating the most important and relevant questions from your lesson.
                 </div>
               </div>
             </div>
@@ -176,34 +210,49 @@ function PracticePage() {
             ) : allSectionsComplete ? (
               /* ── Start card shown when all sections done ───────────────── */
               <section className="card" style={{
-                marginBottom: 16, padding: 28,
-                background: "linear-gradient(135deg, rgba(252, 224, 114, 0.15) 0%, #f0fdf4 100%)",
-                border: "2px solid #fce072"
+                marginBottom: 16, padding: "28px 28px 24px",
+                background: "linear-gradient(135deg, rgba(236, 253, 245, 0.95) 0%, rgba(240, 253, 250, 0.8) 100%)",
+                border: "1.5px solid rgba(16, 185, 129, 0.35)",
+                boxShadow: "0 10px 28px -6px rgba(16, 185, 129, 0.15), 0 0 0 1px rgba(16, 185, 129, 0.1)",
+                borderRadius: 20,
               }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
                   <div style={{
-                    width: 44, height: 44, borderRadius: "50%",
-                    background: "linear-gradient(135deg, #fce072, #f59e0b)",
-                    display: "flex", alignItems: "center", justifyContent: "center"
+                    width: 48, height: 48, borderRadius: "50%",
+                    background: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)",
+                    border: "2px solid #f59e0b",
+                    boxShadow: "0 4px 14px rgba(245, 158, 11, 0.28)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    color: "#b45309",
+                    flexShrink: 0,
                   }}>
-                    <I.Trophy size={22} style={{ color: "#451a03" }} />
+                    <I.Trophy size={24} />
                   </div>
                   <div>
-                    <div style={{ fontWeight: 800, fontSize: 16, color: "var(--ink)", fontFamily: "var(--font-heading)" }}>All Sections Complete!</div>
+                    <div style={{ fontWeight: 800, fontSize: 17, color: "var(--ink)", fontFamily: "var(--font-heading)" }}>All Sections Complete!</div>
                     <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 2 }}>Ready to test your full knowledge of: <strong>{session.fileName || session.lessonTitle || "the lesson"}</strong></div>
                   </div>
                 </div>
                 <p style={{ fontSize: 14, color: "#334155", lineHeight: 1.6, marginBottom: 18 }}>
-                  Great work completing every section. Now take the <strong>Practice Quiz</strong> — Groq AI will formulate important questions from your lesson material to evaluate your mastery.
+                  Great work completing every section. Now take the <strong>Practice Quiz</strong> — AI will formulate important questions from your lesson material to evaluate your mastery.
                 </p>
                 <button
                   id="start-practice-quiz-btn"
                   className="primary-action"
                   disabled={busy === "practiceQuiz" || !session.text}
                   onClick={startPracticeQuiz}
-                  style={{ background: "linear-gradient(135deg, #fce072 0%, #f59e0b 100%)", color: "#451a03", fontWeight: 800, fontSize: 15 }}
+                  style={{
+                    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                    color: "#ffffff",
+                    fontWeight: 700,
+                    fontSize: 15,
+                    padding: "12px 22px",
+                    borderRadius: 12,
+                    boxShadow: "0 6px 18px rgba(16, 185, 129, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25)",
+                    border: "1px solid rgba(255, 255, 255, 0.2)",
+                  }}
                 >
-                  {busy === "practiceQuiz" ? "Generating quiz with Groq…" : "Start Practice Quiz"}
+                  {busy === "practiceQuiz" ? "Generating quiz…" : "Start Practice Quiz"}
                   <I.ClipboardCheck size={18} />
                 </button>
               </section>
@@ -239,7 +288,7 @@ function PracticePage() {
                     onClick={startPracticeQuiz}
                     style={{ flex: 1 }}
                   >
-                    {busy === "practiceQuiz" ? "Generating quiz with Groq…" : "Start Practice Quiz Now"}
+                    {busy === "practiceQuiz" ? "Generating quiz…" : "Start Practice Quiz Now"}
                     <I.ClipboardCheck size={16} />
                   </button>
                   <button
@@ -255,30 +304,38 @@ function PracticePage() {
 
         {/* ── REWIRE Adaptive Question Card ─────────────────────────────── */}
         {isRewireActive && (
-          <section className="card" style={{ marginBottom: 16, padding: 20, border: "2px solid #fce072" }}>
+          <section className="card" style={{
+            marginBottom: 16, padding: 22,
+            border: "1.5px solid var(--amber-border)",
+            background: "linear-gradient(135deg, #fffdfa 0%, #fffbeb 100%)",
+            boxShadow: "0 6px 18px rgba(245, 158, 11, 0.08)",
+            borderRadius: 18,
+          }}>
             <div style={{
-              background: "#fef9c3", color: "#713f12", border: "1px solid #fce072",
-              padding: "6px 12px", borderRadius: 9999,
-              fontSize: 12, fontWeight: 700,
-              display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 12,
+              background: "var(--amber-light)", color: "var(--amber-text)", border: "1px solid var(--amber-border)",
+              padding: "6px 14px", borderRadius: 9999,
+              fontSize: 12.5, fontWeight: 700,
+              display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 14,
             }}>
-              <I.Zap size={13} />
+              <I.Zap size={14} />
               <span>Adaptive Question: Calibrated to Simplified Level</span>
             </div>
 
             {!adaptiveQuiz ? (
               <div>
-                <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 12 }}>
+                <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 14 }}>
                   Generate an adaptive question calibrated to your learning recovery.
                 </p>
-                <button className="primary-action" disabled={Boolean(busy)} onClick={loadAdaptiveQuiz}>
+                <button className="primary-action" disabled={Boolean(busy)} onClick={loadAdaptiveQuiz}
+                  style={{ background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)", color: "#ffffff", fontWeight: 700, borderRadius: 12, boxShadow: "0 4px 14px rgba(245, 158, 11, 0.3)" }}
+                >
                   {busy === "quiz" ? "Generating..." : "Generate Adaptive Question"}
                   <I.HelpCircle size={18} />
                 </button>
               </div>
             ) : (
               <div className="practice-card" style={{ padding: 0 }}>
-                <h2 style={{ fontSize: 18, marginBottom: 14 }}>{adaptiveQuiz.question}</h2>
+                <h2 style={{ fontSize: 18, marginBottom: 14, color: "var(--ink)", fontWeight: 700 }}>{adaptiveQuiz.question}</h2>
                 <div className="option-list">
                   {adaptiveQuiz.options.map((option, idx) => {
                     const letter = String.fromCharCode(65 + idx);
@@ -291,11 +348,13 @@ function PracticePage() {
                     );
                   })}
                 </div>
-                <button className="primary-action" disabled={!adaptiveSelected || adaptiveSubmitted} onClick={handleAdaptiveSubmit}>
+                <button className="primary-action" disabled={!adaptiveSelected || adaptiveSubmitted} onClick={handleAdaptiveSubmit}
+                  style={{ marginTop: 14, borderRadius: 12 }}
+                >
                   {adaptiveSubmitted ? (adaptiveSelected === adaptiveQuiz.answer ? "Correct" : "Review Answer") : "Submit Answer"}
                 </button>
                 {adaptiveSubmitted && (
-                  <div className={`feedback ${adaptiveSelected === adaptiveQuiz.answer ? "correct-feedback" : "failed-feedback"}`} style={{ marginTop: 14 }}>
+                  <div className={`feedback ${adaptiveSelected === adaptiveQuiz.answer ? "correct-feedback" : "failed-feedback"}`} style={{ marginTop: 14, borderRadius: 12 }}>
                     <b style={{ fontSize: 15, display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
                       {adaptiveSelected === adaptiveQuiz.answer ? <><I.CheckCircle2 size={16} /> Correct</> : <><I.AlertCircle size={16} /> Answer: {adaptiveQuiz.answer}</>}
                     </b>
@@ -303,12 +362,12 @@ function PracticePage() {
                   </div>
                 )}
                 {adaptiveSubmitted && session.latestOutcome && (
-                  <div className="outcome-card" style={{ marginTop: 14 }}>
+                  <div className="outcome-card" style={{ marginTop: 14, borderRadius: 14 }}>
                     <div className="outcome-title">
                       <span className="outcome-delta-badge">+{((session.latestOutcome.outcomeDelta || 1) * 100).toFixed(0)}%</span>
                       <span>SCALE Outcome: Struggle Successfully Resolved</span>
                     </div>
-                    <button className="primary-action" style={{ background: "#059669", fontSize: 12, padding: "8px 14px", width: "auto", marginTop: 10 }} onClick={() => navigate("/progress")}>
+                    <button className="primary-action" style={{ background: "#059669", fontSize: 12, padding: "8px 14px", width: "auto", marginTop: 10, borderRadius: 10 }} onClick={() => navigate("/progress")}>
                       View in Progress Dashboard <I.ArrowRight size={14} />
                     </button>
                   </div>
@@ -318,12 +377,12 @@ function PracticePage() {
           </section>
         )}
 
-        <section className="card practice-report" style={{ padding: 18 }}>
+        <section className="card practice-report" style={{ padding: 20, borderRadius: 18 }}>
           <b style={{ fontSize: 15, color: "var(--ink)", fontFamily: "var(--font-heading)" }}>Section Report</b>
-          <div className="practice-stats-grid" style={{ marginTop: 12 }}>
+          <div className="practice-stats-grid" style={{ marginTop: 14 }}>
             <div className="stat practice-stat-card">
               <div className="practice-stat-header">
-                <div className="practice-stat-icon" style={{ background: "#fef9c3", color: "#713f12", borderColor: "#fce072" }}>
+                <div className="practice-stat-icon" style={{ background: "rgba(31, 94, 99, 0.08)", color: "var(--primary)", borderColor: "rgba(31, 94, 99, 0.18)" }}>
                   <I.FileEdit size={16} />
                 </div>
               </div>
@@ -341,7 +400,7 @@ function PracticePage() {
             </div>
             <div className="stat practice-stat-card">
               <div className="practice-stat-header">
-                <div className="practice-stat-icon" style={{ background: "#fffbeb", color: "#d97706", borderColor: "#fde68a" }}>
+                <div className="practice-stat-icon" style={{ background: "#ecfdf5", color: "#059669", borderColor: "#a7f3d0" }}>
                   <I.Trophy size={16} />
                 </div>
               </div>
@@ -350,7 +409,7 @@ function PracticePage() {
             </div>
             <div className="stat practice-stat-card">
               <div className="practice-stat-header">
-                <div className="practice-stat-icon" style={{ background: "#fef9c3", color: "#713f12", borderColor: "#fce072" }}>
+                <div className="practice-stat-icon" style={{ background: "#eef2ff", color: "#4f46e5", borderColor: "#c7d2fe" }}>
                   <I.BookOpen size={16} />
                 </div>
               </div>
@@ -421,7 +480,437 @@ function PracticePage() {
 
         <ErrorNotice />
       </main>
+
+      {/* ── Sidebar Nav Quit Quiz Confirmation Modal ── */}
+      {showNavQuitConfirm && (
+        <div
+          onClick={cancelNavQuit}
+          style={{
+            position: "fixed", inset: 0, zIndex: 99999,
+            backgroundColor: "rgba(15, 23, 42, 0.55)",
+            backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
+            display: "grid", placeItems: "center", padding: 20,
+            animation: "fadeInBackdrop 0.18s ease-out",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: 420, width: "100%", padding: "32px 28px",
+              background: "#ffffff", borderRadius: 22,
+              boxShadow: "0 25px 60px -15px rgba(15, 23, 42, 0.35)",
+              border: "1.5px solid rgba(31, 94, 99, 0.18)",
+              textAlign: "center",
+              animation: "scaleUpModal 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+            }}
+          >
+            <div style={{
+              width: 56, height: 56, borderRadius: "50%",
+              background: "linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(245, 158, 11, 0.08))",
+              border: "1.5px solid rgba(245, 158, 11, 0.35)",
+              margin: "0 auto 18px", display: "grid", placeItems: "center", color: "#b45309",
+            }}>
+              <I.AlertTriangle size={28} strokeWidth={2.2} />
+            </div>
+
+            <h3 style={{ fontSize: 21, fontWeight: 800, color: "var(--ink, #203438)", marginBottom: 8, letterSpacing: "-0.01em" }}>
+              Quit the quiz?
+            </h3>
+            <p style={{ fontSize: 14, color: "var(--muted, #607477)", lineHeight: 1.55, marginBottom: 24 }}>
+              You have an active practice quiz in progress. Leaving now will discard your current answers.
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <button
+                type="button"
+                onClick={confirmNavQuit}
+                style={{
+                  width: "100%", padding: "12px 18px", borderRadius: 12,
+                  fontWeight: 700, fontSize: 14.5,
+                  background: "linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)",
+                  color: "#ffffff", border: "none", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  boxShadow: "0 4px 14px rgba(220, 38, 38, 0.3)",
+                }}
+              >
+                <I.LogOut size={16} />
+                <span>Yes, Quit Quiz</span>
+              </button>
+              <button
+                type="button"
+                onClick={cancelNavQuit}
+                style={{
+                  width: "100%", padding: "11px 18px", borderRadius: 12,
+                  fontWeight: 600, fontSize: 14,
+                  background: "#f1f5f3", color: "var(--ink, #203438)",
+                  border: "1px solid rgba(31, 94, 99, 0.14)", cursor: "pointer",
+                }}
+              >
+                Continue Quiz
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
+  );
+}
+
+function PracticeQuizView({ questions, onDone, onExit }) {
+  const { recordPracticeResult } = useSession();
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [selected, setSelected] = useState("");
+  const [revealed, setRevealed] = useState(false);
+  const [answers, setAnswers] = useState([]);
+  const [finished, setFinished] = useState(false);
+  const [showQuitConfirm, setShowQuitConfirm] = useState(false);
+  const [pendingQuitAction, setPendingQuitAction] = useState(null);
+  const [autoAdvanceCountdown, setAutoAdvanceCountdown] = useState(null);
+  const autoAdvanceTimerRef = useRef(null);
+  const countdownTimerRef = useRef(null);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    setCurrentIndex(0);
+    setSelected("");
+    setRevealed(false);
+    setAnswers([]);
+    setFinished(false);
+  }, [questions]);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    };
+  }, []);
+
+  const q = questions[currentIndex] || {};
+  const total = questions.length;
+  const progress = total > 0 ? ((currentIndex) / total) * 100 : 0;
+
+  const handleNext = useCallback(() => {
+    if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    setAutoAdvanceCountdown(null);
+    if (currentIndex < total - 1) {
+      setCurrentIndex((i) => i + 1);
+      setSelected("");
+      setRevealed(false);
+    } else {
+      setFinished(true);
+    }
+  }, [currentIndex, total]);
+
+  function handleReveal() {
+    if (!selected || revealed) return;
+    setRevealed(true);
+    const isCorrect = selected === q.answer;
+    setAnswers((prev) => [...prev, { question: q.question, selected, answer: q.answer, explanation: q.explanation, correct: isCorrect }]);
+
+    // Persist question answer to session practiceReport and update struggle/telemetry signals
+    recordPracticeResult({
+      question: q.question,
+      selected,
+      answer: q.answer,
+      explanation: q.explanation,
+      is_correct: isCorrect,
+      section_index: typeof q.section_index === "number" ? q.section_index : currentIndex,
+      latency_ms: 3000,
+    });
+
+    // Auto-advance to next question after 2 seconds
+    setAutoAdvanceCountdown(2);
+    countdownTimerRef.current = setInterval(() => {
+      setAutoAdvanceCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(countdownTimerRef.current);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    autoAdvanceTimerRef.current = setTimeout(() => {
+      handleNext();
+    }, 2000);
+  }
+
+  // Quit confirmation handlers
+  function requestQuit(action) {
+    setShowQuitConfirm(true);
+    setPendingQuitAction(() => action);
+    // Pause auto-advance while modal is open
+    if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    setAutoAdvanceCountdown(null);
+  }
+
+  function confirmQuit() {
+    setShowQuitConfirm(false);
+    if (pendingQuitAction) pendingQuitAction();
+    setPendingQuitAction(null);
+  }
+
+  function cancelQuit() {
+    setShowQuitConfirm(false);
+    setPendingQuitAction(null);
+  }
+
+  if (finished) {
+    const correct = answers.filter((a) => a.correct).length;
+    const wrong = answers.filter((a) => !a.correct);
+    const pct = Math.round((correct / total) * 100);
+    const grade = pct >= 80 ? "Excellent" : pct >= 60 ? "Good" : "Keep Practising";
+    const gradeColor = pct >= 80 ? "#059669" : pct >= 60 ? "#2563eb" : "#dc2626";
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* Score hero */}
+        <section className="card" style={{ padding: 28, textAlign: "center", background: "linear-gradient(135deg,#f0fdf4 0%,#eff6ff 100%)", border: "2px solid #bbf7d0" }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Practice Quiz Complete</div>
+          <div style={{ position: "relative", width: 110, height: 110, margin: "0 auto 14px" }}>
+            <svg viewBox="0 0 110 110" style={{ width: 110, height: 110, transform: "rotate(-90deg)" }}>
+              <circle cx="55" cy="55" r="46" fill="none" stroke="#e2e8f0" strokeWidth="10" />
+              <circle cx="55" cy="55" r="46" fill="none" stroke={gradeColor} strokeWidth="10"
+                strokeDasharray={`${2 * Math.PI * 46}`}
+                strokeDashoffset={`${2 * Math.PI * 46 * (1 - pct / 100)}`}
+                style={{ transition: "stroke-dashoffset 1s ease" }} />
+            </svg>
+            <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+              <div style={{ fontSize: 26, fontWeight: 900, color: gradeColor, fontFamily: "var(--font-heading)" }}>{pct}%</div>
+              <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>SCORE</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: gradeColor, fontFamily: "var(--font-heading)", marginBottom: 4 }}>{grade}!</div>
+          <div style={{ fontSize: 14, color: "var(--muted)" }}>
+            <span style={{ fontWeight: 700, color: "#059669" }}>{correct} correct</span>
+            {" "}·{" "}
+            <span style={{ fontWeight: 700, color: "#dc2626" }}>{wrong.length} wrong</span>
+            {" "}out of {total} questions
+          </div>
+        </section>
+
+        {/* Correct answers */}
+        {answers.filter((a) => a.correct).length > 0 && (
+          <section className="card" style={{ padding: 18 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <I.CheckCircle2 size={18} style={{ color: "#059669", flexShrink: 0 }} />
+              <b style={{ fontSize: 14, color: "#065f46" }}>Correct ({answers.filter((a) => a.correct).length})</b>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {answers.filter((a) => a.correct).map((a, i) => (
+                <div key={i} style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "10px 14px" }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b", marginBottom: 2 }}>{a.question}</div>
+                  <div style={{ fontSize: 12, color: "#059669", fontWeight: 700 }}>✓ {a.answer}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Wrong answers */}
+        {wrong.length > 0 && (
+          <section className="card" style={{ padding: 18 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <I.AlertCircle size={18} style={{ color: "#dc2626", flexShrink: 0 }} />
+              <b style={{ fontSize: 14, color: "#7f1d1d" }}>Needs Review ({wrong.length})</b>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {wrong.map((a, i) => (
+                <div key={i} style={{ background: "#fff7f7", border: "1px solid #fecaca", borderRadius: 10, padding: "10px 14px" }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b", marginBottom: 4 }}>{a.question}</div>
+                  <div style={{ fontSize: 12, color: "#dc2626", fontWeight: 600, marginBottom: 2 }}>✗ You answered: {a.selected}</div>
+                  <div style={{ fontSize: 12, color: "#059669", fontWeight: 700, marginBottom: 4 }}>✓ Correct: {a.answer}</div>
+                  <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>{a.explanation}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Actions */}
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <button className="secondary-action" style={{ flex: 1 }} onClick={onDone}>
+            <I.RefreshCw size={15} /> Retake Quiz
+          </button>
+          {onExit && (
+            <button className="secondary-action" style={{ flex: 1 }} onClick={onExit}>
+              <I.BookOpen size={15} /> Practice Overview
+            </button>
+          )}
+          <button className="primary-action" style={{ flex: 1 }} onClick={() => navigate("/progress")}>
+            View Progress <I.BarChart3 size={15} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Progress bar */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ flex: 1, height: 6, background: "#e2e8f0", borderRadius: 99, overflow: "hidden" }}>
+          <div style={{ width: `${progress}%`, height: "100%", background: "linear-gradient(90deg,#6366f1,#818cf8)", borderRadius: 99, transition: "width 0.4s ease" }} />
+        </div>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", whiteSpace: "nowrap" }}>{currentIndex + 1} / {total}</span>
+      </div>
+
+      {/* Question card */}
+      <section className="card practice-card" style={{ padding: 22 }}>
+        <div style={{ fontSize: 11, fontWeight: 800, color: "var(--primary)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>
+          Question {currentIndex + 1}
+        </div>
+        <h2 style={{ fontSize: 17, fontWeight: 700, color: "var(--ink)", marginBottom: 18, lineHeight: 1.45 }}>{q.question}</h2>
+
+        <div className="option-list">
+          {q.options.map((option, idx) => {
+            const letter = String.fromCharCode(65 + idx);
+            const isSelected = selected === option;
+            const isCorrect = option === q.answer;
+            let bg = isSelected ? "var(--primary)" : "#e2e8f0";
+            let color = isSelected ? "#fff" : "var(--muted)";
+            let rowBorder = "";
+            let rowBg = "";
+            if (revealed) {
+              if (isCorrect) { bg = "#059669"; color = "#fff"; rowBorder = "1px solid #bbf7d0"; rowBg = "#f0fdf4"; }
+              else if (isSelected && !isCorrect) { bg = "#dc2626"; color = "#fff"; rowBorder = "1px solid #fecaca"; rowBg = "#fff7f7"; }
+              else { bg = "#e2e8f0"; color = "var(--muted)"; }
+            }
+            return (
+              <button
+                key={option}
+                className={isSelected ? "selected" : ""}
+                style={revealed ? { border: rowBorder, background: rowBg, cursor: "default", opacity: (!isCorrect && !isSelected) ? 0.55 : 1 } : {}}
+                onClick={() => !revealed && setSelected(option)}
+              >
+                <span style={{ width: 24, height: 24, borderRadius: 6, background: bg, color, display: "grid", placeItems: "center", fontSize: 12, fontWeight: 700, flexShrink: 0, transition: "background 0.2s" }}>{letter}</span>
+                <span>{option}</span>
+                {revealed && isCorrect && <I.CheckCircle2 size={16} style={{ marginLeft: "auto", color: "#059669", flexShrink: 0 }} />}
+                {revealed && isSelected && !isCorrect && <I.XCircle size={16} style={{ marginLeft: "auto", color: "#dc2626", flexShrink: 0 }} />}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Explanation after reveal */}
+        {revealed && (
+          <div className={`feedback ${selected === q.answer ? "correct-feedback" : "failed-feedback"}`} style={{ marginTop: 14 }}>
+            <b style={{ fontSize: 14, display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+              {selected === q.answer ? <><I.CheckCircle2 size={15} /> Correct!</> : <><I.AlertCircle size={15} /> Incorrect — correct answer: {q.answer}</>}
+            </b>
+            <p style={{ fontSize: 13, margin: 0 }}>{q.explanation}</p>
+          </div>
+        )}
+
+        {/* Action buttons */}
+        <div style={{ marginTop: 16, display: "flex", gap: 10 }}>
+          {!revealed ? (
+            <button className="primary-action" disabled={!selected} onClick={handleReveal} style={{ flex: 1 }}>
+              Check Answer
+            </button>
+          ) : (
+            <button className="primary-action" onClick={handleNext} style={{ flex: 1, position: "relative" }}>
+              {currentIndex < total - 1 ? (
+                <>
+                  {autoAdvanceCountdown > 0 ? `Next in ${autoAdvanceCountdown}s…` : "Next Question"}
+                  <I.ChevronRight size={16} />
+                </>
+              ) : (
+                <>
+                  {autoAdvanceCountdown > 0 ? `Results in ${autoAdvanceCountdown}s…` : "See Results"}
+                  <I.Award size={16} />
+                </>
+              )}
+            </button>
+          )}
+          {revealed && (
+            <button
+              className="secondary-action"
+              onClick={() => requestQuit(onExit)}
+              style={{ flexShrink: 0, padding: "10px 14px" }}
+              title="Quit quiz"
+            >
+              <I.LogOut size={15} />
+            </button>
+          )}
+        </div>
+      </section>
+
+      {/* ── Quit Quiz Confirmation Modal ── */}
+      {showQuitConfirm && (
+        <div
+          onClick={cancelQuit}
+          style={{
+            position: "fixed", inset: 0, zIndex: 99999,
+            backgroundColor: "rgba(15, 23, 42, 0.55)",
+            backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
+            display: "grid", placeItems: "center", padding: 20,
+            animation: "fadeInBackdrop 0.18s ease-out",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: 420, width: "100%", padding: "32px 28px",
+              background: "#ffffff", borderRadius: 22,
+              boxShadow: "0 25px 60px -15px rgba(15, 23, 42, 0.35)",
+              border: "1.5px solid rgba(31, 94, 99, 0.18)",
+              textAlign: "center",
+              animation: "scaleUpModal 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+            }}
+          >
+            <div style={{
+              width: 56, height: 56, borderRadius: "50%",
+              background: "linear-gradient(135deg, rgba(239, 68, 68, 0.18), rgba(239, 68, 68, 0.08))",
+              border: "1.5px solid rgba(239, 68, 68, 0.35)",
+              margin: "0 auto 18px", display: "grid", placeItems: "center", color: "#b91c1c",
+            }}>
+              <I.AlertTriangle size={28} strokeWidth={2.2} />
+            </div>
+
+            <h3 style={{ fontSize: 21, fontWeight: 800, color: "var(--ink, #203438)", marginBottom: 8, letterSpacing: "-0.01em" }}>
+              Quit the quiz?
+            </h3>
+            <p style={{ fontSize: 14, color: "var(--muted, #607477)", lineHeight: 1.55, marginBottom: 24 }}>
+              You've answered <strong>{answers.length}</strong> of <strong>{total}</strong> questions.
+              Your progress will not be saved if you leave now.
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <button
+                type="button"
+                onClick={confirmQuit}
+                style={{
+                  width: "100%", padding: "12px 18px", borderRadius: 12,
+                  fontWeight: 700, fontSize: 14.5,
+                  background: "linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)",
+                  color: "#ffffff", border: "none", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  boxShadow: "0 4px 14px rgba(220, 38, 38, 0.3)",
+                }}
+              >
+                <I.LogOut size={16} />
+                <span>Yes, Quit Quiz</span>
+              </button>
+              <button
+                type="button"
+                onClick={cancelQuit}
+                style={{
+                  width: "100%", padding: "11px 18px", borderRadius: 12,
+                  fontWeight: 600, fontSize: 14,
+                  background: "#f1f5f3", color: "var(--ink, #203438)",
+                  border: "1px solid rgba(31, 94, 99, 0.14)", cursor: "pointer",
+                }}
+              >
+                Continue Quiz
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

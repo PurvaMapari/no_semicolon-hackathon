@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import * as I from "lucide-react";
 import { useSession } from "../../context/SessionContext";
@@ -14,6 +14,7 @@ import { evaluateSignals } from "../../engine/signals";
 import { SCALE_CONFIG } from "../../engine/scale";
 import ErrorNotice from "../../components/ErrorNotice";
 import { speakFemaleVoice, stopSpeech } from "../../utils/speechVoice";
+import { exportLessonToPDF } from "../../utils/pdfExport";
 import "./LearnPage.css";
 
 function VisualCard({ visual, cluster = null, sections = [], onReadAloud, clusterIndex = -1, clusterTotal = 0 }) {
@@ -558,7 +559,6 @@ function Learn() {
   const [playing, setPlaying] = useState(false);
   const [showVisualPanel, setShowVisualPanel] = useState(false);
   const [sectionMenuOpen, setSectionMenuOpen] = useState(false);
-  const [showQuizPrompt, setShowQuizPrompt] = useState(false);
   const sectionPickerRef = useRef(null);
 
   // Sync active section to session state
@@ -682,19 +682,8 @@ function Learn() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // If user visits /learn after starting learning, but camera is off (e.g., after quitting learning),
-  // route them to Step 2 (/profile) to enable camera and calibrate
-  useEffect(() => {
-    if (
-      transformed &&
-      session.hasStartedLearning &&
-      webcamHook.webcamStatus === "off" &&
-      !webcamHook.webcamEnabled &&
-      !webcamHook.mediaStream
-    ) {
-      navigate("/profile");
-    }
-  }, [transformed, session.hasStartedLearning, webcamHook.webcamStatus, webcamHook.webcamEnabled, webcamHook.mediaStream, navigate]);
+  // NOTE: Camera is now route-aware via WebcamContext — it auto-enables
+  // on /profile and /learn and auto-disables on other routes. No redirect needed.
 
   const isCognitiveLoad = transformed?.profile === "cognitive_load";
   const hasStructuredSections = Array.isArray(transformed?.sections) && transformed.sections.length > 0;
@@ -962,9 +951,9 @@ function Learn() {
       : [...currentCompleted, activeSection];
     const allDone = sections.length > 0 && sections.every((_, idx) => newCompletedSections.includes(idx));
 
-    if (allDone) {
-      // All sections complete — ask learner to take the Practice Quiz
-      setShowQuizPrompt(true);
+    if (allDone || (isLastSection && isComplete)) {
+      // Direct redirect to practice page without popup modal
+      navigate("/practice");
     } else if (!isLastSection) {
       setActiveSection((index) => index + 1);
     }
@@ -978,6 +967,28 @@ function Learn() {
   const displayText = isAdapted
     ? session.rewireState.adaptedContent?.adapted_text || currentSection?.paragraph
     : currentSection?.paragraph;
+
+  const cleanedDisplayText = useMemo(() => {
+    let t = (displayText || "").trim();
+    if (!t) return "";
+    // Clean residual unmapped ligatures 'fi' -> '→'
+    t = t.replace(/(?<=\S)\s+fi\s+(?=\S)/g, " → ");
+    t = t.replace(/\b([A-Za-z0-9\+\s]+?)\s+fi\s+([A-Za-z0-9\+\s]+)/g, "$1 → $2");
+    // If paragraph starts with the section heading or lesson title, deduplicate it
+    const heading = (currentSection?.heading || "").trim().toLowerCase();
+    const lessonTitle = (session.lessonTitle || "").trim().toLowerCase();
+    const lines = t.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (lines.length > 1) {
+      const firstLine = lines[0].toLowerCase();
+      if (
+        (heading && (firstLine === heading || firstLine.startsWith(heading + ":") || firstLine.startsWith(heading + " -"))) ||
+        (lessonTitle && (firstLine === lessonTitle || firstLine.startsWith(lessonTitle + ":")))
+      ) {
+        t = lines.slice(1).join("\n").trim();
+      }
+    }
+    return t;
+  }, [displayText, currentSection?.heading, session.lessonTitle]);
 
   // Floating voice assistant panel state
   const [voiceOpen, setVoiceOpen] = useState(false);
@@ -1054,21 +1065,55 @@ function Learn() {
                 </div>
               </div>
             </div>
-            <button
-              className="primary-action"
-              style={{
-                background: "#059669",
-                padding: "9px 18px",
-                fontSize: 14,
-                width: "auto",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-              onClick={() => navigate("/practice")}
-            >
-              Take Practice Quiz <I.ArrowRight size={16} />
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="secondary-action"
+                style={{
+                  padding: "9px 16px",
+                  fontSize: 14,
+                  fontWeight: 700,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  borderRadius: 10,
+                  background: "#ffffff",
+                  color: "#065f46",
+                  border: "1px solid #a7f3d0",
+                  cursor: "pointer",
+                }}
+                onClick={() =>
+                  exportLessonToPDF({
+                    title: session.lessonTitle || session.fileName || "Lesson",
+                    profile: session.profile,
+                    sections,
+                    fileName: session.fileName,
+                  })
+                }
+                title="Download full lesson as PDF"
+              >
+                <I.Download size={16} />
+                <span>Download Lesson PDF</span>
+              </button>
+              <button
+                id="banner-take-practice-quiz-btn"
+                className="primary-action"
+                style={{
+                  background: "#059669",
+                  padding: "9px 18px",
+                  fontSize: 14,
+                  width: "auto",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  cursor: "pointer",
+                }}
+                onClick={() => navigate("/practice")}
+              >
+                <span>Take Practice Quiz</span>
+                <I.ArrowRight size={16} />
+              </button>
+            </div>
           </div>
         )}
 
@@ -1195,20 +1240,53 @@ function Learn() {
                       {currentSection.heading}
                     </h2>
                   )}
-                  <p
-                    style={{
-                      fontSize: formatting.font_size_multiplier
-                        ? `${formatting.font_size_multiplier}em`
-                        : undefined,
-                      lineHeight: formatting.line_height || 1.75,
-                      letterSpacing: formatting.letter_spacing,
-                      whiteSpace: "pre-line",
-                      color: "#1e293b",
-                      margin: 0,
-                    }}
-                  >
-                    {displayText}
-                  </p>
+                  {isCognitiveLoad ? (
+                    <div className="cognitive-content-wrapper">
+                      {cleanedDisplayText.split("\n").filter(Boolean).map((block, bIdx) => {
+                        const isEquation = block.includes("→") && (block.includes("+") || block.length < 110);
+                        if (isEquation) {
+                          return (
+                            <div key={bIdx} className="cognitive-flow-card">
+                              <span className="cognitive-flow-badge">PROCESS</span>
+                              <span className="cognitive-flow-text">{block}</span>
+                            </div>
+                          );
+                        }
+                        return (
+                          <p
+                            key={bIdx}
+                            className="cognitive-body-text"
+                            style={{
+                              fontSize: formatting.font_size_multiplier
+                                ? `${formatting.font_size_multiplier}em`
+                                : "1.05em",
+                              lineHeight: formatting.line_height || 1.85,
+                              letterSpacing: formatting.letter_spacing || "0.015em",
+                              color: "#1e293b",
+                              margin: "0 0 12px 0",
+                            }}
+                          >
+                            {block}
+                          </p>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p
+                      style={{
+                        fontSize: formatting.font_size_multiplier
+                          ? `${formatting.font_size_multiplier}em`
+                          : undefined,
+                        lineHeight: formatting.line_height || 1.75,
+                        letterSpacing: formatting.letter_spacing,
+                        whiteSpace: "pre-line",
+                        color: "#1e293b",
+                        margin: 0,
+                      }}
+                    >
+                      {cleanedDisplayText}
+                    </p>
+                  )}
 
                   {isAdapted && session.rewireState.adaptedContent?.visual_description && (
                     <div className="visual-description-box" style={{ marginTop: 16 }}>
@@ -1226,7 +1304,7 @@ function Learn() {
                     <button
                       type="button"
                       className={`audio-tool-btn ${playing ? "active" : ""}`}
-                      onClick={() => readAloud(displayText)}
+                      onClick={() => readAloud(cleanedDisplayText)}
                       title={playing ? "Stop audio" : "Read aloud"}
                     >
                       {playing ? (
@@ -1452,17 +1530,52 @@ function Learn() {
                 })()}
 
                 <button
+                  type="button"
+                  className="download-lesson-pill"
+                  onClick={() =>
+                    exportLessonToPDF({
+                      title: session.lessonTitle || session.fileName || "Lesson",
+                      profile: session.profile,
+                      sections,
+                      fileName: session.fileName,
+                    })
+                  }
+                  title="Download all sections of this lesson as a formatted PDF"
+                >
+                  <I.Download size={14} />
+                  <span>Download PDF</span>
+                </button>
+
+                <button
+                  id="lesson-complete-action-btn"
                   className="lesson-complete-btn"
-                  onClick={markSectionComplete}
+                  onClick={() => {
+                    if (isComplete && (activeSection === sections.length - 1 || allSectionsCompleted)) {
+                      navigate("/practice");
+                    } else {
+                      markSectionComplete();
+                    }
+                  }}
+                  title={
+                    isComplete && activeSection === sections.length - 1
+                      ? "Go to Practice Quiz"
+                      : isComplete
+                      ? "Go to next section"
+                      : "Mark section complete"
+                  }
                 >
                   <span>
                     {isComplete
                       ? activeSection === sections.length - 1
-                        ? "Completed"
+                        ? "Take Practice Quiz"
                         : "Next Section"
                       : "Mark Complete"}
                   </span>
-                  <I.Check size={14} />
+                  {isComplete && activeSection === sections.length - 1 ? (
+                    <I.ArrowRight size={14} />
+                  ) : (
+                    <I.Check size={14} />
+                  )}
                 </button>
               </div>
             </div>
@@ -1750,115 +1863,6 @@ function Learn() {
         )}
 
       </main>
-
-      {showQuizPrompt && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 9999,
-            background: "rgba(15, 23, 42, 0.6)",
-            backdropFilter: "blur(8px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 20,
-          }}
-        >
-          <div
-            className="card"
-            style={{
-              maxWidth: 480,
-              width: "100%",
-              padding: "36px 32px 30px",
-              textAlign: "center",
-              boxShadow: "0 25px 60px -12px rgba(15, 23, 42, 0.28), 0 0 0 1px rgba(16, 185, 129, 0.18)",
-              border: "1px solid rgba(16, 185, 129, 0.3)",
-              background: "#ffffff",
-              borderRadius: 24,
-            }}
-          >
-            <div
-              style={{
-                width: 64,
-                height: 64,
-                borderRadius: "50%",
-                background: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)",
-                border: "2px solid #f59e0b",
-                boxShadow: "0 8px 24px -4px rgba(245, 158, 11, 0.35), 0 0 0 6px rgba(245, 158, 11, 0.12)",
-                margin: "0 auto 18px",
-                display: "grid",
-                placeItems: "center",
-                color: "#b45309",
-              }}
-            >
-              <I.Trophy size={32} />
-            </div>
-            <h2
-              style={{
-                fontSize: 23,
-                fontWeight: 800,
-                color: "var(--ink)",
-                marginBottom: 8,
-                fontFamily: "var(--font-heading)",
-                letterSpacing: "-0.02em",
-              }}
-            >
-              All Sections Complete!
-            </h2>
-            <p style={{ fontSize: 14.5, color: "var(--muted)", lineHeight: 1.6, marginBottom: 26 }}>
-              Fantastic job completing every section of this lesson. Would you like to take the{" "}
-              <strong style={{ color: "var(--ink)" }}>Practice Quiz</strong> now? The AI will generate relevant questions from your lesson to test your mastery.
-            </p>
-            <div style={{ display: "flex", gap: 12, flexDirection: "column" }}>
-              <button
-                id="take-practice-quiz-btn"
-                className="primary-action"
-                style={{
-                  background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-                  color: "#ffffff",
-                  fontWeight: 700,
-                  fontSize: 15.5,
-                  padding: "13px 22px",
-                  borderRadius: 14,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 8,
-                  boxShadow: "0 6px 20px rgba(16, 185, 129, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.25)",
-                  border: "1px solid rgba(255, 255, 255, 0.2)",
-                }}
-                onClick={() => {
-                  setShowQuizPrompt(false);
-                  if (webcamHook?.mediaStream) {
-                    webcamHook.mediaStream.getTracks().forEach((track) => track.stop());
-                  }
-                  if (webcamHook?.setWebcamEnabled) {
-                    webcamHook.setWebcamEnabled(false);
-                  }
-                  navigate("/practice");
-                }}
-              >
-                Take Practice Quiz Now <I.ChevronRight size={18} />
-              </button>
-              <button
-                className="secondary-action"
-                style={{
-                  padding: "11px 20px",
-                  fontSize: 14,
-                  fontWeight: 600,
-                  borderRadius: 12,
-                  border: "1px solid var(--border-color)",
-                  background: "rgba(248, 250, 252, 0.95)",
-                }}
-                onClick={() => setShowQuizPrompt(false)}
-              >
-                Stay and Review Sections
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </Layout>
   );
 }
