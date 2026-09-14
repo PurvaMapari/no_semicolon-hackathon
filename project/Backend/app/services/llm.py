@@ -29,14 +29,14 @@ QUIZ_FALLBACK = {
 # Chat-capable models in preference order (guard/whisper/TTS models are excluded).
 # Update this list if your Groq account gains access to newer models.
 _PREFERRED_MODELS = (
+    "llama-3.3-70b-versatile",
+    "llama-3.1-70b-versatile",
+    "llama-3.1-8b-instant",
     "qwen/qwen3.8-27b",
     "qwen/qwen3.6-27b",
     "groq/compound",
     "openai/gpt-oss-20b",
     "openai/gpt-oss-120b",
-    "llama-3.3-70b-versatile",
-    "llama-3.1-70b-versatile",
-    "llama-3.1-8b-instant",
 )
 
 # Model IDs that are NOT suitable for chat completions (guard / speech / embedding)
@@ -189,41 +189,47 @@ def call_llm(prompt: str) -> str:
 
 
 def call_voice_llm(prompt: str) -> str:
-    """Use dedicated voice client if available, with automatic failover to the multi-key pool."""
-    if _VOICE_CLIENT and _VOICE_MODEL:
-        options: Dict[str, Any] = {
-            "model": _VOICE_MODEL,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.2,
-            "max_completion_tokens": _safe_max_tokens(_VOICE_MODEL, 1024),
-        }
-        if _VOICE_MODEL.startswith("openai/"):
-            options["reasoning_effort"] = "low"
-        try:
-            return _VOICE_CLIENT.chat.completions.create(**options).choices[0].message.content or ""
-        except Exception as err:
-            print(f"[Groq Voice] Dedicated voice key failed ({err}). Failing over to main pool...")
+    """Use dedicated voice client if available, with automatic failover across models and to the multi-key pool."""
+    if _VOICE_CLIENT and _VOICE_MODELS:
+        models = _VOICE_MODELS or list(_PREFERRED_MODELS)
+        for model in models:
+            options: Dict[str, Any] = {
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.2,
+                "max_completion_tokens": _safe_max_tokens(model, 1024),
+            }
+            if model.startswith("openai/"):
+                options["reasoning_effort"] = "low"
+            try:
+                return _VOICE_CLIENT.chat.completions.create(**options).choices[0].message.content or ""
+            except Exception as err:
+                print(f"[Groq Voice] Dedicated voice key with model {model} failed ({err}). Trying next model...")
+                continue
     return call_llm(prompt)
 
 
 def call_visual_llm(prompt: str) -> str:
-    """Use dedicated visual client if available, with automatic failover to the multi-key pool."""
-    if _VISUAL_CLIENT and _VISUAL_MODEL:
-        is_openai_model = _VISUAL_MODEL.startswith("openai/")
-        options: Dict[str, Any] = {
-            "model": _VISUAL_MODEL,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.1,
-            "max_completion_tokens": _safe_max_tokens(_VISUAL_MODEL, 2048),
-        }
-        if not is_openai_model:
-            options["response_format"] = {"type": "json_object"}
-        else:
-            options["reasoning_effort"] = "low"
-        try:
-            return _VISUAL_CLIENT.chat.completions.create(**options).choices[0].message.content or ""
-        except Exception as err:
-            print(f"[Groq Visual] Dedicated visual key failed ({err}). Failing over to main pool...")
+    """Use dedicated visual client if available, with automatic failover across models and to the multi-key pool."""
+    if _VISUAL_CLIENT and _VISUAL_MODELS:
+        models = _VISUAL_MODELS or list(_PREFERRED_MODELS)
+        for model in models:
+            is_openai_model = model.startswith("openai/")
+            options: Dict[str, Any] = {
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.1,
+                "max_completion_tokens": _safe_max_tokens(model, 2048),
+            }
+            if not is_openai_model:
+                options["response_format"] = {"type": "json_object"}
+            else:
+                options["reasoning_effort"] = "low"
+            try:
+                return _VISUAL_CLIENT.chat.completions.create(**options).choices[0].message.content or ""
+            except Exception as err:
+                print(f"[Groq Visual] Dedicated visual key with model {model} failed ({err}). Trying next candidate...")
+                continue
     return call_llm(prompt)
 
 
