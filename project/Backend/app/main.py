@@ -69,9 +69,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?",
+    allow_origin_regex=r"https://.*\.vercel\.app|http://(localhost|127\.0\.0\.1)(:\d+)?|https://.*\.onrender\.com",
     allow_origins=[
         FRONTEND_ORIGIN,
+        "https://no-semicolon-hackathon-vert.vercel.app",
         "http://localhost:5173",
         "http://localhost:5174",
         "http://localhost:5175",
