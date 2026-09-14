@@ -8,7 +8,9 @@ import {
   type Transition,
 } from "framer-motion";
 
-import { cn } from "../../lib/utils";
+function cn(...inputs: any[]) {
+  return inputs.filter(Boolean).join(" ");
+}
 
 /* ── types ───────────────────────────────────────────────────── */
 

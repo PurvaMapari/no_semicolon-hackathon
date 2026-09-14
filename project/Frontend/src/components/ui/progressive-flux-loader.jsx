@@ -7,7 +7,9 @@ import {
   useReducedMotion,
 } from "framer-motion";
 
-import { cn } from "../../lib/utils";
+function cn(...inputs) {
+  return inputs.filter(Boolean).join(" ");
+}
 
 /* ── constants ───────────────────────────────────────────────── */
 
