@@ -1,0 +1,902 @@
+/* ── Progress Page: Analytics, Mastery Ring & Telemetry ──────────── */
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.stat {
+  padding: 18px;
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.2s ease;
+}
+
+.stat:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.stat b {
+  font-family: var(--font-heading);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--primary);
+  display: block;
+}
+
+.stat span {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+  display: block;
+  font-weight: 600;
+}
+
+/* ── Mastery Ring hero ───────────────────────────────────────────────────── */
+
+/*
+ * Desktop: ring + bar + legend on the left, stat cards stacked on the right.
+ * Mobile:  ring column on top, stat cards below (flex-direction: column).
+ */
+/* ── Mastery Ring ─────────────────────────────────────────────────────────── */
+.mastery-ring-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  margin: 4px 0 20px;
+  position: relative;
+  /* anchor for toast */
+}
+
+.mastery-ring-svg-wrap {
+  position: relative;
+  width: clamp(120px, 15vmin, 160px);
+  height: clamp(120px, 15vmin, 160px);
+  flex-shrink: 0;
+}
+
+/* Fill arc — frame-by-frame ease-out animation on mount */
+.mastery-ring-arc {
+  transition: stroke 0.4s ease;
+}
+
+/* Gold glow + pulse at 100% */
+.mastery-ring--gold .mastery-ring-arc {
+  filter: drop-shadow(0 0 8px #FBBF24aa);
+  animation: ring-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes ring-pulse {
+
+  0%,
+  100% {
+    filter: drop-shadow(0 0 6px #FBBF24aa);
+  }
+
+  50% {
+    filter: drop-shadow(0 0 16px #FBBF24ff);
+  }
+}
+
+/* Centre text */
+.mastery-ring-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  pointer-events: none;
+}
+
+.mastery-ring-level {
+  font-size: clamp(9.5px, 0.9vw, 11px);
+  font-weight: 800;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.mastery-ring-xp {
+  font-size: clamp(17px, 1.8vw, 21px);
+  font-weight: 800;
+  color: var(--ink);
+  font-family: var(--font-heading, inherit);
+  line-height: 1.1;
+}
+
+.mastery-ring-pct {
+  font-size: clamp(10.5px, 1vw, 12px);
+  font-weight: 700;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+/* XP progress bar to next level */
+.mastery-xp-bar-wrap {
+  width: clamp(120px, 15vmin, 160px);
+}
+
+.mastery-xp-bar-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 5px;
+}
+
+/* reuse existing .progressbar track, override height + radius */
+.mastery-xp-bar-track {
+  height: 8px !important;
+  border-radius: 999px !important;
+  background: #E5E7EB !important;
+}
+
+/* reuse existing .progressfill, override gradient to purple brand */
+.mastery-xp-bar-fill {
+  background: var(--primary-gradient, linear-gradient(90deg, #1f5e63 0%, #8faf9a 100%)) !important;
+  border-radius: 999px !important;
+}
+
+/* Legend strip */
+.mastery-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.mastery-legend-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.mastery-legend-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* +XP toast badge */
+.mastery-xp-toast {
+  position: absolute;
+  top: -10px;
+  right: -16px;
+  background: var(--primary-gradient, linear-gradient(135deg, #1f5e63, #8faf9a));
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 999px;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+  animation: xp-toast-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both,
+    xp-toast-out 0.3s ease 2.4s forwards;
+  pointer-events: none;
+  z-index: 10;
+}
+
+@keyframes xp-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.8);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes xp-toast-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+.ask-card {
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.9) 0%, rgba(238, 242, 255, 0.5) 100%);
+}
+
+.answer-box {
+  margin-top: 14px;
+  padding: 16px;
+  background: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+textarea,
+input {
+  font-family: inherit;
+  border: 1.5px solid var(--border-color);
+  border-radius: 12px;
+  padding: 12px 16px;
+  color: var(--ink);
+  background: #ffffff;
+  transition: all 0.2s ease;
+}
+
+textarea:focus,
+input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulseGlow {
+
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.6;
+    transform: scale(1.25);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes prism-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+@media (min-width: 900px) {
+  .phone {
+    max-width: 100%;
+    padding-bottom: 40px;
+  }
+
+  .desktop-layout {
+    display: flex;
+    min-height: 100vh;
+  }
+
+  .desktop-sidebar {
+    display: flex;
+    flex-direction: column;
+    width: clamp(230px, 17vw, 280px);
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: var(--glass-blur);
+    border-right: 1px solid var(--border-color);
+    padding: clamp(16px, 1.8vw, 24px) clamp(14px, 1.4vw, 20px);
+    z-index: 50;
+  }
+
+  .sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(6px, 0.8vh, 10px);
+    margin-top: clamp(20px, 3vh, 32px);
+    flex: 1;
+  }
+
+  .sidebar-link {
+    display: flex;
+    align-items: center;
+    gap: clamp(8px, 1vw, 12px);
+    padding: clamp(9px, 1vh, 12px) clamp(12px, 1.2vw, 16px);
+    border-radius: 14px;
+    color: var(--muted);
+    font-weight: 600;
+    font-size: clamp(13px, 0.95vw, 14.5px);
+    text-decoration: none;
+    transition: all 0.2s ease;
+  }
+
+  .sidebar-link:hover {
+    color: var(--primary);
+    background: var(--primary-light);
+  }
+
+  .sidebar-link.active {
+    background: var(--primary-gradient);
+    color: #ffffff;
+    box-shadow: 0 4px 14px rgba(31, 94, 99, 0.25);
+  }
+
+  .main-content {
+    margin-left: clamp(230px, 17vw, 280px);
+    flex: 1;
+    width: calc(100% - clamp(230px, 17vw, 280px));
+    min-width: 0;
+  }
+
+  .bottom-nav {
+    display: none;
+  }
+
+  .topbar {
+    padding: 0 clamp(20px, 3vw, 40px);
+  }
+
+  .page {
+    max-width: min(1360px, 94%);
+    padding: clamp(20px, 2.5vw, 36px) clamp(20px, 3vw, 48px) clamp(36px, 4vw, 60px);
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+    gap: clamp(10px, 1.2vw, 16px);
+  }
+}
+
+@media (min-width: 1920px) {
+  .page {
+    max-width: min(1560px, 92%);
+  }
+}
+
+
+/* ── SCALE Cognitive Telemetry Card ──────────────────────────────────────── */
+.scale-telemetry-card {
+  border-radius: 16px;
+  box-shadow: var(--shadow-md);
+  background: var(--bg-card);
+  backdrop-filter: var(--glass-blur);
+}
+
+.struggle-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  transition: all 0.2s ease;
+}
+
+.struggle-status-pulse {
+  animation: struggle-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes struggle-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(220, 38, 38, 0);
+  }
+}
+
+.struggle-progressbar {
+  margin-top: 8px;
+  height: 12px;
+  border-radius: 8px;
+  background: #e5e7eb;
+  overflow: hidden;
+}
+
+.struggle-progressfill {
+  height: 100%;
+  border-radius: 8px;
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.struggle-progressfill.struggle-pulse {
+  animation: struggle-fill-pulse 2s ease-in-out infinite;
+}
+
+@keyframes struggle-fill-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+/* ── Progress Stats Cards ────────────────────────────────────── */
+.progress-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.progress-stat-card {
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 18px;
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+  backdrop-filter: var(--glass-blur, blur(16px));
+}
+
+.progress-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.progress-stat-icon-wrap {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid;
+  flex-shrink: 0;
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.04);
+}
+
+.progress-stat-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.progress-stat-value {
+  font-family: var(--font-heading, inherit);
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--ink, #0f172a);
+  line-height: 1.1;
+}
+
+.progress-stat-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted, #64748b);
+  margin-top: 3px;
+}
+
+@media (max-width: 640px) {
+  .progress-stats-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .progress-stat-card {
+    padding: 14px 16px;
+  }
+}
+
+/* ── Reactive Mascot Orb ─────────────────────────────────────── */
+.reactive-orb-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 5;
+  margin: 0 auto;
+  transition: transform 0.2s ease;
+}
+
+.reactive-orb-container:hover {
+  transform: scale(1.08);
+}
+
+.reactive-orb-svg {
+  width: 52px;
+  height: 52px;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.1));
+}
+
+/* Calm state: gentle breathing pulse & glow */
+.reactive-orb--calm .orb-blob {
+  animation: orb-breathe 4s ease-in-out infinite;
+  filter: drop-shadow(0 0 10px rgba(31, 94, 99, 0.45));
+}
+
+.reactive-orb--calm .orb-aura {
+  fill: var(--primary);
+  opacity: 0.15;
+  animation: orb-aura-pulse 4s ease-in-out infinite;
+}
+
+/* Alert state */
+.reactive-orb--alert .orb-blob {
+  animation: orb-alert-pulse 2.2s ease-in-out infinite;
+  filter: drop-shadow(0 0 12px rgba(245, 158, 11, 0.55));
+}
+
+.reactive-orb--alert .orb-aura {
+  fill: #f59e0b;
+  opacity: 0.2;
+  animation: orb-aura-pulse 2.2s ease-in-out infinite;
+}
+
+/* Tense state: jittery vibration & tense red glow */
+.reactive-orb--tense .orb-blob {
+  animation: orb-jitter 0.15s ease-in-out infinite, orb-tense-pulse 1.2s ease-in-out infinite;
+  filter: drop-shadow(0 0 14px rgba(220, 38, 38, 0.75));
+}
+
+.reactive-orb--tense .orb-aura {
+  fill: #dc2626;
+  opacity: 0.25;
+  animation: orb-aura-pulse 1.2s ease-in-out infinite;
+}
+
+/* ── Gamified HUD Mood Label (Inline next to Session Heading) ──── */
+.progress-header-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.hud-mood-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  user-select: none;
+  transition: color 0.3s ease, text-shadow 0.3s ease;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-mood-emoji {
+  font-size: 16px;
+  line-height: 1;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.12));
+}
+
+@keyframes orb-breathe {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+@keyframes orb-aura-pulse {
+  0%, 100% {
+    transform: scale(0.95);
+    opacity: 0.15;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.3;
+  }
+}
+
+@keyframes orb-alert-pulse {
+  0%, 100% {
+    transform: scale(0.98);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+@keyframes orb-tense-pulse {
+  0%, 100% {
+    transform: scale(0.96);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+@keyframes orb-jitter {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  25% { transform: translate(-1px, 1px) rotate(-1deg); }
+  50% { transform: translate(1px, -1px) rotate(1deg); }
+  75% { transform: translate(-1px, -1px) rotate(0.5deg); }
+  100% { transform: translate(1px, 1px) rotate(-0.5deg); }
+}
+
+/* ── Struggle Slider Track ──────────────────────────────────── */
+.slider-track-card {
+  position: relative;
+  width: 100%;
+  min-height: 72px;
+  background: #f8f9fc;
+  border-radius: 16px;
+  overflow: visible;
+  border: 1px solid var(--border-color, #e2e8f0);
+  margin-top: 10px;
+  padding: 32px 28px 14px 28px;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.3s ease;
+}
+
+.slider-track-card--idle {
+  min-height: 56px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+}
+
+.slider-track-card--strained {
+  border-color: #fca5a5 !important;
+  background: #fff5f5 !important;
+}
+
+.slider-idle-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  letter-spacing: 0.01em;
+}
+
+.slider-track-rail {
+  position: relative;
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  overflow: hidden;
+}
+
+.slider-track-filled {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 999px 0 0 999px;
+  will-change: width;
+}
+
+.slider-track-empty {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: #e5e7eb;
+  border-radius: 0 999px 999px 0;
+}
+
+/* ── Emoji Face Marker ─────────────────────────────────────── */
+.slider-face-marker {
+  position: absolute;
+  top: 2px;
+  transform: translate3d(-50%, 0, 0);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+  z-index: 5;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.10));
+  will-change: left;
+}
+
+.slider-face-label {
+  font-size: 10px;
+  font-weight: 800;
+  font-family: inherit;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid;
+  line-height: 1.2;
+  white-space: nowrap;
+  letter-spacing: -0.01em;
+}
+
+.slider-face-circle {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: slider-face-breathe 2.6s ease-in-out infinite;
+  filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.08));
+}
+
+.slider-face-circle svg {
+  display: block;
+}
+
+@keyframes slider-face-breathe {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+/* ── Ultra-Smooth Staggered Entrance Animations ───────────────── */
+.animate-stagger-1 {
+  animation: progress-entrance 0.65s cubic-bezier(0.16, 1, 0.3, 1) 0ms both;
+}
+
+.animate-stagger-2 {
+  animation: progress-entrance 0.65s cubic-bezier(0.16, 1, 0.3, 1) 70ms both;
+}
+
+.animate-stagger-3 {
+  animation: progress-entrance 0.65s cubic-bezier(0.16, 1, 0.3, 1) 140ms both;
+}
+
+.animate-stagger-4 {
+  animation: progress-entrance 0.65s cubic-bezier(0.16, 1, 0.3, 1) 210ms both;
+}
+
+.animate-stagger-5 {
+  animation: progress-entrance 0.65s cubic-bezier(0.16, 1, 0.3, 1) 280ms both;
+}
+
+.animate-stagger-6 {
+  animation: progress-entrance 0.65s cubic-bezier(0.16, 1, 0.3, 1) 350ms both;
+}
+
+@keyframes progress-entrance {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* ── Progress Page Viewport Fitting & Responsive Layout ───────────────── */
+.progress-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: clamp(14px, 2vh, 28px) clamp(16px, 3vw, 40px);
+  box-sizing: border-box;
+  gap: clamp(12px, 1.8vh, 22px);
+  max-width: min(1200px, 94%);
+  margin: 0 auto;
+}
+
+.progress-page .progress-header-row {
+  display: flex;
+  align-items: center;
+  gap: clamp(8px, 1.5vw, 16px);
+  margin-top: 2px;
+  flex-wrap: wrap;
+}
+
+.progress-page .mastery-ring-wrap {
+  margin: clamp(4px, 1vh, 12px) auto;
+  gap: clamp(6px, 1vh, 12px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.progress-page .mastery-ring-svg-wrap {
+  width: clamp(120px, 16vmin, 165px);
+  height: clamp(120px, 16vmin, 165px);
+  flex-shrink: 0;
+}
+
+.progress-page .mastery-xp-bar-wrap {
+  width: clamp(130px, 18vmin, 180px);
+}
+
+.progress-page .mastery-legend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(6px, 1vw, 12px);
+  flex-wrap: wrap;
+}
+
+.progress-page .progress-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(8px, 1.2vw, 16px);
+  width: 100%;
+  margin-top: 0;
+}
+
+.progress-page .progress-stat-card {
+  padding: clamp(10px, 1.4vh, 18px) clamp(12px, 1.4vw, 20px);
+  border-radius: clamp(12px, 1.2vw, 18px);
+  gap: clamp(8px, 1vw, 16px);
+}
+
+.progress-page .progress-stat-icon-wrap {
+  width: clamp(34px, 3.8vw, 48px);
+  height: clamp(34px, 3.8vw, 48px);
+  border-radius: 50%;
+}
+
+.progress-page .progress-stat-icon-wrap svg {
+  width: clamp(16px, 1.8vw, 24px);
+  height: clamp(16px, 1.8vw, 24px);
+}
+
+.progress-page .progress-stat-value {
+  font-size: clamp(18px, 2.2vw, 26px);
+  line-height: 1.1;
+}
+
+.progress-page .progress-stat-label {
+  font-size: clamp(10px, 1vw, 12px);
+  margin-top: 3px;
+}
+
+.progress-page .scale-telemetry-card {
+  margin-top: 0 !important;
+  padding: clamp(14px, 2vh, 24px) clamp(16px, 2vw, 26px) !important;
+  border-radius: clamp(14px, 1.6vw, 20px);
+}
+
+/* Fluid struggle slider track in telemetry */
+.progress-page .slider-track-card {
+  min-height: clamp(54px, 7vh, 72px);
+  padding: clamp(24px, 3vh, 32px) clamp(16px, 2vw, 28px) clamp(10px, 1.4vh, 14px);
+  margin-top: clamp(6px, 1vh, 10px);
+}
+
+@media (max-width: 899px) {
+  .progress-page {
+    height: auto !important;
+    min-height: calc(100vh - 84px);
+    padding: 20px 16px 90px !important;
+    gap: 18px;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .progress-page .progress-stats-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+}
+

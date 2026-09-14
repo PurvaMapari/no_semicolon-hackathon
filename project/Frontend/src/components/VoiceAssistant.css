@@ -1,0 +1,132 @@
+/* ── PRISM Voice Assistant, Floating FAB & Panel ─────────────────── */
+
+.voice-assistant-card {
+  border: 1px solid rgba(199, 210, 254, 0.7) !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.98) 100%) !important;
+  box-shadow: 0 10px 30px -5px rgba(99, 102, 241, 0.08), 0 4px 6px -2px rgba(15, 23, 42, 0.03) !important;
+  transition: all 0.25s ease;
+  border-radius: var(--radius-lg);
+}
+
+.voice-assistant-card:focus-within {
+  border-color: var(--primary) !important;
+  box-shadow: 0 12px 35px -5px rgba(99, 102, 241, 0.16) !important;
+}
+
+.voice-status-pill:hover {
+  background: rgba(99, 102, 241, 0.18) !important;
+  transform: translateY(-1px);
+}
+
+/* ── Floating Voice FAB ───────────────────────────────────────────── */
+.voice-fab {
+  position: fixed;
+  bottom: 90px;
+  right: 20px;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: var(--primary-gradient);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 6px 22px rgba(31, 94, 99, 0.35);
+  z-index: 200;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s;
+}
+
+.voice-fab:hover {
+  transform: scale(1.08) translateY(-2px);
+  box-shadow: 0 10px 28px rgba(31, 94, 99, 0.45);
+}
+
+.voice-fab:active {
+  transform: scale(0.95);
+}
+
+.voice-fab-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.7);
+}
+
+/* ── Floating Voice Panel ─────────────────────────────────────────── */
+.voice-float-panel {
+  position: fixed;
+  bottom: 154px;
+  right: 20px;
+  width: min(365px, calc(100vw - 28px));
+  max-height: 64vh;
+  background: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: 18px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.16), 0 0 0 1px rgba(226, 232, 240, 0.6);
+  z-index: 199;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: scaleUpModal 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.voice-float-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 9px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+  background: #f8fafc;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.voice-float-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--primary-gradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(31, 94, 99, 0.2);
+}
+
+.voice-float-body {
+  overflow-y: auto;
+  flex: 1;
+  padding: 0 4px 4px;
+}
+
+.voice-float-body .voice-assistant-card {
+  margin-top: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+.voice-float-header .webcam-toggle-wrap {
+  padding: 0;
+  border-top: none;
+  margin-top: 0;
+  background: transparent;
+}
+
+@media (min-width: 900px) {
+  .voice-fab {
+    bottom: 28px;
+    right: 28px;
+  }
+  .voice-float-panel {
+    bottom: 88px;
+    right: 28px;
+  }
+}

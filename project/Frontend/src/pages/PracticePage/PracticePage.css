@@ -1,0 +1,176 @@
+/* ── Practice Page: Interactive Quizzes & Retrieval Evaluation ───── */
+
+.practice-card {
+  padding: clamp(20px, 2.5vw, 32px);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  margin-top: 16px;
+}
+
+.practice-card h2 {
+  font-family: var(--font-heading);
+  font-size: clamp(18px, 1.8vw, 22px);
+  line-height: 1.4;
+  margin: 16px 0 22px;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* ── Option List Buttons ──────────────────────────────────────────── */
+.option-list {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.option-list button {
+  padding: 14px 18px;
+  text-align: left;
+  background: #ffffff;
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--ink);
+  font-size: clamp(13.5px, 1.05vw, 15px);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  box-shadow: var(--shadow-xs);
+  user-select: none;
+}
+
+.option-list button:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: rgba(31, 94, 99, 0.04);
+  transform: translateY(-1.5px);
+  box-shadow: 0 4px 12px rgba(31, 94, 99, 0.08);
+}
+
+.option-list button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.option-list button.selected {
+  background: linear-gradient(135deg, rgba(31, 94, 99, 0.08) 0%, rgba(31, 94, 99, 0.03) 100%);
+  border-color: var(--primary);
+  color: var(--primary);
+  font-weight: 700;
+  box-shadow: 0 4px 14px rgba(31, 94, 99, 0.14);
+}
+
+.option-letter-badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(31, 94, 99, 0.08);
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 12.5px;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.option-list button.selected .option-letter-badge {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+/* ── Feedback Cards ───────────────────────────────────────────────── */
+.feedback {
+  margin-top: 18px;
+  padding: 16px 20px;
+  border-radius: var(--radius-md);
+  font-size: 13.5px;
+  line-height: 1.6;
+  animation: fadeInUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.correct-feedback {
+  background: var(--emerald-light);
+  border: 1.5px solid var(--emerald-border);
+  color: var(--emerald-text);
+}
+
+.failed-feedback {
+  background: var(--amber-light);
+  border: 1.5px solid var(--amber-border);
+  color: var(--amber-text);
+}
+
+.mastery-unlocked {
+  background: linear-gradient(135deg, #ecfdf5 0%, rgba(31, 94, 99, 0.06) 100%);
+  border: 1.5px solid var(--emerald-border);
+  padding: 22px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── Practice Section Report Stats Grid ───────────────────────────── */
+.practice-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+  gap: clamp(10px, 1.2vw, 16px);
+}
+
+.practice-stat-card {
+  padding: 16px 18px;
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.practice-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.practice-stat-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.practice-stat-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1.5px solid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.practice-stat-card b {
+  font-family: var(--font-heading);
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--primary);
+  line-height: 1.1;
+  display: block;
+}
+
+.practice-stat-card span {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+  margin-top: 4px;
+  display: block;
+}
+
+@media (max-width: 640px) {
+  .practice-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+}

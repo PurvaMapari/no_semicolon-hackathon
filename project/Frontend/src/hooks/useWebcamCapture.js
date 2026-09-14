@@ -203,11 +203,14 @@ export function useWebcamCapture() {
       setWebcamStatus('ready');
 
       // 5. Start sampling loop.
+      let isDetecting = false;
       localInterval = setInterval(async () => {
-        // Guard: video or faceapi may be torn down between ticks.
+        // Guard: video or faceapi may be torn down between ticks or detection already in flight
+        if (isDetecting) return;
         if (!videoRef.current || !window.faceapi || !modelReadyRef.current) return;
         if (videoRef.current.readyState < 2) return;  // HAVE_CURRENT_DATA
 
+        isDetecting = true;
         try {
           const detections = await window.faceapi.detectAllFaces(
             videoRef.current,
@@ -233,6 +236,8 @@ export function useWebcamCapture() {
         } catch (err) {
           // Detection frame errors are non-fatal — log and skip this tick.
           console.warn('[useWebcamCapture] detection tick error:', err);
+        } finally {
+          isDetecting = false;
         }
       }, SAMPLE_INTERVAL_MS);
 

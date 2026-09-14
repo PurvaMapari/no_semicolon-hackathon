@@ -14,7 +14,7 @@
  * offer the Task-4 escape hatch for genuine hardware failures.
  */
 
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useMemo } from 'react';
 import { useWebcamPresence } from './useWebcamPresence';
 
 const WebcamCtx = createContext(null);
@@ -25,8 +25,13 @@ export function WebcamProvider({ children }) {
   // Escape hatch: true only when user explicitly skips due to unavailable device
   const [webcamSkipped, setWebcamSkipped] = useState(false);
 
+  const value = useMemo(
+    () => ({ ...presence, webcamSkipped, setWebcamSkipped }),
+    [presence, webcamSkipped]
+  );
+
   return (
-    <WebcamCtx.Provider value={{ ...presence, webcamSkipped, setWebcamSkipped }}>
+    <WebcamCtx.Provider value={value}>
       {children}
     </WebcamCtx.Provider>
   );

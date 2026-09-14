@@ -1,0 +1,102 @@
+@import url('https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=Space+Grotesk:wght@500;600;700&display=swap');
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
+
+:root {
+  /* ── Backgrounds & Canvas ────────────────────────────────────────── */
+  --bg: #f4f6f4;
+  --bg-app: #f4f6f4;
+  --bg-gradient: radial-gradient(at 0% 0%, rgba(143, 175, 154, 0.22) 0px, transparent 55%),
+    radial-gradient(at 100% 0%, rgba(31, 94, 99, 0.12) 0px, transparent 50%),
+    radial-gradient(at 50% 100%, rgba(143, 175, 154, 0.12) 0px, transparent 60%),
+    #f4f6f4;
+  --bg-card: rgba(255, 255, 255, 0.94);
+  --bg-card-solid: #ffffff;
+  --bg-card-hover: rgba(255, 255, 255, 0.98);
+  --glass-blur: blur(12px) saturate(140%);
+  --border-color: rgba(31, 94, 99, 0.14);
+  --border-glow: rgba(31, 94, 99, 0.28);
+  --border-subtle: rgba(226, 232, 240, 0.85);
+
+  /* ── Typography & Neutrals ────────────────────────────────────────── */
+  --ink: #1b2e31;
+  --ink-secondary: #334155;
+  --muted: #5e7275;
+  --muted-light: #8fa0a2;
+  --line: rgba(31, 94, 99, 0.12);
+
+  /* ── Primary Brand Palette (Teal / Forest) ────────────────────────── */
+  --primary: #1f5e63;
+  --primary-hover: #17484c;
+  --primary-active: #133c40;
+  --primary-light: #e6f0ed;
+  --primary-light-hover: #d9e9e5;
+  --primary-gradient: linear-gradient(135deg, #1f5e63 0%, #15464a 100%);
+  --primary-gradient-hover: linear-gradient(135deg, #246d73 0%, #1a5459 100%);
+  --primary-glow: rgba(31, 94, 99, 0.28);
+
+  /* ── Secondary & Surface ─────────────────────────────────────────── */
+  --secondary-bg: #eaf0ec;
+  --secondary-hover: #dce6e0;
+  --secondary-ink: #224245;
+
+  /* ── Emerald (Success / Mastery / Verified) ───────────────────────── */
+  --emerald: #10b981;
+  --emerald-hover: #059669;
+  --emerald-light: #ecfdf5;
+  --emerald-border: #a7f3d0;
+  --emerald-text: #065f46;
+  --emerald-glow: rgba(16, 185, 129, 0.25);
+
+  /* ── Amber (Attention / Alerts / Intermediate) ────────────────────── */
+  --amber: #f59e0b;
+  --amber-hover: #d97706;
+  --amber-light: #fffbeb;
+  --amber-border: #fde68a;
+  --amber-text: #92400e;
+
+  /* ── AI & Visual Concept (Indigo / Sparkles) ──────────────────────── */
+  --accent-ai: #6366f1;
+  --accent-ai-hover: #4f46e5;
+  --accent-ai-light: #eef2ff;
+  --accent-ai-border: #c7d2fe;
+  --accent-ai-text: #3730a3;
+  --accent-ai-glow: rgba(99, 102, 241, 0.22);
+
+  /* ── Danger & Quit (Crimson / Coral) ──────────────────────────────── */
+  --danger: #ef4444;
+  --danger-hover: #dc2626;
+  --danger-light: #fef2f2;
+  --danger-border: #fecaca;
+  --danger-text: #991b1b;
+
+  /* ── Shadows & Depth ──────────────────────────────────────────────── */
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 2px 5px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.02);
+  --shadow-md: 0 8px 20px -3px rgba(31, 94, 99, 0.08), 0 3px 6px -2px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 18px 36px -6px rgba(31, 94, 99, 0.12), 0 6px 12px -3px rgba(15, 23, 42, 0.04);
+  --shadow-glow: 0 0 20px rgba(31, 94, 99, 0.22);
+  --shadow-button: 0 3px 10px rgba(31, 94, 99, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  --shadow-button-hover: 0 6px 18px rgba(31, 94, 99, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+
+  /* ── Typography Families ─────────────────────────────────────────── */
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-heading: 'Space Grotesk', 'Plus Jakarta Sans', sans-serif;
+  --font-dyslexic: 'Lexend', 'OpenDyslexic', sans-serif;
+
+  /* ── Transitions & Radii ─────────────────────────────────────────── */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --radius-pill: 9999px;
+  --transition-fast: 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-smooth: 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-spring: 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ── Legacy Backward Compatibility ───────────────────────────────── */
+  --blue: #1f5e63;
+  --blue2: #1f5e63;
+  --lav: #dfeae5;
+}

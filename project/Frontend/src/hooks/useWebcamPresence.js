@@ -34,7 +34,7 @@
  * SCALE-facing contract.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWebcamCapture } from './useWebcamCapture';
 
 // ─── Tunable constants ────────────────────────────────────────────────────────
@@ -250,10 +250,10 @@ export function useWebcamPresence() {
   }, [webcamStatus]);
 
   // ── Convenience: toggleCamera ──────────────────────────────────────────────
-  const toggleCamera = () => setWebcamEnabled(prev => !prev);
+  const toggleCamera = useCallback(() => setWebcamEnabled(prev => !prev), [setWebcamEnabled]);
 
-  // ── Public API ─────────────────────────────────────────────────────────────
-  return {
+  // ── Public API (memoized to prevent cascading re-renders) ───────────────────
+  return useMemo(() => ({
     // SCALE-facing contract (Prompt 3 reads these)
     webcamStatus,
     presenceRatio,
@@ -273,5 +273,20 @@ export function useWebcamPresence() {
     isActive,
     isLoading,
     hasError,
-  };
+  }), [
+    webcamStatus,
+    presenceRatio,
+    headStable,
+    tabFocused,
+    toggleCamera,
+    facePresent,
+    presenceEvent,
+    mediaStream,
+    webcamEnabled,
+    setWebcamEnabled,
+    rawSamples,
+    isActive,
+    isLoading,
+    hasError,
+  ]);
 }

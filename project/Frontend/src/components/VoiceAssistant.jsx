@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import * as I from "lucide-react";
+import { speakFemaleVoice, stopSpeech } from "../utils/speechVoice";
+import "./VoiceAssistant.css";
 
 /**
  * PRISM Voice Assistant & Speech-to-Text (STT) Component
@@ -7,7 +9,7 @@ import * as I from "lucide-react";
  * Provides:
  * 1. Web Speech API Speech-to-Text (STT) with live microphone capture,
  *    pulsing recording animations, and real-time transcription feedback.
- * 2. Text-to-Speech (TTS) read-aloud playback for generated answers.
+ * 2. Text-to-Speech (TTS) read-aloud playback for generated answers using natural female voice.
  * 3. Quick-action voice prompt chips for accessible one-click questions.
  * 4. Full integration with the PRISM SCALE cognitive struggle engine.
  */
@@ -16,7 +18,6 @@ export default function VoiceAssistant({
   onAsk,
   busy,
   onVoiceHelp,
-  onReadSection,
   hideHeader = true,
   autoPrompt = null,
   showQuickPrompts = false,
@@ -50,9 +51,7 @@ export default function VoiceAssistant({
           recognitionRef.current.abort();
         } catch (_) {}
       }
-      if ("speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-      }
+      stopSpeech();
     };
   }, []);
 
@@ -185,27 +184,17 @@ export default function VoiceAssistant({
   }, [autoPrompt, currentSection]);
 
   function speakText(textToSpeak) {
-    if (!("speechSynthesis" in window)) return;
-
-    window.speechSynthesis.cancel();
     if (!textToSpeak) return;
-
-    const utterance = new SpeechSynthesisUtterance(textToSpeak);
-    utterance.rate = 0.95;
-    utterance.pitch = 1.0;
-
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
-
-    window.speechSynthesis.speak(utterance);
+    speakFemaleVoice(textToSpeak, {
+      onStart: () => setIsSpeaking(true),
+      onEnd: () => setIsSpeaking(false),
+      onError: () => setIsSpeaking(false),
+    });
   }
 
   function stopSpeaking() {
-    if ("speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-      setIsSpeaking(false);
-    }
+    stopSpeech();
+    setIsSpeaking(false);
   }
 
   const quickPrompts = [
@@ -215,7 +204,7 @@ export default function VoiceAssistant({
   ];
 
   return (
-    <section className="card voice-assistant-card" style={{ marginTop: 0, padding: "16px 18px 20px" }}>
+    <section className="card voice-assistant-card" style={{ marginTop: 0, padding: "12px 14px 14px" }}>
       {/* Optional Header (hidden by default when inside float panel) */}
       {!hideHeader && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
@@ -285,25 +274,56 @@ export default function VoiceAssistant({
               : "Text-Only Mode"}
           </span>
 
-          {onReadSection && (
-            <button
-              type="button"
-              onClick={onReadSection}
-              className="secondary-action"
-              style={{
-                padding: "5px 12px",
-                fontSize: 12,
-                borderRadius: 8,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 5,
-              }}
-              title="Read this active section aloud"
-            >
-              <I.Volume2 size={14} />
-              <span>Read Section</span>
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => {
+              if (isSpeaking) {
+                stopSpeaking();
+              } else if (answer) {
+                speakText(answer);
+              } else {
+                speakFemaleVoice(
+                  "Please ask a question or click one of the quick prompt chips below to hear an explanation.",
+                  {
+                    onStart: () => setIsSpeaking(true),
+                    onEnd: () => setIsSpeaking(false),
+                    onError: () => setIsSpeaking(false),
+                  }
+                );
+              }
+            }}
+            className="secondary-action"
+            style={{
+              padding: "4px 10px",
+              fontSize: 11,
+              borderRadius: 8,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              background: isSpeaking ? "#fee2e2" : undefined,
+              borderColor: isSpeaking ? "#fca5a5" : undefined,
+              color: isSpeaking ? "#dc2626" : undefined,
+            }}
+            title={
+              isSpeaking
+                ? "Stop audio"
+                : answer
+                ? "Read aloud tutor response"
+                : "Ask a question to hear tutor response"
+            }
+          >
+            {isSpeaking ? (
+              <>
+                <I.VolumeX size={13} />
+                <span>Stop audio</span>
+              </>
+            ) : (
+              <>
+                <I.Volume2 size={13} />
+                <span>Read aloud</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
 
@@ -399,16 +419,16 @@ export default function VoiceAssistant({
           e.preventDefault();
           executeAsk();
         }}
-        style={{ display: "flex", gap: 10, alignItems: "stretch" }}
+        style={{ display: "flex", gap: 8, alignItems: "stretch" }}
       >
         {/* Dedicated Voice-to-Text Microphone Button */}
         <button
           type="button"
           onClick={toggleListening}
           style={{
-            width: 46,
-            height: 46,
-            borderRadius: 12,
+            width: 38,
+            height: 38,
+            borderRadius: 10,
             border: isListening ? "2px solid #ef4444" : "1px solid var(--border-color)",
             background: isListening
               ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)"
@@ -427,7 +447,7 @@ export default function VoiceAssistant({
           title={isListening ? "Stop listening" : "Click to speak your question"}
           aria-label="Toggle voice input"
         >
-          {isListening ? <I.MicOff size={20} /> : <I.Mic size={20} />}
+          {isListening ? <I.MicOff size={17} /> : <I.Mic size={17} />}
         </button>
 
         {/* Text Input synced with Speech Transcription */}
@@ -437,15 +457,15 @@ export default function VoiceAssistant({
           placeholder={
             isListening
               ? "Transcribing your speech live..."
-              : "Ask a question or click the mic to speak..."
+              : "Ask or click mic to speak..."
           }
           style={{
             flex: 1,
-            height: 46,
-            padding: "0 14px",
-            fontSize: 14,
-            borderRadius: 12,
-              border: isListening ? "2px solid #1f5e63" : "1px solid var(--border-color)",
+            height: 38,
+            padding: "0 12px",
+            fontSize: 13,
+            borderRadius: 10,
+            border: isListening ? "2px solid #1f5e63" : "1px solid var(--border-color)",
             background: isListening ? "#fafafa" : "#ffffff",
           }}
         />
@@ -457,24 +477,24 @@ export default function VoiceAssistant({
           disabled={!question.trim() || Boolean(busy)}
           style={{
             width: "auto",
-            height: 46,
-            padding: "0 20px",
-            borderRadius: 12,
+            height: 38,
+            padding: "0 14px",
+            borderRadius: 10,
             display: "flex",
             alignItems: "center",
-            gap: 6,
+            gap: 5,
             fontWeight: 700,
-            fontSize: 14,
+            fontSize: 13,
           }}
         >
           {busy === "voice" ? (
             <>
-              <I.Radio size={16} className="animate-spin" />
+              <I.Radio size={14} className="animate-spin" />
               <span>Thinking...</span>
             </>
           ) : (
             <>
-              <I.Sparkles size={16} />
+              <I.Sparkles size={14} />
               <span>Ask</span>
             </>
           )}
@@ -529,28 +549,28 @@ export default function VoiceAssistant({
         <div
           className="answer-box"
           style={{
-            marginTop: 18,
-            padding: 16,
+            marginTop: 12,
+            padding: 12,
             background: "linear-gradient(135deg, rgba(248, 250, 252, 0.95), rgba(241, 245, 249, 0.9))",
-            borderRadius: 14,
+            borderRadius: 12,
             border: "1px solid rgba(226, 232, 240, 0.9)",
             animation: "fadeInUp 0.3s ease-out",
           }}
         >
           {/* Question Display */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-            <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+            <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em" }}>
               Your Question
             </span>
           </div>
-          <p style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", marginBottom: 14, lineHeight: 1.4 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 10, lineHeight: 1.4 }}>
             "{askedQuestion}"
           </p>
 
           {/* Answer Display */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6, borderTop: "1px solid rgba(226, 232, 240, 0.8)", paddingTop: 12 }}>
-            <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: "var(--primary)", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: 5 }}>
-              <I.Sparkles size={12} /> Tutor Response
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6, borderTop: "1px solid rgba(226, 232, 240, 0.8)", paddingTop: 8 }}>
+            <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", color: "var(--primary)", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: 5 }}>
+              <I.Sparkles size={11} /> Tutor Response
             </span>
 
             {/* Read Aloud Button for the Answer */}
@@ -562,26 +582,27 @@ export default function VoiceAssistant({
                   background: isSpeaking ? "#fee2e2" : "var(--primary-light)",
                   border: isSpeaking ? "1px solid #fca5a5" : "1px solid rgba(199, 210, 254, 0.8)",
                   color: isSpeaking ? "#dc2626" : "var(--primary)",
-                  padding: "4px 10px",
-                  borderRadius: 8,
-                  fontSize: 12,
+                  padding: "3px 8px",
+                  borderRadius: 6,
+                  fontSize: 11,
                   fontWeight: 700,
                   cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
-                  gap: 5,
+                  gap: 4,
                   transition: "all 0.15s ease",
                 }}
+                title={isSpeaking ? "Stop audio" : "Read aloud response"}
               >
                 {isSpeaking ? (
                   <>
-                    <I.VolumeX size={14} />
-                    <span>Stop Audio</span>
+                    <I.VolumeX size={13} />
+                    <span>Stop audio</span>
                   </>
                 ) : (
                   <>
-                    <I.Volume2 size={14} />
-                    <span>Listen Aloud</span>
+                    <I.Volume2 size={13} />
+                    <span>Read aloud</span>
                   </>
                 )}
               </button>
@@ -589,7 +610,7 @@ export default function VoiceAssistant({
           </div>
 
           {answer ? (
-            <p style={{ fontSize: 14, lineHeight: 1.65, color: "#1e293b", margin: 0 }}>
+            <p style={{ fontSize: 13, lineHeight: 1.55, color: "#1e293b", margin: 0 }}>
               {answer}
             </p>
           ) : (

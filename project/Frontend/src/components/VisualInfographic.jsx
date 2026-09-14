@@ -1,132 +1,149 @@
 import React, { useState } from "react";
 import * as I from "lucide-react";
+import "./VisualInfographic.css";
 
 /**
  * Semantic Color Palettes for Educational Infographics
  */
+/**
+ * Semantic Color Palettes for Educational Infographics
+ * Vibrant, modern, distinct color themes with rich gradients and crisp contrast
+ */
 const SEMANTIC_THEMES = {
-  energy: {
-    bg: "#fffbeb",
+  emerald: {
+    bg: "linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)",
+    border: "#16a34a",
+    borderHover: "#15803d",
+    text: "#14532d",
+    subtext: "#166534",
+    badgeBg: "#bbf7d0",
+    badgeText: "#14532d",
+    iconBg: "linear-gradient(135deg, #22c55e, #16a34a)",
+    iconColor: "#ffffff",
+    glow: "rgba(34, 197, 94, 0.25)",
+  },
+  amber: {
+    bg: "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)",
     border: "#f59e0b",
-    text: "#92400e",
-    subtext: "#b45309",
-    badgeBg: "#fef3c7",
-    badgeText: "#92400e",
-    iconBg: "#fde68a",
-    iconColor: "#d97706",
-    glow: "rgba(245, 158, 11, 0.2)",
+    borderHover: "#d97706",
+    text: "#78350f",
+    subtext: "#92400e",
+    badgeBg: "#fde68a",
+    badgeText: "#78350f",
+    iconBg: "linear-gradient(135deg, #f59e0b, #d97706)",
+    iconColor: "#ffffff",
+    glow: "rgba(245, 158, 11, 0.25)",
   },
-  light: {
-    bg: "#fefce8",
-    border: "#eab308",
-    text: "#854d0e",
-    subtext: "#a16207",
-    badgeBg: "#fef9c3",
-    badgeText: "#854d0e",
-    iconBg: "#fef08a",
-    iconColor: "#ca8a04",
-    glow: "rgba(234, 179, 8, 0.2)",
+  cyan: {
+    bg: "linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)",
+    border: "#0284c7",
+    borderHover: "#0369a1",
+    text: "#0c4a6e",
+    subtext: "#0369a1",
+    badgeBg: "#bae6fd",
+    badgeText: "#0c4a6e",
+    iconBg: "linear-gradient(135deg, #0ea5e9, #0284c7)",
+    iconColor: "#ffffff",
+    glow: "rgba(14, 165, 233, 0.25)",
   },
-  water: {
-    bg: "#f0f9ff",
-    border: "#0ea5e9",
-    text: "#0369a1",
-    subtext: "#0284c7",
-    badgeBg: "#e0f2fe",
-    badgeText: "#0369a1",
-    iconBg: "#bae6fd",
-    iconColor: "#0284c7",
-    glow: "rgba(14, 165, 233, 0.2)",
+  rose: {
+    bg: "linear-gradient(135deg, #fff1f2 0%, #ffe4e6 100%)",
+    border: "#f43f5e",
+    borderHover: "#e11d48",
+    text: "#881337",
+    subtext: "#9f1239",
+    badgeBg: "#fecdd3",
+    badgeText: "#881337",
+    iconBg: "linear-gradient(135deg, #fb7185, #f43f5e)",
+    iconColor: "#ffffff",
+    glow: "rgba(244, 63, 94, 0.25)",
   },
-  gas: {
-    bg: "#f8fafc",
-    border: "#64748b",
-    text: "#334155",
-    subtext: "#475569",
-    badgeBg: "#f1f5f9",
-    badgeText: "#334155",
-    iconBg: "#e2e8f0",
-    iconColor: "#475569",
-    glow: "rgba(100, 116, 139, 0.2)",
+  purple: {
+    bg: "linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%)",
+    border: "#a855f7",
+    borderHover: "#9333ea",
+    text: "#581c87",
+    subtext: "#6b21a8",
+    badgeBg: "#e9d5ff",
+    badgeText: "#581c87",
+    iconBg: "linear-gradient(135deg, #a855f7, #9333ea)",
+    iconColor: "#ffffff",
+    glow: "rgba(168, 85, 247, 0.25)",
   },
-  biological: {
-    bg: "#f0fdf4",
-    border: "#22c55e",
-    text: "#166534",
-    subtext: "#15803d",
-    badgeBg: "#dcfce7",
-    badgeText: "#166534",
-    iconBg: "#bbf7d0",
-    iconColor: "#16a34a",
-    glow: "rgba(34, 197, 94, 0.2)",
+  indigo: {
+    bg: "linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%)",
+    border: "#6366f1",
+    borderHover: "#4f46e5",
+    text: "#312e81",
+    subtext: "#3730a3",
+    badgeBg: "#c7d2fe",
+    badgeText: "#312e81",
+    iconBg: "linear-gradient(135deg, #6366f1, #4f46e5)",
+    iconColor: "#ffffff",
+    glow: "rgba(99, 102, 241, 0.25)",
   },
-  process: {
-    bg: "#fefce8",
-    border: "#fce072",
-    text: "#713f12",
-    subtext: "#854d0e",
-    badgeBg: "#fef9c3",
-    badgeText: "#713f12",
-    iconBg: "#fce072",
-    iconColor: "#713f12",
-    glow: "rgba(252, 224, 114, 0.4)",
+  teal: {
+    bg: "linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%)",
+    border: "#0d9488",
+    borderHover: "#0f766e",
+    text: "#134e4a",
+    subtext: "#115e59",
+    badgeBg: "#99f6e4",
+    badgeText: "#134e4a",
+    iconBg: "linear-gradient(135deg, #14b8a6, #0d9488)",
+    iconColor: "#ffffff",
+    glow: "rgba(13, 148, 136, 0.25)",
   },
-  product: {
-    bg: "#fdf4ff",
-    border: "#d946ef",
-    text: "#86198f",
-    subtext: "#a21caf",
-    badgeBg: "#fae8ff",
-    badgeText: "#86198f",
-    iconBg: "#f5d0fe",
-    iconColor: "#c026d3",
-    glow: "rgba(217, 70, 239, 0.2)",
-  },
-  output: {
-    bg: "#f0fdfa",
-    border: "#14b8a6",
-    text: "#115e59",
-    subtext: "#0f766e",
-    badgeBg: "#ccfbf1",
-    badgeText: "#115e59",
-    iconBg: "#99f6e4",
-    iconColor: "#0d9488",
-    glow: "rgba(20, 184, 166, 0.2)",
-  },
-  cause: {
-    bg: "#fff7ed",
-    border: "#f97316",
-    text: "#9a3412",
-    subtext: "#c2410c",
-    badgeBg: "#ffedd5",
-    badgeText: "#9a3412",
-    iconBg: "#fed7aa",
-    iconColor: "#ea580c",
-    glow: "rgba(249, 115, 22, 0.2)",
-  },
-  effect: {
-    bg: "#ecfdf5",
-    border: "#10b981",
-    text: "#065f46",
-    subtext: "#047857",
-    badgeBg: "#d1fae5",
-    badgeText: "#065f46",
-    iconBg: "#a7f3d0",
-    iconColor: "#059669",
-    glow: "rgba(16, 185, 129, 0.2)",
+  orange: {
+    bg: "linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)",
+    border: "#ea580c",
+    borderHover: "#c2410c",
+    text: "#7c2d12",
+    subtext: "#9a3412",
+    badgeBg: "#fed7aa",
+    badgeText: "#7c2d12",
+    iconBg: "linear-gradient(135deg, #f97316, #ea580c)",
+    iconColor: "#ffffff",
+    glow: "rgba(234, 88, 12, 0.25)",
   },
   default: {
-    bg: "#f8fafc",
-    border: "#fce072",
-    text: "#713f12",
-    subtext: "#854d0e",
-    badgeBg: "#fef9c3",
-    badgeText: "#713f12",
-    iconBg: "rgba(252, 224, 114, 0.35)",
-    iconColor: "#713f12",
-    glow: "rgba(252, 224, 114, 0.3)",
+    bg: "linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%)",
+    border: "#0d9488",
+    borderHover: "#0f766e",
+    text: "#134e4a",
+    subtext: "#115e59",
+    badgeBg: "#99f6e4",
+    badgeText: "#134e4a",
+    iconBg: "linear-gradient(135deg, #14b8a6, #0d9488)",
+    iconColor: "#ffffff",
+    glow: "rgba(13, 148, 136, 0.25)",
   },
 };
+
+// Aliases for backwards compatibility with earlier semantic tags
+SEMANTIC_THEMES.biological = SEMANTIC_THEMES.emerald;
+SEMANTIC_THEMES.energy     = SEMANTIC_THEMES.amber;
+SEMANTIC_THEMES.light      = SEMANTIC_THEMES.amber;
+SEMANTIC_THEMES.water      = SEMANTIC_THEMES.cyan;
+SEMANTIC_THEMES.gas        = SEMANTIC_THEMES.indigo;
+SEMANTIC_THEMES.process    = SEMANTIC_THEMES.teal;
+SEMANTIC_THEMES.product    = SEMANTIC_THEMES.purple;
+SEMANTIC_THEMES.output     = SEMANTIC_THEMES.purple;
+SEMANTIC_THEMES.cause      = SEMANTIC_THEMES.orange;
+SEMANTIC_THEMES.effect     = SEMANTIC_THEMES.teal;
+
+/**
+ * Deterministic Fallback Pool for visually differentiating adjacent concepts
+ */
+const FALLBACK_PALETTES = [
+  { theme: SEMANTIC_THEMES.emerald, icon: I.Leaf,         category: "Core Aspect" },
+  { theme: SEMANTIC_THEMES.rose,    icon: I.FlaskConical, category: "Reaction" },
+  { theme: SEMANTIC_THEMES.purple,  icon: I.Sparkles,     category: "Outcome" },
+  { theme: SEMANTIC_THEMES.cyan,    icon: I.Component,    category: "Component" },
+  { theme: SEMANTIC_THEMES.amber,   icon: I.Zap,          category: "Energy / Factor" },
+  { theme: SEMANTIC_THEMES.teal,    icon: I.Layers,       category: "Role & Function" },
+  { theme: SEMANTIC_THEMES.indigo,  icon: I.Cpu,          category: "Mechanism" },
+];
 
 /**
  * Semantic Visual Metadata with Lucide Icons (Zero Raw Emojis)
@@ -146,79 +163,103 @@ const VTYPE_META = {
 
 /**
  * Resolves semantic icon, color theme, and category badge for a node
+ * Accepts optional index for diverse fallback color rotation
  */
-export function resolveNodeVisuals(node = {}) {
+export function resolveNodeVisuals(node = {}, index = 0) {
   const label = (node.label || "").toLowerCase();
   const desc = (node.description || "").toLowerCase();
   const sem = (node.semantic_type || "").toLowerCase();
   const role = (node.role || "").toLowerCase();
   const combined = `${label} ${desc} ${sem} ${role}`;
 
-  // 1. Software & OOP Concepts
-  if (combined.includes("abstract") || combined.includes("interface") || combined.includes("contract")) {
-    return { icon: I.Layers, theme: SEMANTIC_THEMES.process, category: "Interface / Contract" };
-  }
-  if (combined.includes("implementation") || combined.includes("concrete") || combined.includes("subclass")) {
-    return { icon: I.Code2, theme: SEMANTIC_THEMES.biological, category: "Implementation" };
-  }
-  if (combined.includes("polymorphism") || combined.includes("interchangeable") || combined.includes("dynamic dispatch")) {
-    return { icon: I.Shuffle, theme: SEMANTIC_THEMES.product, category: "Polymorphism" };
-  }
-  if (combined.includes("encapsulat") || combined.includes("data hiding") || combined.includes("private") || combined.includes("modifier")) {
-    return { icon: I.ShieldCheck, theme: SEMANTIC_THEMES.cause, category: "Access Control" };
-  }
-  if (combined.includes("class") || combined.includes("blueprint") || combined.includes("prototype")) {
-    return { icon: I.Box, theme: SEMANTIC_THEMES.default, category: "Blueprint" };
-  }
-  if (combined.includes("object") || combined.includes("instance") || combined.includes("state")) {
-    return { icon: I.Component, theme: SEMANTIC_THEMES.water, category: "Instance" };
-  }
-  if (combined.includes("inherit") || combined.includes("hierarchy") || combined.includes("extend")) {
-    return { icon: I.GitFork, theme: SEMANTIC_THEMES.process, category: "Hierarchy" };
-  }
-  if (combined.includes("solid") || combined.includes("principle") || combined.includes("design pattern")) {
-    return { icon: I.Compass, theme: SEMANTIC_THEMES.energy, category: "Principle" };
+  // 1. Biological & Botanical Concepts
+  if (/photo|chloroplast|chlorophyll|plant|leaf|organism|cellular|biology|autotroph|thylakoid|stroma/i.test(combined)) {
+    return { icon: I.Leaf, theme: SEMANTIC_THEMES.emerald, category: "Biological Process" };
   }
 
-  // 2. Physical & Natural Science Concepts
-  if (combined.includes("sun") || combined.includes("light") || combined.includes("solar") || combined.includes("photon")) {
-    return { icon: I.Sun, theme: SEMANTIC_THEMES.light, category: "Energy Input" };
-  }
-  if (combined.includes("water") || combined.includes("h2o") || combined.includes("liquid")) {
-    return { icon: I.Droplets, theme: SEMANTIC_THEMES.water, category: "Raw Material" };
-  }
-  if (combined.includes("co2") || combined.includes("carbon") || combined.includes("gas") || combined.includes("air")) {
-    return { icon: I.Cloud, theme: SEMANTIC_THEMES.gas, category: "Atmospheric Input" };
-  }
-  if (combined.includes("photosynthesis") || combined.includes("chloroplast") || combined.includes("chlorophyll") || combined.includes("plant") || combined.includes("leaf")) {
-    return { icon: I.Leaf, theme: SEMANTIC_THEMES.biological, category: "Core Reaction" };
-  }
-  if (combined.includes("glucose") || combined.includes("sugar") || combined.includes("chemical energy")) {
-    return { icon: I.Sparkles, theme: SEMANTIC_THEMES.product, category: "Energy Stored" };
-  }
-  if (combined.includes("oxygen") || combined.includes("o2") || combined.includes("breathable")) {
-    return { icon: I.Wind, theme: SEMANTIC_THEMES.output, category: "Byproduct Released" };
+  // 2. Chemical Reactions & Formulas
+  if (/reaction|chemical|equation|formula|reactant|react|catalyze|enzyme|synthesis|compound|molecular/i.test(combined)) {
+    return { icon: I.FlaskConical, theme: SEMANTIC_THEMES.rose, category: "Chemical Reaction" };
   }
 
-  // 3. General Semantic Roles
+  // 3. Products, Glucose, Yields & Stored Energy
+  if (/product|glucose|sugar|carbohydrate|starch|cellulose|yield|energy stored|atp|nadph/i.test(combined)) {
+    return { icon: I.Sparkles, theme: SEMANTIC_THEMES.purple, category: "Biological Product" };
+  }
+
+  // 4. Energy & Solar Inputs
+  if (/sun|sunlight|light|solar|photon|energy|radiation|power|wavelength/i.test(combined)) {
+    return { icon: I.Sun, theme: SEMANTIC_THEMES.amber, category: "Energy Input" };
+  }
+
+  // 5. Water & Moisture
+  if (/water|h2o|liquid|soil|roots|moisture|hydrate|fluid/i.test(combined)) {
+    return { icon: I.Droplets, theme: SEMANTIC_THEMES.cyan, category: "Raw Material" };
+  }
+
+  // 6. Atmospheric Gases & Byproducts
+  if (/carbon|co2|gas|atmosphere|air|oxygen|o2|stomata|breath/i.test(combined)) {
+    return { icon: I.Wind, theme: SEMANTIC_THEMES.indigo, category: "Atmospheric Exchange" };
+  }
+
+  // 7. System Roles & Ecosystem Function
+  if (/role|function|importance|ecosystem|life|purpose|benefit|sustain|producer/i.test(combined)) {
+    return { icon: I.Activity, theme: SEMANTIC_THEMES.teal, category: "Biological Role" };
+  }
+
+  // 8. Software & OOP Concepts
+  if (/abstract|interface|contract/i.test(combined)) {
+    return { icon: I.Layers, theme: SEMANTIC_THEMES.indigo, category: "Interface / Contract" };
+  }
+  if (/implement|concrete|subclass/i.test(combined)) {
+    return { icon: I.Code2, theme: SEMANTIC_THEMES.emerald, category: "Implementation" };
+  }
+  if (/polymorph|dynamic|dispatch|interchangeable/i.test(combined)) {
+    return { icon: I.Shuffle, theme: SEMANTIC_THEMES.purple, category: "Polymorphism" };
+  }
+  if (/encapsulat|private|modifier|data hiding/i.test(combined)) {
+    return { icon: I.ShieldCheck, theme: SEMANTIC_THEMES.orange, category: "Access Control" };
+  }
+  if (/class|blueprint|prototype/i.test(combined)) {
+    return { icon: I.Box, theme: SEMANTIC_THEMES.teal, category: "Blueprint" };
+  }
+  if (/object|instance|state/i.test(combined)) {
+    return { icon: I.Component, theme: SEMANTIC_THEMES.cyan, category: "Instance" };
+  }
+  if (/inherit|hierarchy|extend/i.test(combined)) {
+    return { icon: I.GitFork, theme: SEMANTIC_THEMES.teal, category: "Hierarchy" };
+  }
+  if (/solid|principle|pattern/i.test(combined)) {
+    return { icon: I.Compass, theme: SEMANTIC_THEMES.amber, category: "Principle" };
+  }
+
+  // 9. Explicit Semantic Roles from Backend
   if (sem === "input" || sem === "resource") {
-    return { icon: I.ArrowDownToLine, theme: SEMANTIC_THEMES.water, category: "Input" };
+    return { icon: I.ArrowDownToLine, theme: SEMANTIC_THEMES.cyan, category: "Input" };
   }
   if (sem === "output" || sem === "result" || role === "outcome") {
-    return { icon: I.CheckCircle2, theme: SEMANTIC_THEMES.output, category: "Outcome" };
+    return { icon: I.CheckCircle2, theme: SEMANTIC_THEMES.purple, category: "Outcome" };
   }
   if (sem === "process" || sem === "action") {
-    return { icon: I.Cpu, theme: SEMANTIC_THEMES.process, category: "Process" };
+    return { icon: I.Cpu, theme: SEMANTIC_THEMES.teal, category: "Process" };
   }
   if (sem === "cause") {
-    return { icon: I.HelpCircle, theme: SEMANTIC_THEMES.cause, category: "Cause" };
+    return { icon: I.HelpCircle, theme: SEMANTIC_THEMES.orange, category: "Cause" };
   }
   if (sem === "effect") {
-    return { icon: I.Target, theme: SEMANTIC_THEMES.effect, category: "Effect" };
+    return { icon: I.Target, theme: SEMANTIC_THEMES.teal, category: "Effect" };
   }
 
-  // Fallback
-  return { icon: I.CircleDot, theme: SEMANTIC_THEMES.default, category: "Concept" };
+  // 10. Diverse Rotating Color Palette Fallback (Ensures no two adjacent cards are identical)
+  const safeHash = Math.abs(
+    (String(node.id || node.label || "")).split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) + index
+  );
+  const fallback = FALLBACK_PALETTES[safeHash % FALLBACK_PALETTES.length];
+  return {
+    icon: fallback.icon,
+    theme: fallback.theme,
+    category: fallback.category,
+  };
 }
 
 /**
@@ -236,19 +277,20 @@ function DirectionalConnector({ label, direction = "down", highlight = false }) 
         flexDirection: isDown ? "column" : "row",
         alignItems: "center",
         justifyContent: "center",
-        margin: isDown ? "4px 0" : "0 8px",
-        gap: 2,
+        margin: isDown ? "6px 0" : "0 8px",
+        gap: 3,
         position: "relative",
       }}
     >
-      {/* Upper/Leading Stem */}
+      {/* Stem */}
       <div
         style={{
-          width: isDown ? 2 : 16,
-          height: isDown ? 10 : 2,
+          width: isDown ? 2 : 18,
+          height: isDown ? 12 : 2,
           background: highlight
-            ? "linear-gradient(to bottom, #fce072, #eab308)"
-            : "linear-gradient(to bottom, #cbd5e1, #94a3b8)",
+            ? "linear-gradient(to bottom, #10b981, #059669)"
+            : "linear-gradient(to bottom, #94a3b8, #cbd5e1)",
+          borderRadius: 2,
         }}
       />
 
@@ -257,17 +299,17 @@ function DirectionalConnector({ label, direction = "down", highlight = false }) 
         <span
           className="connector-relationship-badge"
           style={{
-            fontSize: 11,
+            fontSize: 10.5,
             fontWeight: 800,
-            letterSpacing: "0.02em",
+            letterSpacing: "0.03em",
             textTransform: "lowercase",
-            color: "#713f12",
-            background: highlight ? "#fef9c3" : "#fefce8",
-            border: `1.5px solid ${highlight ? "#fce072" : "rgba(252, 224, 114, 0.5)"}`,
-            padding: "2px 10px",
+            color: "#1e293b",
+            background: "#ffffff",
+            border: `1.5px solid ${highlight ? "#10b981" : "#cbd5e1"}`,
+            padding: "2px 9px",
             borderRadius: 999,
             whiteSpace: "nowrap",
-            boxShadow: "0 1px 4px rgba(252, 224, 114, 0.25)",
+            boxShadow: "0 2px 5px rgba(15, 23, 42, 0.06)",
             zIndex: 2,
           }}
         >
@@ -277,9 +319,9 @@ function DirectionalConnector({ label, direction = "down", highlight = false }) 
 
       {/* Arrowhead */}
       {isDown ? (
-        <I.ArrowDown size={17} style={{ color: "#713f12", marginTop: -2 }} />
+        <I.ArrowDown size={15} style={{ color: highlight ? "#10b981" : "#64748b", marginTop: -2 }} />
       ) : (
-        <I.ArrowRight size={17} style={{ color: "#713f12", marginLeft: -2 }} />
+        <I.ArrowRight size={15} style={{ color: highlight ? "#10b981" : "#64748b", marginLeft: -2 }} />
       )}
     </div>
   );
@@ -306,6 +348,7 @@ function formatNodeLabel(node, isCoreHero = false) {
  */
 function DiagramNodeCard({
   node,
+  index = 0,
   isDominant = false,
   isHero = false,
   activeNodeId,
@@ -315,32 +358,38 @@ function DiagramNodeCard({
 }) {
   if (!node || typeof node !== "object") return null;
 
-  const { icon: IconComponent, theme, category } = resolveNodeVisuals(node);
-  const safeTheme = theme || SEMANTIC_THEMES.default;
+  const isCoreHero = Boolean(isDominant || isHero || role === "root");
+  const isOutcome = Boolean(role === "outcome" || (node.semantic_type === "output"));
+  const { icon: IconComponent, theme, category } = resolveNodeVisuals(node, index);
+  const safeTheme = isOutcome ? SEMANTIC_THEMES.emerald : (theme || SEMANTIC_THEMES.default);
   const Icon = (IconComponent && (typeof IconComponent === "function" || typeof IconComponent === "object"))
     ? IconComponent
     : I.CircleDot;
 
   const isSelected = Boolean(activeNodeId && node.id && activeNodeId === node.id);
-  const isCoreHero = Boolean(isDominant || isHero || role === "root");
-  const isOutcome = Boolean(role === "outcome" || (node.semantic_type === "output"));
 
   return (
     <div
       onClick={() => onSelectNode && onSelectNode(node)}
       className={`diagram-node-card ${isCoreHero ? "dominant-hero-node" : ""} ${isSelected ? "selected" : ""}`}
       style={{
-        background: isCoreHero ? "#ffffff" : isOutcome ? "#f0fdf4" : safeTheme.bg,
-        border: isCoreHero
-          ? "2.5px solid #fce072"
-          : `1.5px solid ${isSelected ? "#fce072" : isOutcome ? "#22c55e" : safeTheme.border}`,
-        borderRadius: isCoreHero ? 16 : 12,
-        padding: isCoreHero ? "14px 18px" : "10px 14px",
-        boxShadow: isCoreHero
-          ? "0 8px 24px rgba(252, 224, 114, 0.35), 0 2px 6px rgba(0,0,0,0.04)"
+        background: isCoreHero
+          ? "linear-gradient(135deg, #ffffff 0%, #fffbeb 45%, #fef3c7 100%)"
           : isSelected
-          ? "0 4px 14px rgba(252, 224, 114, 0.4)"
-          : "0 1px 4px rgba(0,0,0,0.03)",
+          ? "#ffffff"
+          : safeTheme.bg,
+        border: isCoreHero
+          ? "2px solid #f59e0b"
+          : isSelected
+          ? "2px solid #0d9488"
+          : `1.5px solid ${safeTheme.border}`,
+        borderRadius: isCoreHero ? 16 : 14,
+        padding: isCoreHero ? "15px 18px" : "11px 13px",
+        boxShadow: isCoreHero
+          ? "0 10px 28px rgba(245, 158, 11, 0.22), 0 2px 6px rgba(0,0,0,0.04)"
+          : isSelected
+          ? "0 0 0 3px rgba(13, 148, 136, 0.25), 0 6px 18px rgba(0,0,0,0.06)"
+          : `0 2px 8px ${safeTheme.glow || "rgba(0,0,0,0.04)"}`,
         cursor: "pointer",
         transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
         transform: isSelected ? "translateY(-2px) scale(1.02)" : "none",
@@ -348,24 +397,28 @@ function DiagramNodeCard({
         display: "flex",
         flexDirection: isCoreHero ? "row" : "column",
         alignItems: isCoreHero ? "center" : "flex-start",
-        gap: isCoreHero ? 14 : 6,
+        gap: isCoreHero ? 14 : 7,
         width: "100%",
         maxWidth: isCoreHero ? 540 : "100%",
         margin: isCoreHero ? "0 auto" : 0,
       }}
     >
-      {/* Icon */}
+      {/* Icon with white glyph and gradient background */}
       <div
         style={{
-          width: isCoreHero ? 42 : 30,
-          height: isCoreHero ? 42 : 30,
-          borderRadius: 10,
-          background: isCoreHero ? "linear-gradient(135deg, #fce072, #f59e0b)" : safeTheme.iconBg,
-          color: isCoreHero ? "#451a03" : safeTheme.iconColor,
+          width: isCoreHero ? 44 : 32,
+          height: isCoreHero ? 44 : 32,
+          borderRadius: isCoreHero ? 12 : 9,
+          background: isCoreHero
+            ? "linear-gradient(135deg, #f59e0b, #d97706)"
+            : safeTheme.iconBg,
+          color: safeTheme.iconColor || "#ffffff",
           display: "grid",
           placeItems: "center",
           flexShrink: 0,
-          boxShadow: isCoreHero ? "0 4px 12px rgba(252, 224, 114, 0.45)" : "none",
+          boxShadow: isCoreHero
+            ? "0 4px 14px rgba(245, 158, 11, 0.4)"
+            : `0 2px 6px ${safeTheme.glow || "rgba(0,0,0,0.12)"}`,
         }}
       >
         <Icon size={isCoreHero ? 22 : 16} />
@@ -373,19 +426,18 @@ function DiagramNodeCard({
 
       <div style={{ flex: 1, minWidth: 0 }}>
         {/* Eyebrow / Category badge */}
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3, flexWrap: "wrap" }}>
           {isCoreHero && (
             <span
               style={{
-                fontSize: 9,
+                fontSize: 9.5,
                 fontWeight: 900,
-                letterSpacing: "0.08em",
+                letterSpacing: "0.06em",
                 textTransform: "uppercase",
-                background: "#fef9c3",
-                color: "#713f12",
-                border: "1px solid #fce072",
-                padding: "1px 6px",
-                borderRadius: 4,
+                background: "#f59e0b",
+                color: "#ffffff",
+                padding: "2px 7px",
+                borderRadius: 999,
               }}
             >
               ★ CORE CONCEPT
@@ -393,11 +445,16 @@ function DiagramNodeCard({
           )}
           <span
             style={{
-              fontSize: 10,
-              fontWeight: 700,
+              fontSize: 9.5,
+              fontWeight: 800,
               letterSpacing: "0.04em",
               textTransform: "uppercase",
-              color: isCoreHero ? "#713f12" : isOutcome ? "#15803d" : theme.badgeText,
+              background: isCoreHero ? "#fef3c7" : safeTheme.badgeBg,
+              color: isCoreHero ? "#92400e" : safeTheme.badgeText,
+              border: `1px solid ${isCoreHero ? "#fde68a" : safeTheme.border + "55"}`,
+              padding: "2px 7px",
+              borderRadius: 6,
+              display: "inline-block",
             }}
           >
             {badgeOverride || category}
@@ -407,10 +464,10 @@ function DiagramNodeCard({
         {/* Node Label */}
         <div
           style={{
-            fontSize: isCoreHero ? 17 : 14,
+            fontSize: isCoreHero ? 17 : 13.5,
             fontWeight: 800,
-            color: isCoreHero ? "#0f172a" : isOutcome ? "#14532d" : theme.text,
-            lineHeight: 1.25,
+            color: isCoreHero ? "#0f172a" : safeTheme.text,
+            lineHeight: 1.28,
           }}
         >
           {formatNodeLabel(node, isCoreHero)}
@@ -420,10 +477,10 @@ function DiagramNodeCard({
         {node.description && (
           <div
             style={{
-              fontSize: 11,
-              color: isCoreHero ? "#475569" : theme.subtext,
+              fontSize: 11.5,
+              color: isCoreHero ? "#475569" : (safeTheme.subtext || "#475569"),
               lineHeight: 1.4,
-              marginTop: 2,
+              marginTop: 3,
             }}
           >
             {node.description}
@@ -572,6 +629,7 @@ function HierarchyInfographic({ nodes = [], connections = [], centralConcept = "
               <DiagramNodeCard
                 key={node.id}
                 node={node}
+                index={i}
                 activeNodeId={activeNodeId}
                 onSelectNode={onSelectNode}
                 badgeOverride={`Impl ${i + 1}`}
@@ -592,6 +650,7 @@ function HierarchyInfographic({ nodes = [], connections = [], centralConcept = "
         <div style={{ width: "100%", maxWidth: 380 }}>
           <DiagramNodeCard
             node={outcomeNode}
+            index={implementationNodes.length + 1}
             activeNodeId={activeNodeId}
             onSelectNode={onSelectNode}
             badgeOverride="Resulting System Property"
@@ -634,6 +693,7 @@ function ConceptMapInfographic({ nodes = [], connections = [], centralConcept = 
       {/* 1. Visually Dominant Central Concept Hub */}
       <DiagramNodeCard
         node={hubNode}
+        index={0}
         isDominant={true}
         activeNodeId={activeNodeId}
         onSelectNode={onSelectNode}
@@ -645,13 +705,13 @@ function ConceptMapInfographic({ nodes = [], connections = [], centralConcept = 
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          gridTemplateColumns: satellites.length === 1 ? "1fr" : satellites.length === 2 ? "repeat(2, 1fr)" : "repeat(auto-fit, minmax(170px, 1fr))",
           gap: 12,
           width: "100%",
           marginTop: 6,
         }}
       >
-        {satellites.map((sat) => {
+        {satellites.map((sat, sIdx) => {
           const relLabel = getLabel(sat.id);
           return (
             <div
@@ -661,11 +721,13 @@ function ConceptMapInfographic({ nodes = [], connections = [], centralConcept = 
                 flexDirection: "column",
                 alignItems: "center",
                 gap: 4,
+                minWidth: 0,
               }}
             >
               <DirectionalConnector label={relLabel} direction="down" />
               <DiagramNodeCard
                 node={sat}
+                index={sIdx}
                 activeNodeId={activeNodeId}
                 onSelectNode={onSelectNode}
               />
@@ -698,8 +760,8 @@ function ProcessInfographic({ nodes, connections, activeNodeId, onSelectNode }) 
           <div style={{ width: "100%", background: "#f0f9ff", border: "1px dashed #bae6fd", borderRadius: 12, padding: "10px 12px" }}>
             <span style={{ fontSize: 10, fontWeight: 800, color: "#0369a1", textTransform: "uppercase" }}>Inputs Absorbed</span>
             <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(120px, 1fr))`, gap: 8, marginTop: 6 }}>
-              {inputs.map((n) => (
-                <DiagramNodeCard key={n.id} node={n} activeNodeId={activeNodeId} onSelectNode={onSelectNode} />
+              {inputs.map((n, i) => (
+                <DiagramNodeCard key={n.id} node={n} index={i} activeNodeId={activeNodeId} onSelectNode={onSelectNode} />
               ))}
             </div>
           </div>
@@ -707,7 +769,7 @@ function ProcessInfographic({ nodes, connections, activeNodeId, onSelectNode }) 
           <DirectionalConnector label="absorbed & catalyzed" direction="down" highlight={true} />
 
           {/* Core Biological Transformation */}
-          <DiagramNodeCard node={core} isDominant={true} activeNodeId={activeNodeId} onSelectNode={onSelectNode} role="root" />
+          <DiagramNodeCard node={core} index={0} isDominant={true} activeNodeId={activeNodeId} onSelectNode={onSelectNode} role="root" />
 
           <DirectionalConnector label="synthesizes & releases" direction="down" highlight={true} />
 
@@ -715,8 +777,8 @@ function ProcessInfographic({ nodes, connections, activeNodeId, onSelectNode }) 
           <div style={{ width: "100%", background: "#f0fdf4", border: "1px dashed #bbf7d0", borderRadius: 12, padding: "10px 12px" }}>
             <span style={{ fontSize: 10, fontWeight: 800, color: "#166534", textTransform: "uppercase" }}>Products Yielded</span>
             <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(120px, 1fr))`, gap: 8, marginTop: 6 }}>
-              {outputs.map((n) => (
-                <DiagramNodeCard key={n.id} node={n} activeNodeId={activeNodeId} onSelectNode={onSelectNode} role="outcome" />
+              {outputs.map((n, i) => (
+                <DiagramNodeCard key={n.id} node={n} index={i + 2} activeNodeId={activeNodeId} onSelectNode={onSelectNode} role="outcome" />
               ))}
             </div>
           </div>
@@ -742,6 +804,7 @@ function ProcessInfographic({ nodes, connections, activeNodeId, onSelectNode }) 
             <div style={{ width: "100%", maxWidth: isFirst ? 500 : 440 }}>
               <DiagramNodeCard
                 node={node}
+                index={i}
                 isDominant={isFirst}
                 activeNodeId={activeNodeId}
                 onSelectNode={onSelectNode}
@@ -777,8 +840,8 @@ function CauseEffectInfographic({ nodes, connections, activeNodeId, onSelectNode
           <div style={{ fontSize: 11, fontWeight: 800, color: "#ea580c", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 4 }}>
             <I.HelpCircle size={14} /> Causes / Triggers
           </div>
-          {leftNodes.map((n) => (
-            <DiagramNodeCard key={n.id} node={n} activeNodeId={activeNodeId} onSelectNode={onSelectNode} />
+          {leftNodes.map((n, i) => (
+            <DiagramNodeCard key={n.id} node={n} index={i} activeNodeId={activeNodeId} onSelectNode={onSelectNode} />
           ))}
         </div>
 
@@ -792,8 +855,8 @@ function CauseEffectInfographic({ nodes, connections, activeNodeId, onSelectNode
           <div style={{ fontSize: 11, fontWeight: 800, color: "#059669", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 4 }}>
             <I.Target size={14} /> Consequences / Effects
           </div>
-          {rightNodes.map((n) => (
-            <DiagramNodeCard key={n.id} node={n} activeNodeId={activeNodeId} onSelectNode={onSelectNode} role="outcome" />
+          {rightNodes.map((n, i) => (
+            <DiagramNodeCard key={n.id} node={n} index={i + 3} activeNodeId={activeNodeId} onSelectNode={onSelectNode} role="outcome" />
           ))}
         </div>
       </div>
@@ -814,27 +877,28 @@ function ComparisonInfographic({ nodes, activeNodeId, onSelectNode }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 12, alignItems: "center" }}>
         {/* Side A */}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: "#713f12", textTransform: "uppercase", textAlign: "center" }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "#0d9488", textTransform: "uppercase", textAlign: "center" }}>
             Paradigm A
           </div>
-          {sideA.map((n) => (
-            <DiagramNodeCard key={n.id} node={n} activeNodeId={activeNodeId} onSelectNode={onSelectNode} />
+          {sideA.map((n, i) => (
+            <DiagramNodeCard key={n.id} node={n} index={i} activeNodeId={activeNodeId} onSelectNode={onSelectNode} />
           ))}
         </div>
 
         {/* VS Divider */}
         <div
           style={{
-            width: 34,
-            height: 34,
+            width: 36,
+            height: 36,
             borderRadius: "50%",
-            background: "#fef9c3",
-            color: "#713f12",
+            background: "linear-gradient(135deg, #f8fafc, #f1f5f9)",
+            color: "#334155",
             fontWeight: 900,
             fontSize: 12,
             display: "grid",
             placeItems: "center",
-            border: "2px solid #fce072",
+            border: "2px solid #cbd5e1",
+            boxShadow: "0 2px 6px rgba(15, 23, 42, 0.08)",
           }}
         >
           VS
@@ -845,8 +909,8 @@ function ComparisonInfographic({ nodes, activeNodeId, onSelectNode }) {
           <div style={{ fontSize: 11, fontWeight: 800, color: "#059669", textTransform: "uppercase", textAlign: "center" }}>
             Paradigm B
           </div>
-          {sideB.map((n) => (
-            <DiagramNodeCard key={n.id} node={n} activeNodeId={activeNodeId} onSelectNode={onSelectNode} />
+          {sideB.map((n, i) => (
+            <DiagramNodeCard key={n.id} node={n} index={i + 2} activeNodeId={activeNodeId} onSelectNode={onSelectNode} />
           ))}
         </div>
       </div>
@@ -865,6 +929,7 @@ function CycleInfographic({ nodes, connections, activeNodeId, onSelectNode }) {
           <div style={{ width: "100%", maxWidth: 440 }}>
             <DiagramNodeCard
               node={node}
+              index={i}
               activeNodeId={activeNodeId}
               onSelectNode={onSelectNode}
               badgeOverride={`Step ${i + 1}`}
@@ -881,8 +946,8 @@ function CycleInfographic({ nodes, connections, activeNodeId, onSelectNode }) {
         style={{
           width: "100%",
           maxWidth: 440,
-          background: "#fdf4ff",
-          border: "1.5px dashed #d946ef",
+          background: "#faf5ff",
+          border: "1.5px dashed #c084fc",
           borderRadius: 10,
           padding: "8px 14px",
           display: "flex",
@@ -891,7 +956,7 @@ function CycleInfographic({ nodes, connections, activeNodeId, onSelectNode }) {
           gap: 6,
           fontSize: 11,
           fontWeight: 800,
-          color: "#86198f",
+          color: "#7e22ce",
           marginTop: 6,
         }}
       >
@@ -943,8 +1008,12 @@ function VisualInfographicInner({
   sourceImages = [],
   onReadAloud,
   svgHtmlFallback = null,
+  activeNode: controlledActiveNode,
+  onSelectNode: controlledOnSelectNode,
 }) {
-  const [activeNode, setActiveNode] = useState(null);
+  const [internalActiveNode, setInternalActiveNode] = useState(null);
+  const activeNode = controlledActiveNode !== undefined ? controlledActiveNode : internalActiveNode;
+  const setActiveNode = controlledOnSelectNode || setInternalActiveNode;
   const [imgIndex, setImgIndex] = useState(0);
 
   const hasSourceImages = sourceImages && sourceImages.length > 0;
@@ -1051,14 +1120,14 @@ function VisualInfographicInner({
         />
       ) : null}
 
-      {/* 3. INTERACTIVE NODE DETAIL DRAWER */}
-      {activeNode && (
+      {/* 3. INTERACTIVE NODE DETAIL DRAWER - only when uncontrolled */}
+      {activeNode && controlledActiveNode === undefined && (
         <div
           style={{
             position: "relative",
             marginTop: 14,
-            background: "rgba(252, 224, 114, 0.15)",
-            border: "1px solid #fce072",
+            background: "rgba(13, 148, 136, 0.08)",
+            border: "1px solid #14b8a6",
             borderRadius: 12,
             padding: "12px 36px 12px 14px",
             animation: "fade 0.2s ease-in-out",
@@ -1080,10 +1149,10 @@ function VisualInfographicInner({
           >
             ✕
           </button>
-          <div style={{ fontWeight: 800, fontSize: 13, color: "#713f12", marginBottom: 2 }}>
+          <div style={{ fontWeight: 800, fontSize: 13, color: "#115e59", marginBottom: 2 }}>
             🔍 {activeNode.label}
           </div>
-          <div style={{ fontSize: 12, color: "#374151", lineHeight: 1.55 }}>
+          <div style={{ fontSize: 12, color: "#134e4a", lineHeight: 1.55 }}>
             {activeNode.description || "Key educational milestone in this conceptual process."}
           </div>
         </div>
